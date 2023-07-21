@@ -1,0 +1,12 @@
+[package]
+name = "webex-tui"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+oauth2 = "4.4.1"
+open = "5.0.0"
+tokio = { version = "1.29.1", features = ["rt", "macros"] }
+webex = { version = "0.7.0", path = "../webex-rust" }
