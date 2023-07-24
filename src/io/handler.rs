@@ -8,12 +8,12 @@ use super::IoEvent;
 use crate::app::App;
 
 /// In the IO thread, we handle IO event without blocking the UI thread
-pub struct IoAsyncHandler {
-    app: Arc<tokio::sync::Mutex<App>>,
+pub struct IoAsyncHandler<'a> {
+    app: Arc<tokio::sync::Mutex<App<'a>>>,
 }
 
-impl IoAsyncHandler {
-    pub fn new(app: Arc<tokio::sync::Mutex<App>>) -> Self {
+impl<'a> IoAsyncHandler<'a> {
+    pub fn new(app: Arc<tokio::sync::Mutex<App<'a>>>) -> Self {
         Self { app }
     }
 

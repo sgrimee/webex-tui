@@ -1,4 +1,5 @@
 use log::{debug, error, warn};
+use tui_textarea::TextArea;
 
 use self::actions::Actions;
 use self::state::AppState;
@@ -17,7 +18,7 @@ pub enum AppReturn {
 }
 
 /// The main application, containing the state
-pub struct App {
+pub struct App<'a> {
     /// We could dispatch an IO event
     io_tx: tokio::sync::mpsc::Sender<IoEvent>,
     /// Contextual actions
@@ -25,19 +26,22 @@ pub struct App {
     /// State
     is_loading: bool,
     state: AppState,
+    msg_input_textarea : TextArea<'a>,
 }
 
-impl App {
+impl App<'_> {
     pub fn new(io_tx: tokio::sync::mpsc::Sender<IoEvent>) -> Self {
         let actions = vec![Action::Quit].into();
         let is_loading = false;
         let state = AppState::default();
+        let msg_input_textarea = TextArea::default();
 
         Self {
             io_tx,
             actions,
             is_loading,
             state,
+            msg_input_textarea,
         }
     }
 

@@ -16,7 +16,7 @@ pub mod app;
 pub mod inputs;
 pub mod io;
 
-pub async fn start_ui(app: &Arc<tokio::sync::Mutex<App>>) -> Result<()> {
+pub async fn start_ui(app: &Arc<tokio::sync::Mutex<App<'_>>>) -> Result<()> {
     // Configure Crossterm backend for tui
     let stdout = stdout();
     crossterm::terminal::enable_raw_mode()?;

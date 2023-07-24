@@ -1,3 +1,5 @@
+#![allow(unused_imports)]
+
 use std::time::Duration;
 
 use symbols::line;
@@ -8,6 +10,7 @@ use tui::text::{Span, Spans};
 use tui::widgets::{Block, BorderType, Borders, Cell, LineGauge, Paragraph, Row, Table};
 use tui::{symbols, Frame};
 use tui_logger::TuiLoggerWidget;
+use tui_textarea::TextArea;
 
 use super::actions::Actions;
 use super::state::AppState;
@@ -50,11 +53,8 @@ where
     let help = draw_help(app.actions());
     rect.render_widget(help, body_chunks[1]);
 
-    // Duration LineGauge
-    if let Some(duration) = app.state().duration() {
-        let duration_block = draw_duration(duration);
-        rect.render_widget(duration_block, chunks[2]);
-    }
+    let msg_input = draw_msg_input(app.msg_input_textarea.clone());
+    rect.render_widget(msg_input.widget(), chunks[2]);
 
     // Logs
     let logs = draw_logs();
@@ -116,25 +116,13 @@ fn draw_body<'a>(loading: bool, state: &AppState) -> Paragraph<'a> {
     )
 }
 
-fn draw_duration(duration: &Duration) -> LineGauge {
-    let sec = duration.as_secs();
-    let label = format!("{}s", sec);
-    let ratio = sec as f64 / 10.0;
-    LineGauge::default()
-        .block(
+fn draw_msg_input<'a>(mut textarea: TextArea<'a>) -> TextArea <'a> {
+    textarea.set_block(
             Block::default()
                 .borders(Borders::ALL)
-                .title("Sleep duration"),
-        )
-        .gauge_style(
-            Style::default()
-                .fg(Color::Cyan)
-                .bg(Color::Black)
-                .add_modifier(Modifier::BOLD),
-        )
-        .line_set(line::THICK)
-        .label(label)
-        .ratio(ratio)
+                .title("Crossterm Minimal Example"),
+        );
+    textarea
 }
 
 fn draw_help(actions: &Actions) -> Table {
