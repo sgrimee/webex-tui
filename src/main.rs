@@ -1,29 +1,33 @@
-pub mod auth;
-use std::env;
+use std::sync::Arc;
 
-const INTEGRATION_CLIENT_ID: &str = "INTEGRATION_CLIENT_ID";
-const INTEGRATION_CLIENT_SECRET: &str = "INTEGRATION_CLIENT_SECRET";
+use eyre::Result;
+use log::LevelFilter;
+use webex_tui::app::App;
+use webex_tui::io::handler::IoAsyncHandler;
+use webex_tui::io::IoEvent;
+use webex_tui::start_ui;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // get integration credentials from environment variables
-    let client_id = env::var(INTEGRATION_CLIENT_ID)
-        .unwrap_or_else(|_| panic!("{} not specified in environment", INTEGRATION_CLIENT_ID));
-    let client_secret = env::var(INTEGRATION_CLIENT_SECRET)
-        .unwrap_or_else(|_| panic!("{} not specified in environment", INTEGRATION_CLIENT_SECRET));
-    // obtain token with OAuth2
-    println!("Authenticating to webex");
-    let token = auth::get_integration_token(client_id, client_secret)
-        .await
-        .expect("Need token to continue");
-    let token: &str = token.secret();
+async fn main() -> Result<()> {
+    let (sync_io_tx, mut sync_io_rx) = tokio::sync::mpsc::channel::<IoEvent>(100);
 
-    let webex = webex::Webex::new(token).await;
+    // We need to share the App between thread
+    let app = Arc::new(tokio::sync::Mutex::new(App::new(sync_io_tx.clone())));
+    let app_ui = Arc::clone(&app);
 
-    println!("Getting list of rooms");
-    let rooms = webex.get_all_rooms().await.expect("obtaining rooms");
+    // Configure log
+    tui_logger::init_logger(LevelFilter::Debug).unwrap();
+    tui_logger::set_default_level(log::LevelFilter::Debug);
 
-    println!("{rooms:#?}");
+    // Handle IO in a specifc thread
+    tokio::spawn(async move {
+        let mut handler = IoAsyncHandler::new(app);
+        while let Some(io_event) = sync_io_rx.recv().await {
+            handler.handle_io_event(io_event).await;
+        }
+    });
+
+    start_ui(&app_ui).await?;
 
     Ok(())
 }

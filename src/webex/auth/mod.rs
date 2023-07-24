@@ -8,10 +8,28 @@ use oauth2::{
     TokenResponse, TokenUrl,
 };
 use open;
+use std::env;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
 
-pub async fn get_integration_token(
+const INTEGRATION_CLIENT_ID: &str = "INTEGRATION_CLIENT_ID";
+const INTEGRATION_CLIENT_SECRET: &str = "INTEGRATION_CLIENT_SECRET";
+
+pub async fn get_webex_client() -> webex::Webex {
+    let client_id = env::var(INTEGRATION_CLIENT_ID)
+        .unwrap_or_else(|_| panic!("{} not specified in environment", INTEGRATION_CLIENT_ID));
+    let client_secret = env::var(INTEGRATION_CLIENT_SECRET)
+        .unwrap_or_else(|_| panic!("{} not specified in environment", INTEGRATION_CLIENT_SECRET));
+
+    // println!("Authenticating to webex");
+    let token = get_integration_token(client_id, client_secret)
+        .await
+        .expect("Need token to continue");
+    let token: &str = token.secret();
+    webex::Webex::new(token).await
+}
+
+async fn get_integration_token(
     client_id: String,
     client_secret: String,
 ) -> Result<AccessToken, Box<dyn std::error::Error + Send + Sync>> {
