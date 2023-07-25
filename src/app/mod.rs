@@ -100,8 +100,13 @@ impl App<'_> {
     pub async fn send_message_buffer(&mut self) {
         self.state.set_editing(false);
         let lines = self.msg_input_textarea.lines();
-        info!("Sending message: {}", lines.join("\n"));
-        // self.clear_msg_input_textarea();
+        let msg_to_send = webex::types::MessageOut {
+            to_person_email: Some("rawouter@cisco.com".to_string()),
+            text: Some(lines.join("\n")),
+            ..Default::default()
+        };
+        info!("Sending message: {:#?}", msg_to_send);
+        self.dispatch(IoEvent::SendMessage(msg_to_send)).await;
         self.msg_input_textarea = TextArea::default();
     }
 

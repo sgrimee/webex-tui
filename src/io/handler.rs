@@ -6,6 +6,7 @@ use log::{error, info};
 
 use super::webex_client::get_webex_client;
 use super::IoEvent;
+use crate::app::state::AppState;
 use crate::app::App;
 
 /// In the IO thread, we handle IO event without blocking the UI thread
@@ -23,6 +24,7 @@ impl<'a> IoAsyncHandler<'a> {
         let result = match io_event {
             IoEvent::Initialize => self.do_initialize().await,
             IoEvent::Sleep(duration) => self.do_sleep(duration).await,
+            IoEvent::SendMessage(msg_to_send) => self.do_send_message(msg_to_send).await,
         };
 
         if let Err(err) = result {
@@ -35,12 +37,26 @@ impl<'a> IoAsyncHandler<'a> {
 
     async fn do_initialize(&mut self) -> Result<()> {
         info!("🚀 Login to Webex");
-        let mut app = self.app.lock().await;
-        // authenticate webex client (slow)
         let client = get_webex_client().await;
+        let mut app = self.app.lock().await;
         app.initialized(client); // we could update the app state
         info!("👍 Login successful");
 
+        Ok(())
+    }
+
+    async fn do_send_message(&mut self, msg_to_send: webex::types::MessageOut) -> Result<()> {
+        info!("Sending message");
+        // TODO: do not block...
+        let app = self.app.lock().await;
+        if let AppState::Initialized { webex, .. } = app.state() {
+            webex
+                .send_message(&msg_to_send)
+                .await
+                .expect("do_send_message");
+        }
+        // let mut app = self.app.lock().await;
+        // app.slept();
         Ok(())
     }
 
