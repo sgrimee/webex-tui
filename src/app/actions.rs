@@ -11,16 +11,18 @@ pub enum Action {
     Sleep,
     IncrementDelay,
     DecrementDelay,
+    EditMessage,
 }
 
 impl Action {
     /// All available actions
     pub fn iterator() -> Iter<'static, Action> {
-        static ACTIONS: [Action; 4] = [
+        static ACTIONS: [Action; 5] = [
             Action::Quit,
             Action::Sleep,
             Action::IncrementDelay,
             Action::DecrementDelay,
+            Action::EditMessage,
         ];
         ACTIONS.iter()
     }
@@ -28,10 +30,11 @@ impl Action {
     /// List of key associated to action
     pub fn keys(&self) -> &[Key] {
         match self {
-            Action::Quit => &[Key::Ctrl('c'), Key::Char('q')],
+            Action::Quit => &[Key::Ctrl('c')],
             Action::Sleep => &[Key::Char('s')],
             Action::IncrementDelay => &[Key::Char('+')],
             Action::DecrementDelay => &[Key::Char('-')],
+            Action::EditMessage => &[Key::Char('e')],
         }
     }
 }
@@ -44,6 +47,7 @@ impl Display for Action {
             Action::Sleep => "Sleep",
             Action::IncrementDelay => "Increment delay",
             Action::DecrementDelay => "Decrement delay",
+            Action::EditMessage => "Edit message",
         };
         write!(f, "{}", str)
     }
@@ -133,6 +137,7 @@ mod tests {
             Action::Sleep,
             Action::IncrementDelay,
             Action::DecrementDelay,
+            Action::EditMessage,
         ]
         .into();
     }

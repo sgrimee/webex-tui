@@ -62,7 +62,7 @@ where
 }
 
 fn draw_title<'a>() -> Paragraph<'a> {
-    Paragraph::new("Plop with TUI")
+    Paragraph::new("Webex TUI")
         .style(Style::default().fg(Color::LightCyan))
         .alignment(Alignment::Center)
         .block(
@@ -116,12 +116,12 @@ fn draw_body<'a>(loading: bool, state: &AppState) -> Paragraph<'a> {
     )
 }
 
-fn draw_msg_input<'a>(mut textarea: TextArea<'a>) -> TextArea <'a> {
+fn draw_msg_input<'a>(mut textarea: TextArea<'a>) -> TextArea<'a> {
     textarea.set_block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title("Crossterm Minimal Example"),
-        );
+        Block::default()
+            .borders(Borders::ALL)
+            .title("Type your message"),
+    );
     textarea
 }
 

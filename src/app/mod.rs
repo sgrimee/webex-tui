@@ -1,11 +1,12 @@
-use log::{debug, error, warn};
-use tui_textarea::TextArea;
-
 use self::actions::Actions;
 use self::state::AppState;
 use crate::app::actions::Action;
 use crate::inputs::key::Key;
+use crate::inputs::patch::input_from_key_event;
 use crate::io::IoEvent;
+use crossterm::event::KeyEvent;
+use log::{debug, error, warn};
+use tui_textarea::TextArea;
 
 pub mod actions;
 pub mod state;
@@ -26,7 +27,7 @@ pub struct App<'a> {
     /// State
     is_loading: bool,
     state: AppState,
-    msg_input_textarea : TextArea<'a>,
+    msg_input_textarea: TextArea<'a>,
 }
 
 impl App<'_> {
@@ -45,8 +46,8 @@ impl App<'_> {
         }
     }
 
-    /// Handle a user action
-    pub async fn do_action(&mut self, key: Key) -> AppReturn {
+    /// Handle a user action (non-editing mode)
+    pub async fn do_action(&mut self, key: crate::inputs::key::Key) -> AppReturn {
         if let Some(action) = self.actions.find(key) {
             debug!("Run action [{:?}]", action);
             match action {
@@ -68,11 +69,27 @@ impl App<'_> {
                     self.state.decrement_delay();
                     AppReturn::Continue
                 }
+                Action::EditMessage => {
+                    self.state.set_editing(true);
+                    AppReturn::Continue
+                }
             }
         } else {
             warn!("No action accociated to {}", key);
             AppReturn::Continue
         }
+    }
+
+    // Handle a key while in text editing mode
+    pub async fn process_editing_key(&mut self, key_event: KeyEvent) -> AppReturn {
+        let key = Key::from(key_event);
+        if key == Key::Esc {
+            self.state.set_editing(false);
+        } else {
+            let input = input_from_key_event(key_event);
+            self.msg_input_textarea.input(input);
+        }
+        AppReturn::Continue
     }
 
     /// We could update the app or dispatch event on tick
@@ -110,6 +127,7 @@ impl App<'_> {
             Action::Sleep,
             Action::IncrementDelay,
             Action::DecrementDelay,
+            Action::EditMessage,
         ]
         .into();
         self.state = AppState::initialized()

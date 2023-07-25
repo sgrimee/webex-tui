@@ -71,7 +71,7 @@ pub enum Key {
 impl Key {
     /// If exit
     pub fn is_exit(&self) -> bool {
-        matches!(self, Key::Ctrl('c') | Key::Char('q') | Key::Esc)
+        matches!(self, Key::Ctrl('c'))
     }
 
     /// Returns the function key corresponding to the given number
@@ -115,6 +115,7 @@ impl Display for Key {
     }
 }
 
+// convert backend KeyEvent to this crats's Key
 impl From<event::KeyEvent> for Key {
     fn from(key_event: event::KeyEvent) -> Self {
         match key_event {

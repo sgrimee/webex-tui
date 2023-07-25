@@ -7,6 +7,7 @@ pub enum AppState {
         duration: Duration,
         counter_sleep: u32,
         counter_tick: u64,
+        editing_mode: bool,
     },
 }
 
@@ -15,10 +16,12 @@ impl AppState {
         let duration = Duration::from_secs(1);
         let counter_sleep = 0;
         let counter_tick = 0;
+        let editing_mode = false;
         Self::Initialized {
             duration,
             counter_sleep,
             counter_tick,
+            editing_mode,
         }
     }
 
@@ -76,6 +79,19 @@ impl AppState {
             let secs = (duration.as_secs() - 1).clamp(1, 10);
             *duration = Duration::from_secs(secs);
         }
+    }
+
+    pub fn set_editing(&mut self, value: bool) {
+        if let Self::Initialized { editing_mode, .. } = self {
+            *editing_mode = value;
+        }
+    }
+
+    pub fn is_editing(&self) -> bool {
+        if let Self::Initialized { editing_mode, .. } = self {
+            return *editing_mode;
+        }
+        return false;
     }
 }
 

@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use log::error;
 
-use super::key::Key;
+// use super::key::Key;
 use super::InputEvent;
 
 /// A small event handler that wrap crossterm input and tick event. Each event
@@ -29,9 +29,11 @@ impl Events {
             loop {
                 // poll for tick rate duration, if no event, sent tick event.
                 if crossterm::event::poll(tick_rate).unwrap() {
-                    if let crossterm::event::Event::Key(key) = crossterm::event::read().unwrap() {
-                        let key = Key::from(key);
-                        if let Err(err) = event_tx.send(InputEvent::Input(key)).await {
+                    if let crossterm::event::Event::Key(key_event) =
+                        crossterm::event::read().unwrap()
+                    {
+                        // let key = Key::from(key);
+                        if let Err(err) = event_tx.send(InputEvent::Input(key_event)).await {
                             error!("Oops!, {}", err);
                         }
                     }

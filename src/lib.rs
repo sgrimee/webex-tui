@@ -5,6 +5,7 @@ use std::time::Duration;
 use app::{App, AppReturn};
 use eyre::Result;
 use inputs::events::Events;
+use inputs::key::Key;
 use inputs::InputEvent;
 use io::IoEvent;
 use tui::backend::CrosstermBackend;
@@ -44,7 +45,10 @@ pub async fn start_ui(app: &Arc<tokio::sync::Mutex<App<'_>>>) -> Result<()> {
 
         // Handle inputs
         let result = match events.next().await {
-            InputEvent::Input(key) => app.do_action(key).await,
+            InputEvent::Input(key_event) if app.state().is_editing() => {
+                app.process_editing_key(key_event).await
+            }
+            InputEvent::Input(key_event) => app.do_action(Key::from(key_event)).await,
             InputEvent::Tick => app.update_on_tick().await,
         };
         // Check if we should exit
