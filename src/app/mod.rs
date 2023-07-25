@@ -5,7 +5,7 @@ use crate::inputs::key::Key;
 use crate::inputs::patch::input_from_key_event;
 use crate::io::IoEvent;
 use crossterm::event::KeyEvent;
-use log::{debug, error, warn};
+use log::{debug, error, info, warn};
 use tui_textarea::TextArea;
 
 pub mod actions;
@@ -83,13 +83,25 @@ impl App<'_> {
     // Handle a key while in text editing mode
     pub async fn process_editing_key(&mut self, key_event: KeyEvent) -> AppReturn {
         let key = Key::from(key_event);
-        if key == Key::Esc {
-            self.state.set_editing(false);
-        } else {
-            let input = input_from_key_event(key_event);
-            self.msg_input_textarea.input(input);
+        match key {
+            Key::Ctrl('c') => return AppReturn::Exit,
+            Key::Esc => self.state.set_editing(false),
+            Key::AltEnter => self.send_message_buffer().await,
+            _ => {
+                _ = self
+                    .msg_input_textarea
+                    .input(input_from_key_event(key_event))
+            }
         }
         AppReturn::Continue
+    }
+
+    pub async fn send_message_buffer(&mut self) {
+        self.state.set_editing(false);
+        let lines = self.msg_input_textarea.lines();
+        info!("Sending message: {}", lines.join("\n"));
+        // self.clear_msg_input_textarea();
+        self.msg_input_textarea = TextArea::default();
     }
 
     /// We could update the app or dispatch event on tick

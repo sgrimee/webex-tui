@@ -31,7 +31,7 @@ where
                 Constraint::Length(3),
                 Constraint::Min(10),
                 Constraint::Length(3),
-                Constraint::Length(12),
+                Constraint::Length(22),
             ]
             .as_ref(),
         )
@@ -53,7 +53,7 @@ where
     let help = draw_help(app.actions());
     rect.render_widget(help, body_chunks[1]);
 
-    let msg_input = draw_msg_input(app.msg_input_textarea.clone());
+    let msg_input = draw_msg_input(app.state(), app.msg_input_textarea.clone());
     rect.render_widget(msg_input.widget(), chunks[2]);
 
     // Logs
@@ -77,8 +77,8 @@ fn check_size(rect: &Rect) {
     if rect.width < 52 {
         panic!("Require width >= 52, (got {})", rect.width);
     }
-    if rect.height < 28 {
-        panic!("Require height >= 28, (got {})", rect.height);
+    if rect.height < 38 {
+        panic!("Require height >= 38, (got {})", rect.height);
     }
 }
 
@@ -116,11 +116,16 @@ fn draw_body<'a>(loading: bool, state: &AppState) -> Paragraph<'a> {
     )
 }
 
-fn draw_msg_input<'a>(mut textarea: TextArea<'a>) -> TextArea<'a> {
+fn draw_msg_input<'a>(state: &AppState, mut textarea: TextArea<'a>) -> TextArea<'a> {
+    let title_style = if state.is_editing() {
+        Style::default().fg(Color::Yellow)
+    } else {
+        Style::default()
+    };
     textarea.set_block(
         Block::default()
             .borders(Borders::ALL)
-            .title("Type your message"),
+            .title(Span::styled("Type your message", title_style)),
     );
     textarea
 }

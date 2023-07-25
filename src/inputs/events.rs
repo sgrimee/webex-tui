@@ -32,7 +32,6 @@ impl Events {
                     if let crossterm::event::Event::Key(key_event) =
                         crossterm::event::read().unwrap()
                     {
-                        // let key = Key::from(key);
                         if let Err(err) = event_tx.send(InputEvent::Input(key_event)).await {
                             error!("Oops!, {}", err);
                         }

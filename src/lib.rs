@@ -8,6 +8,7 @@ use inputs::events::Events;
 use inputs::key::Key;
 use inputs::InputEvent;
 use io::IoEvent;
+use log::debug;
 use tui::backend::CrosstermBackend;
 use tui::Terminal;
 
@@ -46,6 +47,7 @@ pub async fn start_ui(app: &Arc<tokio::sync::Mutex<App<'_>>>) -> Result<()> {
         // Handle inputs
         let result = match events.next().await {
             InputEvent::Input(key_event) if app.state().is_editing() => {
+                debug!("Keyevent: {:#?}", key_event);
                 app.process_editing_key(key_event).await
             }
             InputEvent::Input(key_event) => app.do_action(Key::from(key_event)).await,

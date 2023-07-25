@@ -64,6 +64,7 @@ pub enum Key {
     F12,
     Char(char),
     Ctrl(char),
+    AltEnter,
     Alt(char),
     Unknown,
 }
@@ -109,6 +110,7 @@ impl Display for Key {
             Key::Char(' ') => write!(f, "<Space>"),
             Key::Alt(c) => write!(f, "<Alt+{}>", c),
             Key::Ctrl(c) => write!(f, "<Ctrl+{}>", c),
+            Key::AltEnter => write!(f, "<Alt+Enter>"),
             Key::Char(c) => write!(f, "<{}>", c),
             _ => write!(f, "<{:?}>", self),
         }
@@ -173,13 +175,17 @@ impl From<event::KeyEvent> for Key {
             } => Key::from_f(n),
             event::KeyEvent {
                 code: event::KeyCode::Enter,
+                modifiers: event::KeyModifiers::ALT,
+                ..
+            } => Key::AltEnter,
+            event::KeyEvent {
+                code: event::KeyCode::Enter,
                 ..
             } => Key::Enter,
             event::KeyEvent {
                 code: event::KeyCode::Tab,
                 ..
             } => Key::Tab,
-
             // First check for char + modifier
             event::KeyEvent {
                 code: event::KeyCode::Char(c),
