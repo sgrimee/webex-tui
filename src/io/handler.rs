@@ -4,6 +4,7 @@ use std::time::Duration;
 use eyre::Result;
 use log::{error, info};
 
+use super::webex_client::get_webex_client;
 use super::IoEvent;
 use crate::app::App;
 
@@ -32,13 +33,13 @@ impl<'a> IoAsyncHandler<'a> {
         app.loaded();
     }
 
-    /// We use dummy implementation here, just wait 1s
     async fn do_initialize(&mut self) -> Result<()> {
-        info!("🚀 Initialize the application");
+        info!("🚀 Login to Webex");
         let mut app = self.app.lock().await;
-        tokio::time::sleep(Duration::from_secs(1)).await;
-        app.initialized(); // we could update the app state
-        info!("👍 Application initialized");
+        // authenticate webex client (slow)
+        let client = get_webex_client().await;
+        app.initialized(client); // we could update the app state
+        info!("👍 Login successful");
 
         Ok(())
     }

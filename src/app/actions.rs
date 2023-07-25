@@ -30,7 +30,7 @@ impl Action {
     /// List of key associated to action
     pub fn keys(&self) -> &[Key] {
         match self {
-            Action::Quit => &[Key::Ctrl('c')],
+            Action::Quit => &[Key::Ctrl('c'), Key::Char('q')],
             Action::Sleep => &[Key::Char('s')],
             Action::IncrementDelay => &[Key::Char('+')],
             Action::DecrementDelay => &[Key::Char('-')],
@@ -119,7 +119,7 @@ mod tests {
     #[test]
     fn should_find_action_by_key() {
         let actions: Actions = vec![Action::Quit, Action::Sleep].into();
-        let result = actions.find(Key::Ctrl('c'));
+        let result = actions.find(Key::Char('q'));
         assert_eq!(result, Some(&Action::Quit));
     }
 

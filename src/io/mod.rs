@@ -1,6 +1,8 @@
 use std::time::Duration;
 
 pub mod handler;
+mod webex_client;
+
 // For this dummy application we only need two IO event
 #[derive(Debug, Clone)]
 pub enum IoEvent {

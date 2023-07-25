@@ -1,0 +1,13 @@
+{
+  "folders": [
+    {
+      "path": "."
+    },
+    {
+      "path": "../webex-rust"
+    }
+  ],
+  "settings": {
+    "rust-analyzer.linkedProjects": ["./Cargo.toml", "./Cargo.toml"]
+  }
+}

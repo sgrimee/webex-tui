@@ -117,16 +117,15 @@ fn draw_body<'a>(loading: bool, state: &AppState) -> Paragraph<'a> {
 }
 
 fn draw_msg_input<'a>(state: &AppState, mut textarea: TextArea<'a>) -> TextArea<'a> {
-    let title_style = if state.is_editing() {
-        Style::default().fg(Color::Yellow)
+    let title = if state.is_editing() {
+        Span::styled(
+            "Type your message, Esc to exit, Alt+Enter to send and exit.",
+            Style::default().fg(Color::Yellow),
+        )
     } else {
-        Style::default()
+        Span::styled("Type e to enter message edit mode", Style::default())
     };
-    textarea.set_block(
-        Block::default()
-            .borders(Borders::ALL)
-            .title(Span::styled("Type your message", title_style)),
-    );
+    textarea.set_block(Block::default().borders(Borders::ALL).title(title));
     textarea
 }
 

@@ -7,6 +7,7 @@ use crate::io::IoEvent;
 use crossterm::event::KeyEvent;
 use log::{debug, error, info, warn};
 use tui_textarea::TextArea;
+use webex::Webex;
 
 pub mod actions;
 pub mod state;
@@ -132,7 +133,7 @@ impl App<'_> {
         self.is_loading
     }
 
-    pub fn initialized(&mut self) {
+    pub fn initialized(&mut self, webex: Webex) {
         // Update contextual actions
         self.actions = vec![
             Action::Quit,
@@ -142,7 +143,7 @@ impl App<'_> {
             Action::EditMessage,
         ]
         .into();
-        self.state = AppState::initialized()
+        self.state = AppState::initialized(webex)
     }
 
     pub fn loaded(&mut self) {

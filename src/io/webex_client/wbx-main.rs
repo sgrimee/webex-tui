@@ -23,13 +23,13 @@
 //!
 pub mod auth;
 mod sample;
-use webex;
 use std::io;
 use tui::{backend::CrosstermBackend, Terminal};
+use webex;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // let webex = auth::get_webex_client().await;
+    let webex = auth::get_webex_client().await;
 
     // println!("Getting list of rooms");
     // let rooms = webex.get_all_rooms().await.expect("obtaining rooms");

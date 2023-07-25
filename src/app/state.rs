@@ -1,4 +1,5 @@
 use std::time::Duration;
+use webex::Webex;
 
 #[derive(Clone)]
 pub enum AppState {
@@ -8,11 +9,12 @@ pub enum AppState {
         counter_sleep: u32,
         counter_tick: u64,
         editing_mode: bool,
+        webex: Webex,
     },
 }
 
 impl AppState {
-    pub fn initialized() -> Self {
+    pub fn initialized(webex: Webex) -> Self {
         let duration = Duration::from_secs(1);
         let counter_sleep = 0;
         let counter_tick = 0;
@@ -22,6 +24,7 @@ impl AppState {
             counter_sleep,
             counter_tick,
             editing_mode,
+            webex,
         }
     }
 
