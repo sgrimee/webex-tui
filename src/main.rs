@@ -3,11 +3,10 @@ use log::LevelFilter;
 use std::panic;
 use std::process;
 use std::sync::Arc;
+use tokio::time::{sleep, Duration};
 use webex_tui::app::App;
 use webex_tui::start_ui;
-use webex_tui::teams::app_handler::IoAsyncHandler;
-
-use webex_tui::teams::IoEvent;
+use webex_tui::teams::app_handler::{IoAsyncHandler, IoEvent};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -33,11 +32,13 @@ async fn main() -> Result<()> {
     tokio::spawn(async move {
         let mut handler = IoAsyncHandler::new(app);
         loop {
-            if let Some(io_event) = sync_io_rx.recv().await {
+            if let Some(io_event) = sync_io_rx.try_recv().ok() {
                 handler.handle_app_event(io_event).await;
             }
             // Process messages from Webex Events sub?-thread
             handler.process_webex_events().await;
+            // TODO: fix this so we don't use CPU but use async better
+            sleep(Duration::from_millis(100)).await;
         }
     });
 

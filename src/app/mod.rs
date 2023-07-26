@@ -3,7 +3,7 @@ use self::state::AppState;
 use crate::app::actions::Action;
 use crate::inputs::key::Key;
 use crate::inputs::patch::input_from_key_event;
-use crate::teams::IoEvent;
+use crate::IoEvent;
 use crossterm::event::KeyEvent;
 use log::{debug, error, warn};
 use tui_textarea::TextArea;

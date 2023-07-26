@@ -1,18 +1,12 @@
 pub mod app_handler;
 mod auth;
 mod client;
+pub mod webex_handler;
 
 use log::error;
-use webex::{types::MessageOut, Event, Webex};
+use webex::{Event, Webex};
 
 use self::client::get_webex_client;
-
-// For this dummy application we only need two IO event
-#[derive(Debug, Clone)]
-pub enum IoEvent {
-    Initialize, // Launch to initiate login to Webex
-    SendMessage(MessageOut),
-}
 
 pub struct Teams {
     client: Webex,
@@ -22,6 +16,7 @@ pub struct Teams {
 }
 
 impl Teams {
+    /// Get authenticated webex client and spawn thread to watch for events
     pub async fn new() -> Self {
         let client = get_webex_client().await;
         let mut event_stream = client.event_stream().await.expect("event stream");
@@ -47,6 +42,6 @@ impl Teams {
     }
 
     pub async fn next_event(&mut self) -> Option<Event> {
-        self.rx.recv().await
+        self.rx.try_recv().ok()
     }
 }

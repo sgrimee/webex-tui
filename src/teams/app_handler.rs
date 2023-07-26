@@ -2,10 +2,16 @@ use std::sync::Arc;
 
 use eyre::Result;
 use log::{debug, error, info};
+use webex::MessageOut;
 
-use super::IoEvent;
-use super::Teams;
+use super::{webex_handler, Teams};
 use crate::app::App;
+
+#[derive(Debug, Clone)]
+pub enum IoEvent {
+    Initialize, // Launch to initiate login to Webex
+    SendMessage(MessageOut),
+}
 
 /// In the IO/Teams thread, we handle Webex activity without blocking the UI thread
 pub struct IoAsyncHandler<'a> {
@@ -20,25 +26,7 @@ impl<'a> IoAsyncHandler<'a> {
 
     pub async fn process_webex_events(&mut self) {
         if let Some(teams) = &mut self.teams {
-            while let Some(event) = teams.next_event().await {
-                debug!(
-                    "Webex event in Teams thread with type: {:#?}",
-                    event.activity_type()
-                );
-
-                if event.activity_type()
-                    == webex::ActivityType::Message(webex::MessageActivity::Posted)
-                {
-                    // The event stream doesn't contain the message -- you have to go fetch it
-                    if let Ok(msg) = teams
-                        .client
-                        .get::<webex::Message>(&event.get_global_id())
-                        .await
-                    {
-                        info!("Message: {:#?}", msg);
-                    }
-                }
-            }
+            webex_handler::process_webex_events(teams).await;
         }
     }
 
@@ -59,9 +47,7 @@ impl<'a> IoAsyncHandler<'a> {
 
     async fn do_initialize(&mut self) -> Result<()> {
         info!("🚀 Initializing to Webex");
-
         self.teams = Some(Teams::new().await);
-
         let mut app = self.app.lock().await;
         app.initialized();
         info!("👍 Webex initialization successful");
@@ -69,6 +55,7 @@ impl<'a> IoAsyncHandler<'a> {
     }
 
     async fn do_send_message(&mut self, msg_to_send: webex::types::MessageOut) -> Result<()> {
+        debug!("I would like to send");
         if let Some(teams) = &self.teams {
             teams
                 .client

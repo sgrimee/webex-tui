@@ -7,7 +7,7 @@ use eyre::Result;
 use inputs::events::Events;
 use inputs::key::Key;
 use inputs::InputEvent;
-use teams::IoEvent;
+use crate::teams::app_handler::IoEvent;
 // use log::debug;
 use tui::backend::CrosstermBackend;
 use tui::Terminal;
