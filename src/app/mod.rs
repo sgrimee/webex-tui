@@ -83,7 +83,8 @@ impl App<'_> {
         match key {
             Key::Ctrl('c') => return AppReturn::Exit,
             Key::Esc => self.state.set_editing(false),
-            Key::AltEnter => self.send_message_buffer().await,
+            Key::AltEnter => self.msg_input_textarea.insert_newline(),
+            Key::Enter => self.send_message_buffer().await,
             _ => {
                 _ = self
                     .msg_input_textarea
@@ -94,7 +95,7 @@ impl App<'_> {
     }
 
     pub async fn send_message_buffer(&mut self) {
-        self.state.set_editing(false);
+        // self.state.set_editing(false);
         let lines = self.msg_input_textarea.lines();
         let msg_to_send = webex::types::MessageOut {
             // to_person_email: Some("rawouter@cisco.com".to_string()),

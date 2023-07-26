@@ -29,8 +29,8 @@ impl Action {
     pub fn keys(&self) -> &[Key] {
         match self {
             Action::Quit => &[Key::Ctrl('c'), Key::Char('q')],
-            Action::EditMessage => &[Key::Char('e')],
-            Action::SendMessage => &[Key::AltEnter],
+            Action::EditMessage => &[Key::Char('m')],
+            Action::SendMessage => &[Key::Enter],
             Action::ToggleLogs => &[Key::Char('l')],
         }
     }
