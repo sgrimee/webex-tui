@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use eyre::Result;
-use log::{error, info};
+use log::{debug, error, info};
 
 use super::webex_client::get_webex_client;
 use super::IoEvent;
@@ -26,7 +26,7 @@ impl<'a> IoAsyncHandler<'a> {
         };
 
         if let Err(err) = result {
-            error!("Oops, something wrong happen: {:?}", err);
+            error!("Oops, something wrong happened: {:?}", err);
         }
 
         let mut app = self.app.lock().await;
@@ -36,10 +36,10 @@ impl<'a> IoAsyncHandler<'a> {
     async fn do_initialize(&mut self) -> Result<()> {
         info!("🚀 Login to Webex");
         let client = get_webex_client().await;
+        debug!("We got a webex client");
         let mut app = self.app.lock().await;
         app.initialized(client); // we could update the app state
         info!("👍 Login successful");
-
         Ok(())
     }
 

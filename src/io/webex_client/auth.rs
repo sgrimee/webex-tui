@@ -72,7 +72,7 @@ pub async fn get_integration_token(
             state = CsrfToken::new(value.into_owned());
         }
 
-        let message = "Go back to your terminal :)";
+        let message = "Webex authentication complete. You can close this and enjoy webex-tui.";
         let response = format!(
             "HTTP/1.1 200 OK\r\ncontent-length: {}\r\n\r\n{}",
             message.len(),
