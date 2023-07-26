@@ -30,15 +30,17 @@ pub struct App<'a> {
     state: AppState,
     msg_input_textarea: TextArea<'a>,
     msg_output_textarea: TextArea<'a>,
+    show_logs: bool,
 }
 
 impl App<'_> {
     pub fn new(io_tx: tokio::sync::mpsc::Sender<IoEvent>) -> Self {
-        let actions = vec![Action::Quit].into();
+        let actions = vec![Action::Quit, Action::ToggleLogs].into();
         let is_loading = false;
         let state = AppState::default();
         let msg_input_textarea = TextArea::default();
         let msg_output_textarea = TextArea::default();
+        let show_logs = true;
 
         Self {
             io_tx,
@@ -47,6 +49,7 @@ impl App<'_> {
             state,
             msg_input_textarea,
             msg_output_textarea,
+            show_logs,
         }
     }
 
@@ -56,16 +59,6 @@ impl App<'_> {
             debug!("Run action [{:?}]", action);
             match action {
                 Action::Quit => AppReturn::Exit,
-                // IncrementDelay and DecrementDelay is handled in the UI thread
-                Action::IncrementDelay => {
-                    self.state.increment_delay();
-                    AppReturn::Continue
-                }
-                // Note, that we clamp the duration, so we stay >= 0
-                Action::DecrementDelay => {
-                    self.state.decrement_delay();
-                    AppReturn::Continue
-                }
                 Action::EditMessage => {
                     self.state.set_editing(true);
                     AppReturn::Continue
@@ -74,13 +67,16 @@ impl App<'_> {
                     self.send_message_buffer().await;
                     AppReturn::Continue
                 }
+                Action::ToggleLogs => {
+                    self.show_logs = !self.show_logs;
+                    AppReturn::Continue
+                }
             }
         } else {
             warn!("No action accociated to {}", key);
             AppReturn::Continue
         }
     }
-
     // Handle a key while in text editing mode
     pub async fn process_editing_key(&mut self, key_event: KeyEvent) -> AppReturn {
         let key = Key::from(key_event);
@@ -116,8 +112,6 @@ impl App<'_> {
 
     /// We could update the app or dispatch event on tick
     pub async fn update_on_tick(&mut self) -> AppReturn {
-        // here we just increment a counter
-        self.state.incr_tick();
         AppReturn::Continue
     }
 
@@ -146,10 +140,9 @@ impl App<'_> {
         // Update contextual actions
         self.actions = vec![
             Action::Quit,
-            Action::IncrementDelay,
-            Action::DecrementDelay,
             Action::EditMessage,
             Action::SendMessage,
+            Action::ToggleLogs,
         ]
         .into();
         self.state = AppState::initialized()
@@ -174,5 +167,9 @@ impl App<'_> {
                 self.msg_output_textarea.insert_newline();
             }
         }
+    }
+
+    pub fn show_log_window(&self) -> bool {
+        self.show_logs
     }
 }

@@ -8,21 +8,19 @@ use crate::inputs::key::Key;
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum Action {
     Quit,
-    IncrementDelay,
-    DecrementDelay,
     EditMessage,
     SendMessage,
+    ToggleLogs,
 }
 
 impl Action {
     /// All available actions
     pub fn iterator() -> Iter<'static, Action> {
-        static ACTIONS: [Action; 5] = [
+        static ACTIONS: [Action; 4] = [
             Action::Quit,
-            Action::IncrementDelay,
-            Action::DecrementDelay,
             Action::EditMessage,
             Action::SendMessage,
+            Action::ToggleLogs,
         ];
         ACTIONS.iter()
     }
@@ -31,10 +29,9 @@ impl Action {
     pub fn keys(&self) -> &[Key] {
         match self {
             Action::Quit => &[Key::Ctrl('c'), Key::Char('q')],
-            Action::IncrementDelay => &[Key::Char('+')],
-            Action::DecrementDelay => &[Key::Char('-')],
             Action::EditMessage => &[Key::Char('e')],
             Action::SendMessage => &[Key::AltEnter],
+            Action::ToggleLogs => &[Key::Char('l')],
         }
     }
 }
@@ -44,10 +41,9 @@ impl Display for Action {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let str = match self {
             Action::Quit => "Quit",
-            Action::IncrementDelay => "Increment delay",
-            Action::DecrementDelay => "Decrement delay",
             Action::EditMessage => "Edit message",
             Action::SendMessage => "Send message",
+            Action::ToggleLogs => "Toggle logs",
         };
         write!(f, "{}", str)
     }
@@ -132,27 +128,12 @@ mod tests {
 
     #[test]
     fn should_create_actions_from_vec() {
-        let _actions: Actions = vec![
-            Action::Quit,
-            Action::IncrementDelay,
-            Action::DecrementDelay,
-            Action::EditMessage,
-            Action::SendMessage,
-        ]
-        .into();
+        let _actions: Actions = vec![Action::Quit, Action::EditMessage, Action::SendMessage].into();
     }
 
     #[test]
     #[should_panic]
     fn should_panic_when_create_actions_conflict_key() {
-        let _actions: Actions = vec![
-            Action::Quit,
-            Action::DecrementDelay,
-            Action::IncrementDelay,
-            Action::IncrementDelay,
-            Action::Quit,
-            Action::DecrementDelay,
-        ]
-        .into();
+        let _actions: Actions = vec![Action::Quit, Action::Quit].into();
     }
 }

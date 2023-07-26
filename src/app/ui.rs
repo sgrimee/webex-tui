@@ -2,6 +2,7 @@
 
 use std::time::Duration;
 
+use log::error;
 use symbols::line;
 use tui::backend::Backend;
 use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
@@ -16,6 +17,11 @@ use super::actions::Actions;
 use super::state::AppState;
 use crate::app::App;
 
+const TITLE_BLOCK_HEIGHT: u16 = 3;
+const BODY_BLOCK_HEIGHT_MIN: u16 = 5;
+const MSG_INPUT_BLOCK_HEUGHT: u16 = 5;
+const LOG_BLOCK_HEIGHT: u16 = 10;
+
 pub fn draw<B>(rect: &mut Frame<B>, app: &App)
 where
     B: Backend,
@@ -23,18 +29,19 @@ where
     let size = rect.size();
     check_size(&size);
 
+    let mut constraints = vec![
+        Constraint::Length(TITLE_BLOCK_HEIGHT),
+        Constraint::Min(BODY_BLOCK_HEIGHT_MIN),
+        Constraint::Length(MSG_INPUT_BLOCK_HEUGHT),
+    ];
+    if app.show_log_window() {
+        constraints.push(Constraint::Length(LOG_BLOCK_HEIGHT));
+    }
+
     // Vertical layout
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints(
-            [
-                Constraint::Length(3),
-                Constraint::Length(10),
-                Constraint::Length(5),
-                Constraint::Min(5),
-            ]
-            .as_ref(),
-        )
+        .constraints(constraints.as_ref())
         .split(size);
 
     // Title
@@ -57,8 +64,10 @@ where
     rect.render_widget(msg_input.widget(), chunks[2]);
 
     // Logs
-    let logs = draw_logs();
-    rect.render_widget(logs, chunks[3]);
+    if app.show_log_window() {
+        let logs = draw_logs();
+        rect.render_widget(logs, chunks[3]);
+    }
 }
 
 fn draw_title<'a>() -> Paragraph<'a> {
@@ -75,10 +84,13 @@ fn draw_title<'a>() -> Paragraph<'a> {
 
 fn check_size(rect: &Rect) {
     if rect.width < 52 {
-        panic!("Require width >= 52, (got {})", rect.width);
+        error!("Require width >= 52, (got {})", rect.width);
     }
-    if rect.height < 22 {
-        panic!("Require height >= 22, (got {})", rect.height);
+    let min_height =
+        TITLE_BLOCK_HEIGHT + BODY_BLOCK_HEIGHT_MIN + MSG_INPUT_BLOCK_HEUGHT + LOG_BLOCK_HEIGHT;
+
+    if rect.height < min_height {
+        error!("Require height >= {}, (got {})", min_height, rect.height);
     }
 }
 
