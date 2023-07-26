@@ -29,6 +29,7 @@ pub struct App<'a> {
     is_loading: bool,
     state: AppState,
     msg_input_textarea: TextArea<'a>,
+    msg_output_textarea: TextArea<'a>,
 }
 
 impl App<'_> {
@@ -37,6 +38,7 @@ impl App<'_> {
         let is_loading = false;
         let state = AppState::default();
         let msg_input_textarea = TextArea::default();
+        let msg_output_textarea = TextArea::default();
 
         Self {
             io_tx,
@@ -44,6 +46,7 @@ impl App<'_> {
             is_loading,
             state,
             msg_input_textarea,
+            msg_output_textarea,
         }
     }
 
@@ -159,5 +162,17 @@ impl App<'_> {
 
     pub fn message_sent(&mut self) {
         debug!("Message was sent.");
+    }
+
+    pub fn message_received(&mut self, msg: webex::Message) {
+        // textarea only accepts single lines
+        if let Some(text) = msg.text {
+            for line in text.split("\n") {
+                self.msg_output_textarea
+                    .move_cursor(tui_textarea::CursorMove::Bottom);
+                self.msg_output_textarea.insert_str(line);
+                self.msg_output_textarea.insert_newline();
+            }
+        }
     }
 }

@@ -2,9 +2,9 @@ use std::sync::Arc;
 
 use eyre::Result;
 use log::{debug, error, info};
-use webex::MessageOut;
+use webex::{Event, MessageOut};
 
-use super::{webex_handler, Teams};
+use super::Teams;
 use crate::app::App;
 
 #[derive(Debug, Clone)]
@@ -26,7 +26,31 @@ impl<'a> IoAsyncHandler<'a> {
 
     pub async fn process_webex_events(&mut self) {
         if let Some(teams) = &mut self.teams {
-            webex_handler::process_webex_events(teams).await;
+            if let Some(event) = teams.next_event().await {
+                debug!(
+                    "Webex event in Teams thread with type: {:#?}",
+                    event.activity_type()
+                );
+                self.handle_webex_event(event).await;
+            }
+        }
+    }
+
+    async fn handle_webex_event(&mut self, event: Event) {
+        if let Some(teams) = &mut self.teams {
+            if event.activity_type() == webex::ActivityType::Message(webex::MessageActivity::Posted)
+            {
+                // The event stream doesn't contain the message -- you have to go fetch it
+                if let Ok(msg) = teams
+                    .client
+                    .get::<webex::Message>(&event.get_global_id())
+                    .await
+                {
+                    debug!("Message: {:?}", msg);
+                    let mut app = self.app.lock().await;
+                    app.message_received(msg);
+                }
+            }
         }
     }
 

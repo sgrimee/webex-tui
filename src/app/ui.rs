@@ -47,8 +47,8 @@ where
         .constraints([Constraint::Min(20), Constraint::Length(32)].as_ref())
         .split(chunks[1]);
 
-    let body = draw_body(app.is_loading(), app.state());
-    rect.render_widget(body, body_chunks[0]);
+    let msg_output = draw_msg_output(app.msg_output_textarea.clone());
+    rect.render_widget(msg_output.widget(), body_chunks[0]);
 
     let help = draw_help(app.actions());
     rect.render_widget(help, body_chunks[1]);
@@ -82,38 +82,47 @@ fn check_size(rect: &Rect) {
     }
 }
 
-fn draw_body<'a>(loading: bool, state: &AppState) -> Paragraph<'a> {
-    let initialized_text = if state.is_initialized() {
-        "Initialized"
-    } else {
-        "Not Initialized !"
-    };
-    let loading_text = if loading { "Loading..." } else { "" };
-    let sleep_text = if let Some(sleeps) = state.count_sleep() {
-        format!("Sleep count: {}", sleeps)
-    } else {
-        String::default()
-    };
-    let tick_text = if let Some(ticks) = state.count_tick() {
-        format!("Tick count: {}", ticks)
-    } else {
-        String::default()
-    };
-    Paragraph::new(vec![
-        Spans::from(Span::raw(initialized_text)),
-        Spans::from(Span::raw(loading_text)),
-        Spans::from(Span::raw(sleep_text)),
-        Spans::from(Span::raw(tick_text)),
-    ])
-    .style(Style::default().fg(Color::LightCyan))
-    .alignment(Alignment::Left)
-    .block(
+// fn draw_body<'a>(loading: bool, state: &AppState) -> Paragraph<'a> {
+//     let initialized_text = if state.is_initialized() {
+//         "Initialized"
+//     } else {
+//         "Not Initialized !"
+//     };
+//     let loading_text = if loading { "Loading..." } else { "" };
+//     let sleep_text = if let Some(sleeps) = state.count_sleep() {
+//         format!("Sleep count: {}", sleeps)
+//     } else {
+//         String::default()
+//     };
+//     let tick_text = if let Some(ticks) = state.count_tick() {
+//         format!("Tick count: {}", ticks)
+//     } else {
+//         String::default()
+//     };
+//     Paragraph::new(vec![
+//         Spans::from(Span::raw(initialized_text)),
+//         Spans::from(Span::raw(loading_text)),
+//         Spans::from(Span::raw(sleep_text)),
+//         Spans::from(Span::raw(tick_text)),
+//     ])
+//     .style(Style::default().fg(Color::LightCyan))
+//     .alignment(Alignment::Left)
+//     .block(
+//         Block::default()
+//             // .title("Body")
+//             .borders(Borders::ALL)
+//             .style(Style::default().fg(Color::White))
+//             .border_type(BorderType::Plain),
+//     )
+// }
+
+fn draw_msg_output<'a>(mut textarea: TextArea<'a>) -> TextArea<'a> {
+    textarea.set_block(
         Block::default()
-            // .title("Body")
             .borders(Borders::ALL)
-            .style(Style::default().fg(Color::White))
-            .border_type(BorderType::Plain),
-    )
+            .title("Received messages"),
+    );
+    textarea
 }
 
 fn draw_msg_input<'a>(state: &AppState, mut textarea: TextArea<'a>) -> TextArea<'a> {
