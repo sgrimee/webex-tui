@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use eyre::Result;
 use log::{error, info};
@@ -23,7 +22,6 @@ impl<'a> IoAsyncHandler<'a> {
     pub async fn handle_io_event(&mut self, io_event: IoEvent) {
         let result = match io_event {
             IoEvent::Initialize => self.do_initialize().await,
-            IoEvent::Sleep(duration) => self.do_sleep(duration).await,
             IoEvent::SendMessage(msg_to_send) => self.do_send_message(msg_to_send).await,
         };
 
@@ -57,18 +55,6 @@ impl<'a> IoAsyncHandler<'a> {
         }
         // let mut app = self.app.lock().await;
         // app.slept();
-        Ok(())
-    }
-
-    /// Just take a little break
-    async fn do_sleep(&mut self, duration: Duration) -> Result<()> {
-        info!("😴 Go sleeping for {:?}...", duration);
-        tokio::time::sleep(duration).await;
-        info!("⏰ Wake up !");
-        // Notify the app for having slept
-        let mut app = self.app.lock().await;
-        app.slept();
-
         Ok(())
     }
 }
