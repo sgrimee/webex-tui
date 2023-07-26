@@ -3,11 +3,11 @@ use self::state::AppState;
 use crate::app::actions::Action;
 use crate::inputs::key::Key;
 use crate::inputs::patch::input_from_key_event;
-use crate::io::IoEvent;
+use crate::teams::IoEvent;
 use crossterm::event::KeyEvent;
-use log::{debug, error, info, warn};
+use log::{debug, error, warn};
 use tui_textarea::TextArea;
-use webex::Webex;
+// use webex::Webex;
 
 pub mod actions;
 pub mod state;
@@ -106,7 +106,7 @@ impl App<'_> {
             text: Some(lines.join("\n")),
             ..Default::default()
         };
-        info!("Sending message: {:#?}", msg_to_send);
+        debug!("Sending message: {:#?}", msg_to_send);
         self.dispatch(IoEvent::SendMessage(msg_to_send)).await;
         self.msg_input_textarea = TextArea::default();
     }
@@ -139,7 +139,7 @@ impl App<'_> {
         self.is_loading
     }
 
-    pub fn initialized(&mut self, webex: Webex) {
+    pub fn initialized(&mut self) {
         // Update contextual actions
         self.actions = vec![
             Action::Quit,
@@ -149,14 +149,15 @@ impl App<'_> {
             Action::SendMessage,
         ]
         .into();
-        self.state = AppState::initialized(webex)
+        self.state = AppState::initialized()
     }
 
+    // indicate the completion of a pending IO(thread) task
     pub fn loaded(&mut self) {
         self.is_loading = false;
     }
 
-    pub fn slept(&mut self) {
-        self.state.incr_sleep();
+    pub fn message_sent(&mut self) {
+        debug!("Message was sent.");
     }
 }

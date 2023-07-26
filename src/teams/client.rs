@@ -1,5 +1,4 @@
-mod auth;
-use auth::get_integration_token;
+use super::auth::get_integration_token;
 use log::debug;
 use std::{env, panic};
 use webex::Webex;

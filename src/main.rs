@@ -4,9 +4,10 @@ use std::panic;
 use std::process;
 use std::sync::Arc;
 use webex_tui::app::App;
-use webex_tui::io::handler::IoAsyncHandler;
-use webex_tui::io::IoEvent;
 use webex_tui::start_ui;
+use webex_tui::teams::app_handler::IoAsyncHandler;
+
+use webex_tui::teams::IoEvent;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -31,8 +32,12 @@ async fn main() -> Result<()> {
     // Handle IO in a specifc thread
     tokio::spawn(async move {
         let mut handler = IoAsyncHandler::new(app);
-        while let Some(io_event) = sync_io_rx.recv().await {
-            handler.handle_io_event(io_event).await;
+        loop {
+            if let Some(io_event) = sync_io_rx.recv().await {
+                handler.handle_app_event(io_event).await;
+            }
+            // Process messages from Webex Events sub?-thread
+            handler.process_webex_events().await;
         }
     });
 

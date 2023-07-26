@@ -29,9 +29,9 @@ where
         .constraints(
             [
                 Constraint::Length(3),
-                Constraint::Min(10),
-                Constraint::Length(3),
-                Constraint::Length(22),
+                Constraint::Length(10),
+                Constraint::Length(5),
+                Constraint::Min(5),
             ]
             .as_ref(),
         )
@@ -77,8 +77,8 @@ fn check_size(rect: &Rect) {
     if rect.width < 52 {
         panic!("Require width >= 52, (got {})", rect.width);
     }
-    if rect.height < 38 {
-        panic!("Require height >= 38, (got {})", rect.height);
+    if rect.height < 22 {
+        panic!("Require height >= 22, (got {})", rect.height);
     }
 }
 
