@@ -23,7 +23,11 @@ impl Store {
     }
 
     pub fn messages_in_room(&self, room_id: &str) -> Vec<Message> {
-        self.msg_per_room[room_id].clone()
+        let empty_vec: Vec<Message> = vec![];
+        self.msg_per_room
+            .get(room_id)
+            .unwrap_or(&empty_vec)
+            .to_vec()
     }
 }
 

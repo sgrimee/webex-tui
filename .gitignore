@@ -12,3 +12,4 @@ target/
 secrets*
 data/
 *.log
+out.txt
