@@ -1,6 +1,7 @@
 pub mod app_handler;
 mod auth;
 mod client;
+pub mod store;
 pub mod webex_handler;
 
 use log::error;

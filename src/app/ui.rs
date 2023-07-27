@@ -10,8 +10,10 @@ use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Style};
 use ratatui::terminal::Frame;
 use ratatui::terminal::Terminal;
+use ratatui::text::Line;
 use ratatui::text::Span;
 use ratatui::widgets::block::{Block, BorderType};
+use ratatui::widgets::Wrap;
 use ratatui::widgets::{Borders, Cell, Paragraph, Row, Table};
 use tui_logger::TuiLoggerWidget;
 
@@ -21,6 +23,7 @@ use tui_textarea::TextArea;
 use super::actions::Actions;
 use super::state::AppState;
 use crate::app::App;
+use crate::teams::store::Store;
 
 const TITLE_BLOCK_HEIGHT: u16 = 3;
 const BODY_BLOCK_HEIGHT_MIN: u16 = 5;
@@ -59,8 +62,15 @@ where
         .constraints([Constraint::Min(20), Constraint::Length(32)].as_ref())
         .split(chunks[1]);
 
-    let msg_output = draw_msg_output(app.msg_output_textarea.clone());
-    rect.render_widget(msg_output.widget(), body_chunks[0]);
+    if let AppState::Initialized {
+        active_room,
+        teams_store,
+        ..
+    } = &app.state
+    {
+        let msg_output = draw_msg_output(&active_room, &teams_store);
+        rect.render_widget(msg_output, body_chunks[0]);
+    }
 
     let help = draw_help(app.actions());
     rect.render_widget(help, body_chunks[1]);
@@ -99,13 +109,21 @@ fn check_size(rect: &Rect) {
     }
 }
 
-fn draw_msg_output<'a>(mut textarea: TextArea<'a>) -> TextArea<'a> {
-    textarea.set_block(
-        Block::default()
-            .borders(Borders::ALL)
-            .title("Received messages"),
-    );
-    textarea
+fn draw_msg_output<'a>(room_id: &str, store: &Store) -> Paragraph<'a> {
+    let messages = store.messages_in_room(room_id);
+    let mut text = vec![];
+    for msg in messages.iter() {
+        if let Some(raw_text) = &msg.text {
+            text.push(Line::from(vec![Span::raw(raw_text.clone())]));
+        }
+    }
+    Paragraph::new(text)
+        .block(
+            Block::default()
+                .title("Messages in room")
+                .borders(Borders::ALL),
+        )
+        .wrap(Wrap { trim: true })
 }
 
 fn draw_msg_input<'a>(state: &AppState, mut textarea: TextArea<'a>) -> TextArea<'a> {

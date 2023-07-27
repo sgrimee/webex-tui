@@ -19,17 +19,13 @@ pub enum AppReturn {
     Continue,
 }
 
-/// The main application, containing the state
 pub struct App<'a> {
-    /// We could dispatch an IO event
     io_tx: tokio::sync::mpsc::Sender<IoEvent>,
-    /// Contextual actions
+    // Contextual actions
     actions: Actions,
-    /// State
     is_loading: bool,
     state: AppState,
     msg_input_textarea: TextArea<'a>,
-    msg_output_textarea: TextArea<'a>,
     show_logs: bool,
 }
 
@@ -39,7 +35,6 @@ impl App<'_> {
         let is_loading = false;
         let state = AppState::default();
         let msg_input_textarea = TextArea::default();
-        let msg_output_textarea = TextArea::default();
         let show_logs = true;
 
         Self {
@@ -48,7 +43,6 @@ impl App<'_> {
             is_loading,
             state,
             msg_input_textarea,
-            msg_output_textarea,
             show_logs,
         }
     }
@@ -95,22 +89,22 @@ impl App<'_> {
     }
 
     pub async fn send_message_buffer(&mut self) {
-        if self.msg_input_textarea.is_empty() {
-            return;
-        };
-        let lines = self.msg_input_textarea.lines();
-        let msg_to_send = webex::types::MessageOut {
-            // to_person_email: Some("rawouter@cisco.com".to_string()),
-            room_id: Some(
-                "Y2lzY29zcGFyazovL3VzL1JPT00vOTA1ZjJjOTAtMjdiZS0xMWVlLWJlY2YtMzNhZGYyOWQzODFj"
-                    .to_string(),
-            ),
-            text: Some(lines.join("\n")),
-            ..Default::default()
-        };
-        debug!("Sending message: {:#?}", msg_to_send);
-        self.dispatch(IoEvent::SendMessage(msg_to_send)).await;
-        self.msg_input_textarea = TextArea::default();
+        if let AppState::Initialized { active_room, .. } = &self.state {
+            if self.msg_input_textarea.is_empty() {
+                debug!("Won't send and empty message");
+                return;
+            };
+            let lines = self.msg_input_textarea.lines();
+            let msg_to_send = webex::types::MessageOut {
+                // to_person_email: Some("rawouter@cisco.com".to_string()),
+                room_id: Some(active_room.clone()),
+                text: Some(lines.join("\n")),
+                ..Default::default()
+            };
+            debug!("Sending message: {:#?}", msg_to_send);
+            self.dispatch(IoEvent::SendMessage(msg_to_send)).await;
+            self.msg_input_textarea = TextArea::default();
+        }
     }
 
     /// We could update the app or dispatch event on tick
@@ -161,14 +155,8 @@ impl App<'_> {
     }
 
     pub fn message_received(&mut self, msg: webex::Message) {
-        // textarea only accepts single lines
-        if let Some(text) = msg.text {
-            for line in text.split("\n") {
-                self.msg_output_textarea
-                    .move_cursor(tui_textarea::CursorMove::Bottom);
-                self.msg_output_textarea.insert_str(line);
-                self.msg_output_textarea.insert_newline();
-            }
+        if let Some(store) = self.state.store() {
+            store.add_message(msg)
         }
     }
 
