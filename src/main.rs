@@ -27,6 +27,8 @@ async fn main() -> Result<()> {
 
     tui_logger::init_logger(LevelFilter::Debug).unwrap();
     tui_logger::set_default_level(log::LevelFilter::Debug);
+    const LOG_FILE: &str = concat!(env!("CARGO_PKG_NAME"), ".log");
+    let _ = tui_logger::set_log_file(LOG_FILE);
 
     // Handle IO in a specifc thread
     tokio::spawn(async move {
