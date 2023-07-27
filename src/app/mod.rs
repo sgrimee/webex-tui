@@ -95,7 +95,9 @@ impl App<'_> {
     }
 
     pub async fn send_message_buffer(&mut self) {
-        // self.state.set_editing(false);
+        if self.msg_input_textarea.is_empty() {
+            return;
+        };
         let lines = self.msg_input_textarea.lines();
         let msg_to_send = webex::types::MessageOut {
             // to_person_email: Some("rawouter@cisco.com".to_string()),
