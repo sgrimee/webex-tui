@@ -3,14 +3,19 @@
 use std::time::Duration;
 
 use log::error;
-use symbols::line;
-use tui::backend::Backend;
-use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
-use tui::style::{Color, Modifier, Style};
-use tui::text::{Span, Spans};
-use tui::widgets::{Block, BorderType, Borders, Cell, LineGauge, Paragraph, Row, Table};
-use tui::{symbols, Frame};
+
+use ratatui::backend::Backend;
+use ratatui::backend::CrosstermBackend;
+use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
+use ratatui::style::{Color, Style};
+use ratatui::terminal::Frame;
+use ratatui::terminal::Terminal;
+use ratatui::text::Span;
+use ratatui::widgets::block::{Block, BorderType};
+use ratatui::widgets::{Borders, Cell, Paragraph, Row, Table};
 use tui_logger::TuiLoggerWidget;
+
+#[allow(deprecated)]
 use tui_textarea::TextArea;
 
 use super::actions::Actions;
@@ -93,40 +98,6 @@ fn check_size(rect: &Rect) {
         error!("Require height >= {}, (got {})", min_height, rect.height);
     }
 }
-
-// fn draw_body<'a>(loading: bool, state: &AppState) -> Paragraph<'a> {
-//     let initialized_text = if state.is_initialized() {
-//         "Initialized"
-//     } else {
-//         "Not Initialized !"
-//     };
-//     let loading_text = if loading { "Loading..." } else { "" };
-//     let sleep_text = if let Some(sleeps) = state.count_sleep() {
-//         format!("Sleep count: {}", sleeps)
-//     } else {
-//         String::default()
-//     };
-//     let tick_text = if let Some(ticks) = state.count_tick() {
-//         format!("Tick count: {}", ticks)
-//     } else {
-//         String::default()
-//     };
-//     Paragraph::new(vec![
-//         Spans::from(Span::raw(initialized_text)),
-//         Spans::from(Span::raw(loading_text)),
-//         Spans::from(Span::raw(sleep_text)),
-//         Spans::from(Span::raw(tick_text)),
-//     ])
-//     .style(Style::default().fg(Color::LightCyan))
-//     .alignment(Alignment::Left)
-//     .block(
-//         Block::default()
-//             // .title("Body")
-//             .borders(Borders::ALL)
-//             .style(Style::default().fg(Color::White))
-//             .border_type(BorderType::Plain),
-//     )
-// }
 
 fn draw_msg_output<'a>(mut textarea: TextArea<'a>) -> TextArea<'a> {
     textarea.set_block(

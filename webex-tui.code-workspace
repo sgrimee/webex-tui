@@ -5,6 +5,9 @@
     },
     {
       "path": "../webex-rust"
+    },
+    {
+      "path": "../tui-textarea"
     }
   ],
   "settings": {

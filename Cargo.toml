@@ -11,8 +11,13 @@ eyre = "0.6.8"
 log = "0.4.19"
 oauth2 = "4.4.1"
 open = "5.0.0"
+ratatui = "0.22.0"
 tokio = { version = "1.29.1", features = ["rt", "macros"] }
-tui = { version = "0.19.0", features = ["crossterm"] }
-tui-logger = "0.9.2"
-tui-textarea = { version = "0.2.0", features = ["crossterm"] }
+tui-logger = { git = "https://github.com/gin66/tui-logger.git", default-features = false, features = [
+    "ratatui-support",
+] }
+tui-textarea = { git = "https://github.com/sgrimee/tui-textarea.git", features = [
+    "ratatui-crossterm",
+], default-features = false }
+
 webex = { version = "0.7.0", path = "../webex-rust" }

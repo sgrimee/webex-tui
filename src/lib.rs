@@ -2,17 +2,15 @@ use std::io::stdout;
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::app::ui;
+use crate::teams::app_handler::IoEvent;
 use app::{App, AppReturn};
 use eyre::Result;
 use inputs::events::Events;
 use inputs::key::Key;
 use inputs::InputEvent;
-use crate::teams::app_handler::IoEvent;
-// use log::debug;
-use tui::backend::CrosstermBackend;
-use tui::Terminal;
-
-use crate::app::ui;
+use ratatui::prelude::CrosstermBackend;
+use ratatui::Terminal;
 
 pub mod app;
 pub mod inputs;
