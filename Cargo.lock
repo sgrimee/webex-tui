@@ -1994,6 +1994,7 @@ dependencies = [
 [[package]]
 name = "webex"
 version = "0.7.0"
+source = "git+https://github.com/sgrimee/webex-rust.git#2675b9d04b067e82498e1854d7e4691be28c5bff"
 dependencies = [
  "async-std",
  "base64 0.21.2",
