@@ -34,7 +34,7 @@ async fn main() -> Result<()> {
     tokio::spawn(async move {
         let mut handler = IoAsyncHandler::new(app);
         loop {
-            if let Some(io_event) = sync_io_rx.try_recv().ok() {
+            if let Ok(io_event) = sync_io_rx.try_recv() {
                 handler.handle_app_event(io_event).await;
             }
             // Process messages from Webex Events sub?-thread

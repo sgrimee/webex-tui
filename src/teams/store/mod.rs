@@ -39,8 +39,10 @@ mod tests {
     fn should_add_message_with_unknown_room() {
         let mut store = Store::default();
         let room_id = "some_new_room_id";
-        let mut message = Message::default();
-        message.room_id = Some(room_id.to_string());
+        let message = Message {
+            room_id: Some(room_id.to_string()),
+            ..Default::default()
+        };
         store.add_message(message);
         assert_eq!(store.msg_per_room[room_id].len(), 1);
     }
@@ -49,8 +51,10 @@ mod tests {
     fn should_add_message_with_known_room() {
         let mut store = Store::default();
         let room_id = "some_new_room_id";
-        let mut message = Message::default();
-        message.room_id = Some(room_id.to_string());
+        let message = Message {
+            room_id: Some(room_id.to_string()),
+            ..Default::default()
+        };
         // add the message once to the empty store
         store.add_message(message.clone());
         // add the message again, it should get added

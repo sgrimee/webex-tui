@@ -68,7 +68,7 @@ where
         ..
     } = &app.state
     {
-        let msg_output = draw_msg_output(&active_room, &teams_store);
+        let msg_output = draw_msg_output(active_room, teams_store);
         rect.render_widget(msg_output, body_chunks[0]);
     }
 
@@ -113,9 +113,18 @@ fn draw_msg_output<'a>(room_id: &str, store: &Store) -> Paragraph<'a> {
     let messages = store.messages_in_room(room_id);
     let mut text = vec![];
     for msg in messages.iter() {
-        if let Some(raw_text) = &msg.text {
-            text.push(Line::from(vec![Span::raw(raw_text.clone())]));
+        let mut line: Vec<Span> = Vec::new();
+        if let Some(sender) = &msg.person_email {
+            line.push(Span::styled(
+                sender.clone(),
+                Style::default().fg(Color::Red),
+            ));
+            line.push(Span::raw(" > "));
         }
+        if let Some(raw_text) = &msg.text {
+            line.push(Span::raw(raw_text.clone()));
+        }
+        text.push(Line::from(line));
     }
     Paragraph::new(text)
         .block(

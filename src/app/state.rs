@@ -38,7 +38,7 @@ impl AppState {
         if let Self::Initialized { editing_mode, .. } = self {
             return *editing_mode;
         }
-        return false;
+        false
     }
 
     pub fn store(&mut self) -> Option<&mut Store> {

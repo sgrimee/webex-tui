@@ -52,7 +52,7 @@ pub async fn get_integration_token(
             let code_pair = url
                 .query_pairs()
                 .find(|pair| {
-                    let &(ref key, _) = pair;
+                    let (key, _) = pair;
                     key == "code"
                 })
                 .unwrap();
@@ -63,7 +63,7 @@ pub async fn get_integration_token(
             let state_pair = url
                 .query_pairs()
                 .find(|pair| {
-                    let &(ref key, _) = pair;
+                    let (key, _) = pair;
                     key == "state"
                 })
                 .unwrap();
