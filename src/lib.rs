@@ -5,6 +5,11 @@ use std::time::Duration;
 use crate::app::ui;
 use crate::teams::app_handler::IoEvent;
 use app::{App, AppReturn};
+use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
+use crossterm::execute;
+use crossterm::terminal::{
+    disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
+};
 use eyre::Result;
 use inputs::events::Events;
 use inputs::key::Key;
@@ -18,12 +23,13 @@ pub mod teams;
 
 pub async fn start_ui(app: &Arc<tokio::sync::Mutex<App<'_>>>) -> Result<()> {
     // Configure Crossterm backend for tui
-    let stdout = stdout();
-    crossterm::terminal::enable_raw_mode()?;
+    enable_raw_mode()?;
+    let mut stdout = stdout();
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
-    terminal.clear()?;
-    terminal.hide_cursor()?;
+    // terminal.clear()?;
+    // terminal.hide_cursor()?;
 
     // User event handler
     let tick_rate = Duration::from_millis(200);
@@ -55,9 +61,14 @@ pub async fn start_ui(app: &Arc<tokio::sync::Mutex<App<'_>>>) -> Result<()> {
         }
     }
 
-    terminal.clear()?;
+    // restore terminal
+    disable_raw_mode()?;
+    execute!(
+        terminal.backend_mut(),
+        LeaveAlternateScreen,
+        DisableMouseCapture
+    )?;
     terminal.show_cursor()?;
-    crossterm::terminal::disable_raw_mode()?;
 
     Ok(())
 }
