@@ -15,9 +15,9 @@ ratatui = "0.22.0"
 tokio = { version = "1.29.1", features = ["rt", "macros"] }
 tui-logger = { git = "https://github.com/gin66/tui-logger.git", default-features = false, features = [
     "ratatui-support",
-] }
+] } # until https://github.com/gin66/tui-logger/issues/41
 tui-textarea = { git = "https://github.com/sgrimee/tui-textarea.git", features = [
     "ratatui-crossterm",
-], default-features = false }
+], default-features = false } # until https://github.com/rhysd/tui-textarea/issues/18
 
 webex = { version = "0.7.0", path = "../webex-rust" }
