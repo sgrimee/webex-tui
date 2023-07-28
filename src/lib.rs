@@ -28,8 +28,6 @@ pub async fn start_ui(app: &Arc<tokio::sync::Mutex<App<'_>>>) -> Result<()> {
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
-    // terminal.clear()?;
-    // terminal.hide_cursor()?;
 
     // User event handler
     let tick_rate = Duration::from_millis(200);
@@ -37,7 +35,8 @@ pub async fn start_ui(app: &Arc<tokio::sync::Mutex<App<'_>>>) -> Result<()> {
 
     {
         let mut app = app.lock().await;
-        app.dispatch(IoEvent::Initialize).await;
+        let credentials = app.credentials();
+        app.dispatch(IoEvent::Initialize(credentials)).await;
     }
 
     loop {

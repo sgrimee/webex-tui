@@ -6,7 +6,7 @@ pub enum AppState {
     Initialized {
         editing_mode: bool,
         teams_store: Store,
-        active_room: String,
+        active_room: Option<String>,
     },
 }
 
@@ -14,9 +14,7 @@ impl AppState {
     pub fn initialized() -> Self {
         let editing_mode = false;
         let teams_store = Store::default();
-        let active_room =
-            "Y2lzY29zcGFyazovL3VzL1JPT00vOTA1ZjJjOTAtMjdiZS0xMWVlLWJlY2YtMzNhZGYyOWQzODFj"
-                .to_string();
+        let active_room = None;
         Self::Initialized {
             editing_mode,
             teams_store,
@@ -49,11 +47,17 @@ impl AppState {
         }
     }
 
-    pub fn active_room(&self) -> String {
+    pub fn active_room(&self) -> Option<String> {
         if let Self::Initialized { active_room, .. } = self {
             active_room.clone()
         } else {
-            panic!("room id not initialized");
+            None
+        }
+    }
+
+    pub fn set_active_room(&mut self, room: &str) {
+        if let Self::Initialized { active_room, .. } = self {
+            *active_room = Some(room.to_string());
         }
     }
 }

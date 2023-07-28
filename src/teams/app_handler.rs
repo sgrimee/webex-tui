@@ -4,12 +4,11 @@ use eyre::Result;
 use log::{debug, error, info};
 use webex::{Event, MessageOut};
 
-use super::Teams;
+use super::{ClientCredentials, Teams};
 use crate::app::App;
 
-#[derive(Debug, Clone)]
 pub enum IoEvent {
-    Initialize, // Launch to initiate login to Webex
+    Initialize(ClientCredentials), // Launch to initiate login to Webex
     SendMessage(MessageOut),
 }
 
@@ -57,7 +56,7 @@ impl<'a> IoAsyncHandler<'a> {
     /// Handle events dispatched by the App
     pub async fn handle_app_event(&mut self, io_event: IoEvent) {
         let result = match io_event {
-            IoEvent::Initialize => self.do_initialize().await,
+            IoEvent::Initialize(credentials) => self.do_initialize(credentials).await,
             IoEvent::SendMessage(msg_to_send) => self.do_send_message(msg_to_send).await,
         };
 
@@ -69,9 +68,9 @@ impl<'a> IoAsyncHandler<'a> {
         app.loaded();
     }
 
-    async fn do_initialize(&mut self) -> Result<()> {
+    async fn do_initialize(&mut self, credentials: ClientCredentials) -> Result<()> {
         info!("🚀 Initializing to Webex");
-        self.teams = Some(Teams::new().await);
+        self.teams = Some(Teams::new(credentials).await);
         let mut app = self.app.lock().await;
         app.initialized();
         info!("👍 Webex initialization successful");

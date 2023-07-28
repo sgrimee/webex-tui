@@ -1,13 +1,12 @@
 use self::actions::Actions;
 use self::state::AppState;
-use crate::app::actions::Action;
 use crate::inputs::key::Key;
 use crate::inputs::patch::input_from_key_event;
 use crate::IoEvent;
+use crate::{app::actions::Action, teams::ClientCredentials};
 use crossterm::event::KeyEvent;
 use log::{debug, error, warn};
 use tui_textarea::TextArea;
-// use webex::Webex;
 
 pub mod actions;
 pub mod state;
@@ -27,16 +26,16 @@ pub struct App<'a> {
     state: AppState,
     msg_input_textarea: TextArea<'a>,
     show_logs: bool,
+    credentials: ClientCredentials,
 }
 
 impl App<'_> {
-    pub fn new(io_tx: tokio::sync::mpsc::Sender<IoEvent>) -> Self {
+    pub fn new(io_tx: tokio::sync::mpsc::Sender<IoEvent>, credentials: ClientCredentials) -> Self {
         let actions = vec![Action::Quit, Action::ToggleLogs].into();
         let is_loading = false;
         let state = AppState::default();
         let msg_input_textarea = TextArea::default();
         let show_logs = true;
-
         Self {
             io_tx,
             actions,
@@ -44,6 +43,7 @@ impl App<'_> {
             state,
             msg_input_textarea,
             show_logs,
+            credentials,
         }
     }
 
@@ -94,17 +94,21 @@ impl App<'_> {
                 debug!("Won't send and empty message");
                 return;
             };
-            let lines = self.msg_input_textarea.lines();
-            let msg_to_send = webex::types::MessageOut {
-                // to_person_email: Some("rawouter@cisco.com".to_string()),
-                room_id: Some(active_room.clone()),
-                text: Some(lines.join("\n")),
-                ..Default::default()
-            };
-            debug!("Sending message: {:#?}", msg_to_send);
-            self.dispatch(IoEvent::SendMessage(msg_to_send)).await;
-            self.msg_input_textarea = TextArea::default();
-        }
+            match active_room {
+                Some(active_room) => {
+                    let lines = self.msg_input_textarea.lines();
+                    let msg_to_send = webex::types::MessageOut {
+                        room_id: Some(active_room.clone()),
+                        text: Some(lines.join("\n")),
+                        ..Default::default()
+                    };
+                    debug!("Sending message: {:#?}", msg_to_send);
+                    self.dispatch(IoEvent::SendMessage(msg_to_send)).await;
+                    self.msg_input_textarea = TextArea::default();
+                }
+                None => warn!("Cannot send message, no room selected."),
+            }
+        };
     }
 
     /// We could update the app or dispatch event on tick
@@ -133,6 +137,10 @@ impl App<'_> {
         self.is_loading
     }
 
+    pub fn credentials(&self) -> ClientCredentials {
+        self.credentials.clone()
+    }
+
     pub fn initialized(&mut self) {
         // Update contextual actions
         self.actions = vec![
@@ -142,7 +150,11 @@ impl App<'_> {
             Action::ToggleLogs,
         ]
         .into();
-        self.state = AppState::initialized()
+        self.state = AppState::initialized();
+        self.state.set_active_room(
+            // "Y2lzY29zcGFyazovL3VzL1JPT00vOTA1ZjJjOTAtMjdiZS0xMWVlLWJlY2YtMzNhZGYyOWQzODFj", // bla
+            "Y2lzY29zcGFyazovL3VzL1JPT00vYmY4Mzk3NjYtY2NkMy0zMDdhLWFmMzctNWJhYWRjODNkNmQ3", // Raph
+        );
     }
 
     // indicate the completion of a pending IO(thread) task

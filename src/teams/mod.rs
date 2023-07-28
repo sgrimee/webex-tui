@@ -9,6 +9,12 @@ use webex::{Event, Webex};
 
 use self::client::get_webex_client;
 
+#[derive(Clone)]
+pub struct ClientCredentials {
+    pub client_id: String,
+    pub client_secret: String,
+}
+
 pub struct Teams {
     client: Webex,
     // event_stream: WebexEventStream,
@@ -18,8 +24,8 @@ pub struct Teams {
 
 impl Teams {
     /// Get authenticated webex client and spawn thread to watch for events
-    pub async fn new() -> Self {
-        let client = get_webex_client().await;
+    pub async fn new(credentials: ClientCredentials) -> Self {
+        let client = get_webex_client(credentials).await;
         let mut event_stream = client.event_stream().await.expect("event stream");
 
         let (tx, rx) = tokio::sync::mpsc::channel(100);

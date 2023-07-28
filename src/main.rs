@@ -1,5 +1,6 @@
 use eyre::Result;
 use log::LevelFilter;
+use std::env;
 use std::panic;
 use std::process;
 use std::sync::Arc;
@@ -7,9 +8,19 @@ use tokio::time::{sleep, Duration};
 use webex_tui::app::App;
 use webex_tui::start_ui;
 use webex_tui::teams::app_handler::{IoAsyncHandler, IoEvent};
+use webex_tui::teams::ClientCredentials;
+
+const INTEGRATION_CLIENT_ID: &str = "WEBEX_INTEGRATION_CLIENT_ID";
+const INTEGRATION_CLIENT_SECRET: &str = "WEBEX_INTEGRATION_CLIENT_SECRET";
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // get credentials from environment
+    let client_id = env::var(INTEGRATION_CLIENT_ID)
+        .unwrap_or_else(|_| panic!("{} not specified in environment", INTEGRATION_CLIENT_ID));
+    let client_secret = env::var(INTEGRATION_CLIENT_SECRET)
+        .unwrap_or_else(|_| panic!("{} not specified in environment", INTEGRATION_CLIENT_SECRET));
+
     // Ensure the process terminates if one of the threads panics.
     let orig_hook = panic::take_hook();
     panic::set_hook(Box::new(move |panic_info| {
@@ -21,8 +32,16 @@ async fn main() -> Result<()> {
     // Channel to the io::handler thread
     let (sync_io_tx, mut sync_io_rx) = tokio::sync::mpsc::channel::<IoEvent>(100);
 
+    let credentials = ClientCredentials {
+        client_id,
+        client_secret,
+    };
+
     // We need to share the App between threads
-    let app = Arc::new(tokio::sync::Mutex::new(App::new(sync_io_tx.clone())));
+    let app = Arc::new(tokio::sync::Mutex::new(App::new(
+        sync_io_tx.clone(),
+        credentials,
+    )));
     let app_ui = Arc::clone(&app);
 
     tui_logger::init_logger(LevelFilter::Debug).unwrap();

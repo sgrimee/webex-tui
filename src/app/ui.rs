@@ -68,8 +68,10 @@ where
         ..
     } = &app.state
     {
-        let msg_output = draw_msg_output(active_room, teams_store);
-        rect.render_widget(msg_output, body_chunks[0]);
+        if let Some(active_room) = active_room {
+            let msg_output = draw_msg_output(active_room, teams_store);
+            rect.render_widget(msg_output, body_chunks[0]);
+        }
     }
 
     let help = draw_help(app.actions());

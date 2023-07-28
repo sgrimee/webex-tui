@@ -11,13 +11,14 @@ use open;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
 
+use super::ClientCredentials;
+
 pub async fn get_integration_token(
-    client_id: String,
-    client_secret: String,
+    credentials: ClientCredentials,
 ) -> Result<AccessToken, Box<dyn std::error::Error + Send + Sync>> {
     let client = BasicClient::new(
-        ClientId::new(client_id),
-        Some(ClientSecret::new(client_secret)),
+        ClientId::new(credentials.client_id),
+        Some(ClientSecret::new(credentials.client_secret)),
         AuthUrl::new("http://webexapis.com/v1/authorize".to_string())?,
         Some(TokenUrl::new(
             "https://webexapis.com/v1/access_token".to_string(),
