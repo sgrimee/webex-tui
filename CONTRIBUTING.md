@@ -1,10 +1,17 @@
-# How threads communicate
+# Thread
+
+Dotted lines indicate a thread spawning another.
+Plain lines indicate a thread communicating to another.
 
 ```mermaid
+
 graph LR
-   A[app] -- AppCmdEvent --> T[teams]
-   T -. lock .-> A
-   ES[webex::event_stream] -- webex::Event --> T
-   I[input::new] -- inputs::InputEvent --> A
+   App -..-> Teams & Inputs
+   Teams -..-> EventStream
+   
+   App -- teams::AppCmdEvent --> Teams
+   Teams -- lock --> App
+   EventStream -- webex::Event --> Teams
+   Inputs -- inputs::InputEvent --> App
 
 ```
