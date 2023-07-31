@@ -11,6 +11,14 @@
     }
   ],
   "settings": {
-    "rust-analyzer.linkedProjects": ["./Cargo.toml", "./Cargo.toml"]
+    "rust-analyzer.linkedProjects": [
+      "./Cargo.toml",
+      "./Cargo.toml",
+      "./Cargo.toml"
+    ],
+    "workbench.colorCustomizations": {
+      "tab.unfocusedActiveBackground": "#00000000",
+      "tab.activeBackground": "#95195fe1"
+    }
   }
 }
