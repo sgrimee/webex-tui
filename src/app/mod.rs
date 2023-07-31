@@ -1,16 +1,19 @@
-use self::actions::Actions;
-use self::state::AppState;
+pub mod actions;
+pub mod state;
+pub mod teams_store;
+pub mod ui;
+
+use self::{actions::Actions, state::AppState};
 use crate::app::actions::Action;
+
 use crate::inputs::key::Key;
 use crate::inputs::patch::input_from_key_event;
 use crate::teams::app_handler::AppCmdEvent;
 use crossterm::event::KeyEvent;
 use log::{debug, error, warn};
-use tui_textarea::TextArea;
 
-pub mod actions;
-pub mod state;
-pub mod ui;
+use tui_textarea::TextArea;
+use webex::Person;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum AppReturn {
@@ -19,40 +22,34 @@ pub enum AppReturn {
 }
 
 pub struct App<'a> {
-    io_tx: tokio::sync::mpsc::Sender<AppCmdEvent>,
-    // Contextual actions
-    actions: Actions,
-    is_loading: bool,
-    state: AppState,
-    msg_input_textarea: TextArea<'a>,
-    show_logs: bool,
+    app_to_teams_tx: tokio::sync::mpsc::Sender<AppCmdEvent>,
+    state: AppState<'a>,
 }
 
 impl App<'_> {
-    pub fn new(io_tx: tokio::sync::mpsc::Sender<AppCmdEvent>) -> Self {
-        let actions = vec![Action::Quit, Action::ToggleLogs].into();
-        let is_loading = false;
-        let state = AppState::default();
-        let msg_input_textarea = TextArea::default();
-        let show_logs = true;
+    pub fn new(app_to_teams_tx: tokio::sync::mpsc::Sender<AppCmdEvent>) -> Self {
         Self {
-            io_tx,
-            actions,
-            is_loading,
-            state,
-            msg_input_textarea,
-            show_logs,
+            app_to_teams_tx,
+            state: AppState::default(),
         }
+    }
+
+    pub fn is_editing(&mut self) -> bool {
+        self.state.editing_mode
+    }
+
+    pub fn set_me_user(&mut self, me: Person) {
+        self.state.teams_store.set_me_user(me);
     }
 
     /// Handle a user action (non-editing mode)
     pub async fn do_action(&mut self, key: crate::inputs::key::Key) -> AppReturn {
-        if let Some(action) = self.actions.find(key) {
+        if let Some(action) = self.state.actions.find(key) {
             debug!("Run action [{:?}]", action);
             match action {
                 Action::Quit => AppReturn::Exit,
                 Action::EditMessage => {
-                    self.state.set_editing(true);
+                    self.state.editing_mode = true;
                     AppReturn::Continue
                 }
                 Action::SendMessage => {
@@ -60,7 +57,7 @@ impl App<'_> {
                     AppReturn::Continue
                 }
                 Action::ToggleLogs => {
-                    self.show_logs = !self.show_logs;
+                    self.state.show_logs = !self.state.show_logs;
                     AppReturn::Continue
                 }
             }
@@ -74,11 +71,12 @@ impl App<'_> {
         let key = Key::from(key_event);
         match key {
             Key::Ctrl('c') => return AppReturn::Exit,
-            Key::Esc => self.state.set_editing(false),
-            Key::AltEnter => self.msg_input_textarea.insert_newline(),
+            Key::Esc => self.state.editing_mode = false,
+            Key::AltEnter => self.state.msg_input_textarea.insert_newline(),
             Key::Enter => self.send_message_buffer().await,
             _ => {
                 _ = self
+                    .state
                     .msg_input_textarea
                     .input(input_from_key_event(key_event))
             }
@@ -87,27 +85,25 @@ impl App<'_> {
     }
 
     pub async fn send_message_buffer(&mut self) {
-        if let AppState::Initialized { active_room, .. } = &self.state {
-            if self.msg_input_textarea.is_empty() {
-                debug!("Won't send and empty message");
-                return;
-            };
-            match active_room {
-                Some(active_room) => {
-                    let lines = self.msg_input_textarea.lines();
-                    let msg_to_send = webex::types::MessageOut {
-                        room_id: Some(active_room.clone()),
-                        text: Some(lines.join("\n")),
-                        ..Default::default()
-                    };
-                    debug!("Sending message: {:#?}", msg_to_send);
-                    self.dispatch_to_teams(AppCmdEvent::SendMessage(msg_to_send))
-                        .await;
-                    self.msg_input_textarea = TextArea::default();
-                }
-                None => warn!("Cannot send message, no room selected."),
-            }
+        if self.state.msg_input_textarea.is_empty() {
+            debug!("Won't send and empty message");
+            return;
         };
+        match &self.state.active_room {
+            Some(active_room) => {
+                let lines = self.state.msg_input_textarea.lines();
+                let msg_to_send = webex::types::MessageOut {
+                    room_id: Some(active_room.clone()),
+                    text: Some(lines.join("\n")),
+                    ..Default::default()
+                };
+                debug!("Sending message: {:#?}", msg_to_send);
+                self.dispatch_to_teams(AppCmdEvent::SendMessage(msg_to_send))
+                    .await;
+                self.state.msg_input_textarea = TextArea::default();
+            }
+            None => warn!("Cannot send message, no room selected."),
+        }
     }
 
     /// We could update the app or dispatch event on tick
@@ -118,43 +114,40 @@ impl App<'_> {
     /// Send a command to the teams thread
     pub async fn dispatch_to_teams(&mut self, action: AppCmdEvent) {
         // `is_loading` will be set to false again after the async action has finished in io/handler.rs
-        self.is_loading = true;
-        if let Err(e) = self.io_tx.send(action).await {
-            self.is_loading = false;
+        self.state.is_loading = true;
+        if let Err(e) = self.app_to_teams_tx.send(action).await {
+            self.state.is_loading = false;
             error!("Error from dispatch {}", e);
         };
     }
 
     pub fn actions(&self) -> &Actions {
-        &self.actions
-    }
-    pub fn state(&self) -> &AppState {
-        &self.state
+        &self.state.actions
     }
 
     pub fn is_loading(&self) -> bool {
-        self.is_loading
+        self.state.is_loading
     }
 
     pub fn initialized(&mut self) {
         // Update contextual actions
-        self.actions = vec![
+        self.state.actions = vec![
             Action::Quit,
             Action::EditMessage,
             Action::SendMessage,
             Action::ToggleLogs,
         ]
         .into();
-        self.state = AppState::initialized();
-        self.state.set_active_room(
-            "Y2lzY29zcGFyazovL3VzL1JPT00vOTA1ZjJjOTAtMjdiZS0xMWVlLWJlY2YtMzNhZGYyOWQzODFj", // bla
-                                                                                            // "Y2lzY29zcGFyazovL3VzL1JPT00vYmY4Mzk3NjYtY2NkMy0zMDdhLWFmMzctNWJhYWRjODNkNmQ3", // Raph
+        self.state.active_room = Some(
+            "Y2lzY29zcGFyazovL3VzL1JPT00vOTA1ZjJjOTAtMjdiZS0xMWVlLWJlY2YtMzNhZGYyOWQzODFj"
+                .to_string(), // bla
+                              // "Y2lzY29zcGFyazovL3VzL1JPT00vYmY4Mzk3NjYtY2NkMy0zMDdhLWFmMzctNWJhYWRjODNkNmQ3", // Raph
         );
     }
 
     // indicate the completion of a pending teams task
     pub fn loaded(&mut self) {
-        self.is_loading = false;
+        self.state.is_loading = false;
     }
 
     pub fn message_sent(&mut self) {
@@ -162,12 +155,10 @@ impl App<'_> {
     }
 
     pub fn message_received(&mut self, msg: webex::Message) {
-        if let Some(store) = self.state.store() {
-            store.add_message(msg)
-        }
+        self.state.teams_store.add_message(msg)
     }
 
     pub fn show_log_window(&self) -> bool {
-        self.show_logs
+        self.state.show_logs
     }
 }

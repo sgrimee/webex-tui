@@ -21,8 +21,8 @@ use tui_logger::TuiLoggerWidget;
 use tui_textarea::TextArea;
 
 use super::actions::Actions;
-use super::state::teams_store::Store;
 use super::state::AppState;
+use super::teams_store::TeamsStore;
 use crate::app::App;
 
 const TITLE_BLOCK_HEIGHT: u16 = 3;
@@ -62,23 +62,16 @@ where
         .constraints([Constraint::Min(20), Constraint::Length(32)].as_ref())
         .split(chunks[1]);
 
-    if let AppState::Initialized {
-        active_room,
-        teams_store,
-        ..
-    } = &app.state
-    {
-        if let Some(active_room) = active_room {
-            let msg_output = draw_msg_output(active_room, teams_store);
-            rect.render_widget(msg_output, body_chunks[0]);
-        }
+    if let Some(active_room) = &app.state.active_room {
+        let msg_output = draw_msg_output(&active_room, &app.state.teams_store);
+        rect.render_widget(msg_output, body_chunks[0]);
+
+        let msg_input = draw_msg_input(&app.state);
+        rect.render_widget(msg_input.widget(), chunks[2]);
     }
 
     let help = draw_help(app.actions());
     rect.render_widget(help, body_chunks[1]);
-
-    let msg_input = draw_msg_input(app.state(), app.msg_input_textarea.clone());
-    rect.render_widget(msg_input.widget(), chunks[2]);
 
     // Logs
     if app.show_log_window() {
@@ -111,7 +104,7 @@ fn check_size(rect: &Rect) {
     }
 }
 
-fn draw_msg_output<'a>(room_id: &str, store: &Store) -> Paragraph<'a> {
+fn draw_msg_output<'a>(room_id: &str, store: &TeamsStore) -> Paragraph<'a> {
     let messages = store.messages_in_room(room_id);
     let mut text = vec![];
     for msg in messages.iter() {
@@ -137,8 +130,8 @@ fn draw_msg_output<'a>(room_id: &str, store: &Store) -> Paragraph<'a> {
         .wrap(Wrap { trim: true })
 }
 
-fn draw_msg_input<'a>(state: &AppState, mut textarea: TextArea<'a>) -> TextArea<'a> {
-    let (title, borders_style) = if state.is_editing() {
+fn draw_msg_input<'a>(state: &'a AppState<'a>) -> TextArea<'a> {
+    let (title, borders_style) = if state.editing_mode {
         (
             Span::styled(
                 "Type your message, Enter to send, Alt+Enter for new line, Esc to exit.",
@@ -152,6 +145,7 @@ fn draw_msg_input<'a>(state: &AppState, mut textarea: TextArea<'a>) -> TextArea<
             Style::default(),
         )
     };
+    let mut textarea = state.msg_input_textarea.clone();
     textarea.set_block(
         Block::default()
             .borders(Borders::ALL)

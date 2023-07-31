@@ -32,6 +32,8 @@ impl<'a> Teams<'a> {
 
         if let Ok(me) = client.me().await {
             info!("We are: {}", me.display_name);
+            let mut app = app.lock().await;
+            app.set_me_user(me);
         }
 
         Self { client, app }

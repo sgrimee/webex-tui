@@ -1,16 +1,16 @@
 use std::collections::HashMap;
 
 use log::warn;
-use webex::Message;
+use webex::{Message, Person};
 
-// A caching (in the future) store for Webex messages and context
+/// A caching store for Webex messages and context
 #[derive(Default, Debug)]
-pub struct Store {
+pub struct TeamsStore {
     msg_per_room: HashMap<String, Vec<Message>>,
-    // me: Option<Person>,
+    me: Option<Person>,
 }
 
-impl Store {
+impl TeamsStore {
     pub fn add_message(&mut self, msg: Message) {
         let m = msg.clone();
         if let Some(room_id) = msg.room_id {
@@ -30,6 +30,10 @@ impl Store {
             .unwrap_or(&empty_vec)
             .to_vec()
     }
+
+    pub fn set_me_user(&mut self, me: Person) {
+        self.me = Some(me);
+    }
 }
 
 #[cfg(test)]
@@ -38,7 +42,7 @@ mod tests {
 
     #[test]
     fn should_add_message_with_unknown_room() {
-        let mut store = Store::default();
+        let mut store = TeamsStore::default();
         let room_id = "some_new_room_id";
         let message = Message {
             room_id: Some(room_id.to_string()),
@@ -50,7 +54,7 @@ mod tests {
 
     #[test]
     fn should_add_message_with_known_room() {
-        let mut store = Store::default();
+        let mut store = TeamsStore::default();
         let room_id = "some_new_room_id";
         let message = Message {
             room_id: Some(room_id.to_string()),

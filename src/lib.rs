@@ -46,7 +46,7 @@ pub async fn start_ui(app: &Arc<tokio::sync::Mutex<App<'_>>>) -> Result<()> {
 
         // Handle terminal inputs
         let result = match events.next().await {
-            InputEvent::Input(key_event) if app.state().is_editing() => {
+            InputEvent::Input(key_event) if app.is_editing() => {
                 // debug!("Keyevent: {:#?}", key_event);
                 app.process_editing_key(key_event).await
             }
