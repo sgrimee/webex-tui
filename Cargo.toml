@@ -20,4 +20,5 @@ tui-textarea = { git = "https://github.com/sgrimee/tui-textarea.git", features =
     "ratatui-crossterm",
 ], default-features = false } # until https://github.com/rhysd/tui-textarea/issues/18
 
-webex = { version = "0.7.0", git = "https://github.com/sgrimee/webex-rust.git" }
+# webex = { version = "0.7.0", git = "https://github.com/sgrimee/webex-rust.git" }
+webex = { path = "../webex-rust" }
