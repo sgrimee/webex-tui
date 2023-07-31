@@ -1,4 +1,5 @@
-use crate::teams::store::Store;
+pub mod teams_store;
+use teams_store::Store;
 
 // #[derive(Clone)]
 pub enum AppState {

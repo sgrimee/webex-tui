@@ -1,13 +1,15 @@
+/// The teams module handles IO for Webex, including making
+/// network calls and listening to events.
 pub mod app_handler;
 mod auth;
 mod client;
-pub mod store;
-pub mod webex_handler;
-
-use log::error;
-use webex::{Event, Webex};
-
-use self::client::get_webex_client;
+mod webex_handler;
+use self::{app_handler::AppCmdEvent, client::get_webex_client};
+use crate::app::App;
+use log::{debug, info};
+use std::sync::Arc;
+use tokio::sync::mpsc::Receiver;
+use webex::Webex;
 
 #[derive(Clone)]
 pub struct ClientCredentials {
@@ -15,40 +17,58 @@ pub struct ClientCredentials {
     pub client_secret: String,
 }
 
-pub struct Teams {
+pub struct Teams<'a> {
     client: Webex,
-    // event_stream: WebexEventStream,
-    rx: tokio::sync::mpsc::Receiver<Event>,
-    _tx: tokio::sync::mpsc::Sender<Event>,
+    app: Arc<tokio::sync::Mutex<App<'a>>>,
+    // app_cmd_handler: AppCmdHandler<'a>,
 }
 
-impl Teams {
-    /// Get authenticated webex client and spawn thread to watch for events
-    pub async fn new(credentials: ClientCredentials) -> Self {
+impl<'a> Teams<'a> {
+    pub async fn new(
+        credentials: ClientCredentials,
+        app: Arc<tokio::sync::Mutex<App<'a>>>,
+    ) -> Teams<'a> {
         let client = get_webex_client(credentials).await;
-        let mut event_stream = client.event_stream().await.expect("event stream");
 
-        let (tx, rx) = tokio::sync::mpsc::channel(100);
-        let event_tx = tx.clone();
+        if let Ok(me) = client.me().await {
+            info!("We are: {}", me.display_name);
+        }
+
+        Self { client, app }
+    }
+
+    // pub async fn handle_events(&mut self, app_to_teams_rx: Receiver<AppCmdEvent>) {
+    pub async fn handle_events(&mut self, mut app_to_teams_rx: Receiver<AppCmdEvent>) {
+        // Webex events
+        let mut event_stream = self
+            .client
+            .event_stream()
+            .await
+            .expect("Creating webex event stream");
+
+        let (wbx_stream_to_teams_tx, mut wbx_stream_to_teams_rx) =
+            tokio::sync::mpsc::channel::<webex::Event>(100);
 
         tokio::spawn(async move {
             while let Ok(event) = event_stream.next().await {
-                // debug!("Webex event in events thread: {:?}", event);
-                // pass on the message, to be retrieved by calling the 'next' function
-                if let Err(err) = event_tx.send(event).await {
-                    error!("Oops!, {}", err);
-                }
+                wbx_stream_to_teams_tx
+                    .send(event)
+                    .await
+                    .expect("creating webex event stream")
             }
         });
 
-        Self {
-            client,
-            rx,
-            _tx: tx,
+        loop {
+            tokio::select! {
+                Some(webex_event) = wbx_stream_to_teams_rx.recv() => {
+                debug!("Got webex msg: {:#?}", webex_event );
+                self.handle_webex_event(webex_event).await;
+                },
+                Some(app_event) = app_to_teams_rx.recv() => {
+                    debug!("Got app event");
+                    self.handle_app_event(app_event).await;
+                }
+            }
         }
-    }
-
-    pub async fn next_event(&mut self) -> Option<Event> {
-        self.rx.try_recv().ok()
     }
 }

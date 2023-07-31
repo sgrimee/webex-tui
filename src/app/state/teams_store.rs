@@ -7,6 +7,7 @@ use webex::Message;
 #[derive(Default, Debug)]
 pub struct Store {
     msg_per_room: HashMap<String, Vec<Message>>,
+    // me: Option<Person>,
 }
 
 impl Store {

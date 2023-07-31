@@ -21,9 +21,9 @@ use tui_logger::TuiLoggerWidget;
 use tui_textarea::TextArea;
 
 use super::actions::Actions;
+use super::state::teams_store::Store;
 use super::state::AppState;
 use crate::app::App;
-use crate::teams::store::Store;
 
 const TITLE_BLOCK_HEIGHT: u16 = 3;
 const BODY_BLOCK_HEIGHT_MIN: u16 = 5;

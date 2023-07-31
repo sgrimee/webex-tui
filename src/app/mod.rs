@@ -1,9 +1,9 @@
 use self::actions::Actions;
 use self::state::AppState;
+use crate::app::actions::Action;
 use crate::inputs::key::Key;
 use crate::inputs::patch::input_from_key_event;
-use crate::IoEvent;
-use crate::{app::actions::Action, teams::ClientCredentials};
+use crate::teams::app_handler::AppCmdEvent;
 use crossterm::event::KeyEvent;
 use log::{debug, error, warn};
 use tui_textarea::TextArea;
@@ -19,18 +19,17 @@ pub enum AppReturn {
 }
 
 pub struct App<'a> {
-    io_tx: tokio::sync::mpsc::Sender<IoEvent>,
+    io_tx: tokio::sync::mpsc::Sender<AppCmdEvent>,
     // Contextual actions
     actions: Actions,
     is_loading: bool,
     state: AppState,
     msg_input_textarea: TextArea<'a>,
     show_logs: bool,
-    credentials: ClientCredentials,
 }
 
 impl App<'_> {
-    pub fn new(io_tx: tokio::sync::mpsc::Sender<IoEvent>, credentials: ClientCredentials) -> Self {
+    pub fn new(io_tx: tokio::sync::mpsc::Sender<AppCmdEvent>) -> Self {
         let actions = vec![Action::Quit, Action::ToggleLogs].into();
         let is_loading = false;
         let state = AppState::default();
@@ -43,7 +42,6 @@ impl App<'_> {
             state,
             msg_input_textarea,
             show_logs,
-            credentials,
         }
     }
 
@@ -103,7 +101,8 @@ impl App<'_> {
                         ..Default::default()
                     };
                     debug!("Sending message: {:#?}", msg_to_send);
-                    self.dispatch(IoEvent::SendMessage(msg_to_send)).await;
+                    self.dispatch_to_teams(AppCmdEvent::SendMessage(msg_to_send))
+                        .await;
                     self.msg_input_textarea = TextArea::default();
                 }
                 None => warn!("Cannot send message, no room selected."),
@@ -116,8 +115,8 @@ impl App<'_> {
         AppReturn::Continue
     }
 
-    /// Send a network event to the IO thread
-    pub async fn dispatch(&mut self, action: IoEvent) {
+    /// Send a command to the teams thread
+    pub async fn dispatch_to_teams(&mut self, action: AppCmdEvent) {
         // `is_loading` will be set to false again after the async action has finished in io/handler.rs
         self.is_loading = true;
         if let Err(e) = self.io_tx.send(action).await {
@@ -137,10 +136,6 @@ impl App<'_> {
         self.is_loading
     }
 
-    pub fn credentials(&self) -> ClientCredentials {
-        self.credentials.clone()
-    }
-
     pub fn initialized(&mut self) {
         // Update contextual actions
         self.actions = vec![
@@ -152,12 +147,12 @@ impl App<'_> {
         .into();
         self.state = AppState::initialized();
         self.state.set_active_room(
-            // "Y2lzY29zcGFyazovL3VzL1JPT00vOTA1ZjJjOTAtMjdiZS0xMWVlLWJlY2YtMzNhZGYyOWQzODFj", // bla
-            "Y2lzY29zcGFyazovL3VzL1JPT00vYmY4Mzk3NjYtY2NkMy0zMDdhLWFmMzctNWJhYWRjODNkNmQ3", // Raph
+            "Y2lzY29zcGFyazovL3VzL1JPT00vOTA1ZjJjOTAtMjdiZS0xMWVlLWJlY2YtMzNhZGYyOWQzODFj", // bla
+                                                                                            // "Y2lzY29zcGFyazovL3VzL1JPT00vYmY4Mzk3NjYtY2NkMy0zMDdhLWFmMzctNWJhYWRjODNkNmQ3", // Raph
         );
     }
 
-    // indicate the completion of a pending IO(thread) task
+    // indicate the completion of a pending teams task
     pub fn loaded(&mut self) {
         self.is_loading = false;
     }

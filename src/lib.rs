@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::app::ui;
-use crate::teams::app_handler::IoEvent;
+use crate::teams::app_handler::AppCmdEvent;
 use app::{App, AppReturn};
 use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
 use crossterm::execute;
@@ -35,8 +35,7 @@ pub async fn start_ui(app: &Arc<tokio::sync::Mutex<App<'_>>>) -> Result<()> {
 
     {
         let mut app = app.lock().await;
-        let credentials = app.credentials();
-        app.dispatch(IoEvent::Initialize(credentials)).await;
+        app.dispatch_to_teams(AppCmdEvent::Initialize()).await;
     }
 
     loop {

@@ -4,7 +4,7 @@ use std::slice::Iter;
 
 use crate::inputs::key::Key;
 
-/// We define all available action
+/// We define all available user actions
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum Action {
     Quit,
@@ -14,7 +14,6 @@ pub enum Action {
 }
 
 impl Action {
-    /// All available actions
     pub fn iterator() -> Iter<'static, Action> {
         static ACTIONS: [Action; 4] = [
             Action::Quit,
@@ -36,7 +35,7 @@ impl Action {
     }
 }
 
-/// Could display a user friendly short description of action
+/// User friendly short description of action
 impl Display for Action {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let str = match self {
@@ -49,7 +48,6 @@ impl Display for Action {
     }
 }
 
-/// The application should have some contextual actions.
 #[derive(Default, Debug, Clone)]
 pub struct Actions(Vec<Action>);
 
@@ -61,8 +59,6 @@ impl Actions {
             .find(|action| action.keys().contains(&key))
     }
 
-    /// Get contextual actions.
-    /// (just for building a help view)
     pub fn actions(&self) -> &[Action] {
         self.0.as_slice()
     }

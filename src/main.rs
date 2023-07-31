@@ -4,22 +4,33 @@ use std::env;
 use std::panic;
 use std::process;
 use std::sync::Arc;
-use tokio::time::{sleep, Duration};
+
 use webex_tui::app::App;
 use webex_tui::start_ui;
-use webex_tui::teams::app_handler::{IoAsyncHandler, IoEvent};
+use webex_tui::teams::app_handler::AppCmdEvent;
 use webex_tui::teams::ClientCredentials;
+use webex_tui::teams::Teams;
 
 const INTEGRATION_CLIENT_ID: &str = "WEBEX_INTEGRATION_CLIENT_ID";
 const INTEGRATION_CLIENT_SECRET: &str = "WEBEX_INTEGRATION_CLIENT_SECRET";
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Configure logger
+    tui_logger::init_logger(LevelFilter::Debug).unwrap();
+    tui_logger::set_default_level(log::LevelFilter::Debug);
+    const LOG_FILE: &str = concat!(env!("CARGO_PKG_NAME"), ".log");
+    let _ = tui_logger::set_log_file(LOG_FILE);
+
     // get credentials from environment
     let client_id = env::var(INTEGRATION_CLIENT_ID)
         .unwrap_or_else(|_| panic!("{} not specified in environment", INTEGRATION_CLIENT_ID));
     let client_secret = env::var(INTEGRATION_CLIENT_SECRET)
         .unwrap_or_else(|_| panic!("{} not specified in environment", INTEGRATION_CLIENT_SECRET));
+    let credentials = ClientCredentials {
+        client_id,
+        client_secret,
+    };
 
     // Ensure the process terminates if one of the threads panics.
     let orig_hook = panic::take_hook();
@@ -29,38 +40,16 @@ async fn main() -> Result<()> {
         process::exit(1);
     }));
 
-    // Channel to the io::handler thread
-    let (sync_io_tx, mut sync_io_rx) = tokio::sync::mpsc::channel::<IoEvent>(100);
+    // Channel to send commands to the teams thread
+    let (app_to_teams_tx, app_to_teams_rx) = tokio::sync::mpsc::channel::<AppCmdEvent>(100);
 
-    let credentials = ClientCredentials {
-        client_id,
-        client_secret,
-    };
-
-    // We need to share the App between threads
-    let app = Arc::new(tokio::sync::Mutex::new(App::new(
-        sync_io_tx.clone(),
-        credentials,
-    )));
+    // The teams thread communicates back to the app main thread by locking app
+    let app = Arc::new(tokio::sync::Mutex::new(App::new(app_to_teams_tx.clone())));
     let app_ui = Arc::clone(&app);
 
-    tui_logger::init_logger(LevelFilter::Debug).unwrap();
-    tui_logger::set_default_level(log::LevelFilter::Debug);
-    const LOG_FILE: &str = concat!(env!("CARGO_PKG_NAME"), ".log");
-    let _ = tui_logger::set_log_file(LOG_FILE);
-
-    // Handle IO in a specifc thread
     tokio::spawn(async move {
-        let mut handler = IoAsyncHandler::new(app);
-        loop {
-            if let Ok(io_event) = sync_io_rx.try_recv() {
-                handler.handle_app_event(io_event).await;
-            }
-            // Process messages from Webex Events sub?-thread
-            handler.process_webex_events().await;
-            // TODO: fix this so we don't use CPU but use async better
-            sleep(Duration::from_millis(100)).await;
-        }
+        let mut teams = Teams::new(credentials, app).await;
+        teams.handle_events(app_to_teams_rx).await;
     });
 
     start_ui(&app_ui).await?;
