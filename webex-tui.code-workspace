@@ -17,6 +17,9 @@
       "./Cargo.toml",
       "./Cargo.toml"
     ],
-    "workbench.colorCustomizations": {}
+    "workbench.colorCustomizations": {
+      "tab.unfocusedActiveBackground": "#00000000",
+      "tab.activeBackground": "#95195fe1"
+    }
   }
 }
