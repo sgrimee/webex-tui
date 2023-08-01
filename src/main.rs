@@ -1,3 +1,6 @@
+mod banner;
+mod config;
+
 use eyre::Result;
 use log::LevelFilter;
 use std::env;
@@ -5,14 +8,12 @@ use std::panic;
 use std::process;
 use std::sync::Arc;
 
+use config::ClientConfig;
 use webex_tui::app::App;
 use webex_tui::start_ui;
 use webex_tui::teams::app_handler::AppCmdEvent;
 use webex_tui::teams::ClientCredentials;
 use webex_tui::teams::Teams;
-
-const INTEGRATION_CLIENT_ID: &str = "WEBEX_INTEGRATION_CLIENT_ID";
-const INTEGRATION_CLIENT_SECRET: &str = "WEBEX_INTEGRATION_CLIENT_SECRET";
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -22,14 +23,12 @@ async fn main() -> Result<()> {
     const LOG_FILE: &str = concat!(env!("CARGO_PKG_NAME"), ".log");
     let _ = tui_logger::set_log_file(LOG_FILE);
 
-    // get credentials from environment
-    let client_id = env::var(INTEGRATION_CLIENT_ID)
-        .unwrap_or_else(|_| panic!("{} not specified in environment", INTEGRATION_CLIENT_ID));
-    let client_secret = env::var(INTEGRATION_CLIENT_SECRET)
-        .unwrap_or_else(|_| panic!("{} not specified in environment", INTEGRATION_CLIENT_SECRET));
+    // get credentials from config or user
+    let mut client_config = ClientConfig::new();
+    client_config.load_config()?;
     let credentials = ClientCredentials {
-        client_id,
-        client_secret,
+        client_id: client_config.client_id,
+        client_secret: client_config.client_secret,
     };
 
     // Ensure the process terminates if one of the threads panics.

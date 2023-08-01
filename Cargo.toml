@@ -2,16 +2,26 @@
 name = "webex-tui"
 version = "0.1.0"
 edition = "2021"
+homepage = "https://github.com/sgrimee/webex-tui"
+documentation = "https://github.com/sgrimee/webex-tui"
+repository = "https://github.com/sgrimee/webex-tui"
+keywords = ["cisco", "webex", "tui", "cli", "terminal"]
+categories = ["command-line-utilities"]
+authors = ["Sam Grimee <sgrimee@gmail.com>"]
+license = "MIT OR Apache-2.0"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+clap = "4.3.19"
 crossterm = "0.26.1"
+dirs = "5.0.1"
 eyre = "0.6.8"
 log = "0.4.19"
 oauth2 = "4.4.1"
 open = "5.0.0"
 ratatui = "0.22.0"
+serde = { version = "1.0.180", features = ["derive"] }
+serde_yaml = "0.9.25"
 tokio = { version = "1.29.1", features = ["rt", "macros"] }
 tui-logger = { git = "https://github.com/gin66/tui-logger.git", default-features = false, features = [
     "ratatui-support",
