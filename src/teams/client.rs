@@ -8,7 +8,6 @@ pub async fn get_webex_client(credentials: ClientCredentials) -> Webex {
         .await
         .expect("Need token to continue");
     let token: &str = token.secret();
-    debug!("Logging into Webex with token");
     let client = Webex::new(token).await;
     debug!("Authenticated.");
     client
