@@ -34,6 +34,15 @@ impl TeamsStore {
     pub fn set_me_user(&mut self, me: Person) {
         self.me = Some(me);
     }
+
+    /// Return true if me is not None, p is not None and p equals me
+    /// Return false if they are different or either is None.
+    pub fn is_me(&self, person_id: &Option<String>) -> bool {
+        match (&self.me, person_id) {
+            (Some(me), Some(id)) => me.id.eq(id),
+            _ => false,
+        }
+    }
 }
 
 #[cfg(test)]

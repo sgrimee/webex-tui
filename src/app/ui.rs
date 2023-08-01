@@ -27,7 +27,7 @@ use crate::app::App;
 
 const TITLE_BLOCK_HEIGHT: u16 = 3;
 const BODY_BLOCK_HEIGHT_MIN: u16 = 5;
-const MSG_INPUT_BLOCK_HEUGHT: u16 = 5;
+const MSG_INPUT_BLOCK_HEIGHT: u16 = 5;
 const LOG_BLOCK_HEIGHT: u16 = 10;
 
 pub fn draw<B>(rect: &mut Frame<B>, app: &App)
@@ -40,7 +40,7 @@ where
     let mut constraints = vec![
         Constraint::Length(TITLE_BLOCK_HEIGHT),
         Constraint::Min(BODY_BLOCK_HEIGHT_MIN),
-        Constraint::Length(MSG_INPUT_BLOCK_HEUGHT),
+        Constraint::Length(MSG_INPUT_BLOCK_HEIGHT),
     ];
     if app.show_log_window() {
         constraints.push(Constraint::Length(LOG_BLOCK_HEIGHT));
@@ -97,7 +97,7 @@ fn check_size(rect: &Rect) {
         error!("Require width >= 52, (got {})", rect.width);
     }
     let min_height =
-        TITLE_BLOCK_HEIGHT + BODY_BLOCK_HEIGHT_MIN + MSG_INPUT_BLOCK_HEUGHT + LOG_BLOCK_HEIGHT;
+        TITLE_BLOCK_HEIGHT + BODY_BLOCK_HEIGHT_MIN + MSG_INPUT_BLOCK_HEIGHT + LOG_BLOCK_HEIGHT;
 
     if rect.height < min_height {
         error!("Require height >= {}, (got {})", min_height, rect.height);
@@ -110,9 +110,14 @@ fn draw_msg_output<'a>(room_id: &str, store: &TeamsStore) -> Paragraph<'a> {
     for msg in messages.iter() {
         let mut line: Vec<Span> = Vec::new();
         if let Some(sender) = &msg.person_email {
+            let sender_color = if store.is_me(&msg.person_id) {
+                Color::Yellow
+            } else {
+                Color::Red
+            };
             line.push(Span::styled(
                 sender.clone(),
-                Style::default().fg(Color::Red),
+                Style::default().fg(sender_color),
             ));
             line.push(Span::raw(" > "));
         }
