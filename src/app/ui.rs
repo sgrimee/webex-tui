@@ -58,7 +58,7 @@ where
         .split(size);
 
     // Title
-    let title = draw_title();
+    let title = draw_title(app);
     rect.render_widget(title, app_rows[0]);
 
     // Body: left panel, active room + message input, help
@@ -128,8 +128,12 @@ fn check_size(rect: &Rect, app: &App) {
     }
 }
 
-fn draw_title<'a>() -> Paragraph<'a> {
-    Paragraph::new("Webex TUI")
+fn draw_title<'a>(app: &App) -> Paragraph<'a> {
+    let title = match app.is_loading() {
+        true => "webex-tui (loading)",
+        false => "webex-tui",
+    };
+    Paragraph::new(title)
         .style(Style::default().fg(Color::LightCyan))
         .alignment(Alignment::Center)
         .block(
