@@ -1,11 +1,14 @@
+use crate::app::teams_store::RoomId;
+
 use super::Teams;
 use eyre::Result;
 use log::{debug, error, info};
-use webex::MessageOut;
+use webex::{GlobalId, GlobalIdType, MessageOut, Room};
 
 pub enum AppCmdEvent {
     Initialize(), // Launch to initiate login to Webex
     SendMessage(MessageOut),
+    UpdateRoom(RoomId),
 }
 
 impl Teams<'_> {
@@ -14,6 +17,7 @@ impl Teams<'_> {
         let result = match io_event {
             AppCmdEvent::Initialize() => self.do_initialize().await,
             AppCmdEvent::SendMessage(msg_to_send) => self.do_send_message(msg_to_send).await,
+            AppCmdEvent::UpdateRoom(room_id) => self.do_update_room(room_id).await,
         };
 
         if let Err(err) = result {
@@ -45,6 +49,15 @@ impl Teams<'_> {
             .expect("do_send_message");
         let mut app = self.app.lock().await;
         app.message_sent();
+        Ok(())
+    }
+
+    async fn do_update_room(&mut self, id: RoomId) -> Result<()> {
+        debug!("Going to refresh room id: {}", id);
+        let id = GlobalId::new(GlobalIdType::Room, id).unwrap();
+        let room = self.client.get::<Room>(&id).await.expect("updating room");
+        let mut app = self.app.lock().await;
+        app.room_updated(room);
         Ok(())
     }
 }

@@ -23,6 +23,7 @@ use tui_textarea::TextArea;
 use super::actions;
 use super::actions::Actions;
 use super::state::AppState;
+use super::teams_store::RoomId;
 use super::teams_store::TeamsStore;
 use crate::app::App;
 
@@ -75,7 +76,7 @@ where
         .split(app_rows[1]);
 
     // add rooms list here
-    let rooms_list = draw_rooms_list();
+    let rooms_list = draw_rooms_list(app);
     rect.render_widget(rooms_list, body_columns[0]);
 
     // Room and message edit
@@ -139,8 +140,12 @@ fn draw_title<'a>() -> Paragraph<'a> {
         )
 }
 
-fn draw_rooms_list<'a>() -> Table<'a> {
-    let rows = vec![];
+fn draw_rooms_list<'a>(app: &App) -> Table<'a> {
+    let mut rows = vec![];
+    for room in app.state.teams_store.rooms() {
+        let row = Row::new(vec![Cell::from(Span::raw(room.title.to_owned()))]);
+        rows.push(row);
+    }
     Table::new(rows)
         .block(
             Block::default()
@@ -152,7 +157,7 @@ fn draw_rooms_list<'a>() -> Table<'a> {
         .column_spacing(1)
 }
 
-fn draw_room_messages<'a>(room_id: &str, store: &TeamsStore) -> Paragraph<'a> {
+fn draw_room_messages<'a>(room_id: &RoomId, store: &TeamsStore) -> Paragraph<'a> {
     let messages = store.messages_in_room(room_id);
     let mut text = vec![];
     for msg in messages.iter() {

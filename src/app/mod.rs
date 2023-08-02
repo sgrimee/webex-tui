@@ -13,7 +13,7 @@ use crossterm::event::KeyEvent;
 use log::{debug, error, warn};
 
 use tui_textarea::TextArea;
-use webex::Person;
+use webex::{Person, Room};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum AppReturn {
@@ -163,8 +163,16 @@ impl App<'_> {
         debug!("Message was sent.");
     }
 
-    pub fn message_received(&mut self, msg: webex::Message) {
-        self.state.teams_store.add_message(msg)
+    pub async fn message_received(&mut self, msg: webex::Message) {
+        if let Some(id) = &msg.room_id {
+            self.dispatch_to_teams(AppCmdEvent::UpdateRoom(id.to_owned()))
+                .await;
+        }
+        self.state.teams_store.add_message(msg);
+    }
+
+    pub fn room_updated(&mut self, room: Room) {
+        self.state.teams_store.update_room(room);
     }
 
     pub fn show_log_window(&self) -> bool {

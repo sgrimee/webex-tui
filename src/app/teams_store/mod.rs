@@ -1,12 +1,15 @@
 use std::collections::HashMap;
 
 use log::warn;
-use webex::{Message, Person};
+use webex::{Message, Person, Room};
+
+pub(crate) type RoomId = String;
 
 /// A caching store for Webex messages and context
 #[derive(Default, Debug)]
 pub struct TeamsStore {
-    msg_per_room: HashMap<String, Vec<Message>>,
+    rooms_by_id: HashMap<RoomId, Room>,
+    msg_by_room_id: HashMap<RoomId, Vec<Message>>,
     me: Option<Person>,
 }
 
@@ -14,7 +17,7 @@ impl TeamsStore {
     pub fn add_message(&mut self, msg: Message) {
         let m = msg.clone();
         if let Some(room_id) = msg.room_id {
-            self.msg_per_room
+            self.msg_by_room_id
                 .entry(room_id)
                 .and_modify(|messages| messages.push(m.clone()))
                 .or_insert(vec![m]);
@@ -23,12 +26,18 @@ impl TeamsStore {
         }
     }
 
-    pub fn messages_in_room(&self, room_id: &str) -> Vec<Message> {
+    pub fn update_room(&mut self, room: Room) {
+        self.rooms_by_id.insert(room.id.to_owned(), room);
+    }
+
+    /// Return an interator to the rooms
+    pub fn rooms(&self) -> impl Iterator<Item = &Room> {
+        self.rooms_by_id.values()
+    }
+
+    pub fn messages_in_room(&self, id: &RoomId) -> Vec<Message> {
         let empty_vec: Vec<Message> = vec![];
-        self.msg_per_room
-            .get(room_id)
-            .unwrap_or(&empty_vec)
-            .to_vec()
+        self.msg_by_room_id.get(id).unwrap_or(&empty_vec).to_vec()
     }
 
     pub fn set_me_user(&mut self, me: Person) {
@@ -58,7 +67,7 @@ mod tests {
             ..Default::default()
         };
         store.add_message(message);
-        assert_eq!(store.msg_per_room[room_id].len(), 1);
+        assert_eq!(store.msg_by_room_id[room_id].len(), 1);
     }
 
     #[test]
@@ -73,6 +82,6 @@ mod tests {
         store.add_message(message.clone());
         // add the message again, it should get added
         store.add_message(message);
-        assert_eq!(store.msg_per_room[room_id].len(), 2);
+        assert_eq!(store.msg_by_room_id[room_id].len(), 2);
     }
 }
