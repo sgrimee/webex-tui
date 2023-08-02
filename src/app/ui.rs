@@ -215,7 +215,7 @@ fn draw_msg_input<'a>(state: &'a AppState<'a>) -> TextArea<'a> {
         )
     } else {
         (
-            Span::styled("Type m to enter message edit mode", Style::default()),
+            Span::styled("Press Enter with a selected room to type", Style::default()),
             Style::default(),
         )
     };
