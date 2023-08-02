@@ -2178,6 +2178,8 @@ dependencies = [
 [[package]]
 name = "webex"
 version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d7231db8f57401bfbad3fa9ff1a4ca2328fb869dab9cf93154e114487774351e"
 dependencies = [
  "async-std",
  "base64 0.21.2",

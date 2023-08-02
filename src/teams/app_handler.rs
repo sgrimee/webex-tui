@@ -31,10 +31,6 @@ impl Teams<'_> {
     async fn do_initialize(&mut self) -> Result<()> {
         info!("🚀 Initializing to Webex");
 
-        if let Ok(me) = self.client.me().await {
-            info!("We are: {}", me.display_name);
-        }
-
         let mut app = self.app.lock().await;
         app.initialized();
         info!("👍 Webex initialization successful");

@@ -30,7 +30,16 @@ impl<'a> Teams<'a> {
     ) -> Teams<'a> {
         let client = get_webex_client(credentials).await;
 
-        if let Ok(me) = client.me().await {
+        // Retrieve the logged in user
+        // TODO: should we do this after initialisation to reduce startup time
+        if let Ok(me) = client
+            .get::<webex::types::Person>(&webex::types::GlobalId::new_with_cluster_unchecked(
+                webex::types::GlobalIdType::Person,
+                "me".to_string(),
+                None,
+            ))
+            .await
+        {
             info!("We are: {}", me.display_name);
             let mut app = app.lock().await;
             app.set_me_user(me);
