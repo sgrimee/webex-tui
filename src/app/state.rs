@@ -12,6 +12,7 @@ pub struct AppState<'a> {
     pub is_loading: bool,
     pub msg_input_textarea: TextArea<'a>,
     pub show_logs: bool,
+    pub show_help: bool,
     pub teams_store: TeamsStore,
 }
 
@@ -23,7 +24,8 @@ impl Default for AppState<'_> {
             editing_mode: false,
             is_loading: false,
             msg_input_textarea: TextArea::default(),
-            show_logs: true,
+            show_logs: false,
+            show_help: true,
             teams_store: TeamsStore::default(),
         }
     }

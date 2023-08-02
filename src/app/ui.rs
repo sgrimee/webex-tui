@@ -20,63 +20,110 @@ use tui_logger::TuiLoggerWidget;
 #[allow(deprecated)]
 use tui_textarea::TextArea;
 
+use super::actions;
 use super::actions::Actions;
 use super::state::AppState;
 use super::teams_store::TeamsStore;
 use crate::app::App;
 
 const TITLE_BLOCK_HEIGHT: u16 = 3;
-const BODY_BLOCK_HEIGHT_MIN: u16 = 5;
+const ROOM_MIN_HEIGHT: u16 = 8;
 const MSG_INPUT_BLOCK_HEIGHT: u16 = 5;
-const LOG_BLOCK_HEIGHT: u16 = 10;
+const LOG_BLOCK_HEIGHT: u16 = 15;
+
+const ROOMS_LIST_WIDTH: u16 = 32;
+const ACTIVE_ROOM_MIN_WIDTH: u16 = 32;
+const HELP_WIDTH: u16 = 32;
 
 pub fn draw<B>(rect: &mut Frame<B>, app: &App)
 where
     B: Backend,
 {
     let size = rect.size();
-    check_size(&size);
+    check_size(&size, app);
 
-    let mut constraints = vec![
+    let mut app_constraints = vec![
         Constraint::Length(TITLE_BLOCK_HEIGHT),
-        Constraint::Min(BODY_BLOCK_HEIGHT_MIN),
-        Constraint::Length(MSG_INPUT_BLOCK_HEIGHT),
+        Constraint::Min(ROOM_MIN_HEIGHT + MSG_INPUT_BLOCK_HEIGHT),
     ];
     if app.show_log_window() {
-        constraints.push(Constraint::Length(LOG_BLOCK_HEIGHT));
+        app_constraints.push(Constraint::Length(LOG_BLOCK_HEIGHT));
     }
 
     // Vertical layout
-    let chunks = Layout::default()
+    let app_rows = Layout::default()
         .direction(Direction::Vertical)
-        .constraints(constraints.as_ref())
+        .constraints(app_constraints.as_ref())
         .split(size);
 
     // Title
     let title = draw_title();
-    rect.render_widget(title, chunks[0]);
+    rect.render_widget(title, app_rows[0]);
 
-    // Body & Help
-    let body_chunks = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Min(20), Constraint::Length(32)].as_ref())
-        .split(chunks[1]);
-
-    if let Some(active_room) = &app.state.active_room {
-        let msg_output = draw_msg_output(&active_room, &app.state.teams_store);
-        rect.render_widget(msg_output, body_chunks[0]);
-
-        let msg_input = draw_msg_input(&app.state);
-        rect.render_widget(msg_input.widget(), chunks[2]);
+    // Body: left panel, active room + message input, help
+    let mut body_constraints = vec![
+        Constraint::Length(ROOMS_LIST_WIDTH),
+        Constraint::Min(ACTIVE_ROOM_MIN_WIDTH),
+    ];
+    if app.state.show_help {
+        body_constraints.push(Constraint::Length(HELP_WIDTH));
     }
 
-    let help = draw_help(app.actions());
-    rect.render_widget(help, body_chunks[1]);
+    let body_columns = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints(body_constraints)
+        .split(app_rows[1]);
+
+    // add rooms list here
+    let rooms_list = draw_rooms_list();
+    rect.render_widget(rooms_list, body_columns[0]);
+
+    // Room and message edit
+    if let Some(active_room) = &app.state.active_room {
+        let room_constraints = vec![
+            Constraint::Min(ROOM_MIN_HEIGHT),
+            Constraint::Length(MSG_INPUT_BLOCK_HEIGHT),
+        ];
+        let room_rows = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(room_constraints)
+            .split(body_columns[1]);
+
+        let room_messages = draw_room_messages(active_room, &app.state.teams_store);
+        rect.render_widget(room_messages, room_rows[0]);
+
+        let msg_input = draw_msg_input(&app.state);
+        rect.render_widget(msg_input.widget(), room_rows[1]);
+    }
+
+    // Help
+    if app.state.show_help {
+        let help = draw_help(app.actions());
+        rect.render_widget(help, body_columns[2]);
+    }
 
     // Logs
     if app.show_log_window() {
         let logs = draw_logs();
-        rect.render_widget(logs, chunks[3]);
+        rect.render_widget(logs, app_rows[2]);
+    }
+}
+
+fn check_size(rect: &Rect, app: &App) {
+    let mut min_width = ROOMS_LIST_WIDTH + ACTIVE_ROOM_MIN_WIDTH;
+    if app.state.show_help {
+        min_width += HELP_WIDTH
+    };
+    if rect.width < min_width {
+        error!("Require width >= {}, (got {})", min_width, rect.width);
+    }
+
+    let mut min_height = TITLE_BLOCK_HEIGHT + ROOM_MIN_HEIGHT + MSG_INPUT_BLOCK_HEIGHT;
+    if app.state.show_help {
+        min_height += LOG_BLOCK_HEIGHT
+    };
+    if rect.height < min_height {
+        error!("Require height >= {}, (got {})", min_height, rect.height);
     }
 }
 
@@ -92,19 +139,20 @@ fn draw_title<'a>() -> Paragraph<'a> {
         )
 }
 
-fn check_size(rect: &Rect) {
-    if rect.width < 52 {
-        error!("Require width >= 52, (got {})", rect.width);
-    }
-    let min_height =
-        TITLE_BLOCK_HEIGHT + BODY_BLOCK_HEIGHT_MIN + MSG_INPUT_BLOCK_HEIGHT + LOG_BLOCK_HEIGHT;
-
-    if rect.height < min_height {
-        error!("Require height >= {}, (got {})", min_height, rect.height);
-    }
+fn draw_rooms_list<'a>() -> Table<'a> {
+    let rows = vec![];
+    Table::new(rows)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_type(BorderType::Plain)
+                .title("Rooms"),
+        )
+        .widths(&[Constraint::Length(ROOMS_LIST_WIDTH)])
+        .column_spacing(1)
 }
 
-fn draw_msg_output<'a>(room_id: &str, store: &TeamsStore) -> Paragraph<'a> {
+fn draw_room_messages<'a>(room_id: &str, store: &TeamsStore) -> Paragraph<'a> {
     let messages = store.messages_in_room(room_id);
     let mut text = vec![];
     for msg in messages.iter() {

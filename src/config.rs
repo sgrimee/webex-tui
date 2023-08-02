@@ -186,7 +186,7 @@ impl ClientConfig {
                     expected_length,
                 ),
             )))
-        } else if !key.chars().all(|c| c.is_digit(16)) {
+        } else if !key.chars().all(|c| c.is_ascii_hexdigit()) {
             Err(Error::from(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
                 "invalid character found (must be hex digits)",

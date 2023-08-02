@@ -60,9 +60,17 @@ impl App<'_> {
                     self.state.show_logs = !self.state.show_logs;
                     AppReturn::Continue
                 }
+                Action::ToggleHelp => {
+                    self.state.show_help = !self.state.show_help;
+                    AppReturn::Continue
+                }
             }
         } else {
             warn!("No action accociated to {}", key);
+            debug!(
+                "If the key actually corresponds to an action, it needs to be added to the list 
+            of active actions too."
+            );
             AppReturn::Continue
         }
     }
@@ -136,6 +144,7 @@ impl App<'_> {
             Action::EditMessage,
             Action::SendMessage,
             Action::ToggleLogs,
+            Action::ToggleHelp,
         ]
         .into();
         self.state.active_room = Some(
