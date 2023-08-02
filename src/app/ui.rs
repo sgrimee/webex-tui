@@ -7,18 +7,23 @@ use log::error;
 use ratatui::backend::Backend;
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
+use ratatui::style::Modifier;
 use ratatui::style::{Color, Style};
 use ratatui::terminal::Frame;
 use ratatui::terminal::Terminal;
 use ratatui::text::Line;
 use ratatui::text::Span;
 use ratatui::widgets::block::{Block, BorderType};
+use ratatui::widgets::List;
+use ratatui::widgets::ListState;
+use ratatui::widgets::TableState;
 use ratatui::widgets::Wrap;
 use ratatui::widgets::{Borders, Cell, Paragraph, Row, Table};
 use tui_logger::TuiLoggerWidget;
 
 #[allow(deprecated)]
 use tui_textarea::TextArea;
+use webex::Room;
 
 use super::actions;
 use super::actions::Actions;
@@ -75,27 +80,26 @@ where
         .constraints(body_constraints)
         .split(app_rows[1]);
 
-    // add rooms list here
+    // Rooms list
     let rooms_list = draw_rooms_list(app);
-    rect.render_widget(rooms_list, body_columns[0]);
+    let mut room_list_state = app.state.room_list_state.clone();
+    rect.render_stateful_widget(rooms_list, body_columns[0], &mut room_list_state);
 
     // Room and message edit
-    if let Some(active_room) = &app.state.active_room {
-        let room_constraints = vec![
-            Constraint::Min(ROOM_MIN_HEIGHT),
-            Constraint::Length(MSG_INPUT_BLOCK_HEIGHT),
-        ];
-        let room_rows = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints(room_constraints)
-            .split(body_columns[1]);
+    let room_constraints = vec![
+        Constraint::Min(ROOM_MIN_HEIGHT),
+        Constraint::Length(MSG_INPUT_BLOCK_HEIGHT),
+    ];
+    let room_rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(room_constraints)
+        .split(body_columns[1]);
 
-        let room_messages = draw_room_messages(active_room, &app.state.teams_store);
-        rect.render_widget(room_messages, room_rows[0]);
+    let room_messages = draw_room_messages(app);
+    rect.render_widget(room_messages, room_rows[0]);
 
-        let msg_input = draw_msg_input(&app.state);
-        rect.render_widget(msg_input.widget(), room_rows[1]);
-    }
+    let msg_input = draw_msg_input(&app.state);
+    rect.render_widget(msg_input.widget(), room_rows[1]);
 
     // Help
     if app.state.show_help {
@@ -145,43 +149,51 @@ fn draw_title<'a>(app: &App) -> Paragraph<'a> {
 }
 
 fn draw_rooms_list<'a>(app: &App) -> Table<'a> {
-    let mut rows = vec![];
-    for room in app.state.teams_store.rooms() {
-        let row = Row::new(vec![Cell::from(Span::raw(room.title.to_owned()))]);
-        rows.push(row);
-    }
-    Table::new(rows)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_type(BorderType::Plain)
-                .title("Rooms"),
-        )
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Plain)
+        .title("Rooms");
+    let items: Vec<_> = app
+        .state
+        .teams_store
+        .rooms()
+        .map(|room| Row::new(vec![Cell::from(Span::raw(room.title.to_owned()))]))
+        .collect();
+    Table::new(items)
+        .block(block)
         .widths(&[Constraint::Length(ROOMS_LIST_WIDTH)])
         .column_spacing(1)
+        .highlight_style(
+            Style::default()
+                .bg(Color::Yellow)
+                .fg(Color::Black)
+                .add_modifier(Modifier::BOLD),
+        )
 }
 
-fn draw_room_messages<'a>(room_id: &RoomId, store: &TeamsStore) -> Paragraph<'a> {
-    let messages = store.messages_in_room(room_id);
+fn draw_room_messages<'a>(app: &App) -> Paragraph<'a> {
     let mut text = vec![];
-    for msg in messages.iter() {
-        let mut line: Vec<Span> = Vec::new();
-        if let Some(sender) = &msg.person_email {
-            let sender_color = if store.is_me(&msg.person_id) {
-                Color::Yellow
-            } else {
-                Color::Red
-            };
-            line.push(Span::styled(
-                sender.clone(),
-                Style::default().fg(sender_color),
-            ));
-            line.push(Span::raw(" > "));
+    if let Some(selected_room_id) = app.state.selected_room_id() {
+        let messages = app.state.teams_store.messages_in_room(&selected_room_id);
+        for msg in messages.iter() {
+            let mut line: Vec<Span> = Vec::new();
+            if let Some(sender) = &msg.person_email {
+                let sender_color = if app.state.teams_store.is_me(&msg.person_id) {
+                    Color::Yellow
+                } else {
+                    Color::Red
+                };
+                line.push(Span::styled(
+                    sender.clone(),
+                    Style::default().fg(sender_color),
+                ));
+                line.push(Span::raw(" > "));
+            }
+            if let Some(raw_text) = &msg.text {
+                line.push(Span::raw(raw_text.clone()));
+            }
+            text.push(Line::from(line));
         }
-        if let Some(raw_text) = &msg.text {
-            line.push(Span::raw(raw_text.clone()));
-        }
-        text.push(Line::from(line));
     }
     Paragraph::new(text)
         .block(

@@ -11,16 +11,15 @@
     }
   ],
   "settings": {
-    "rust-analyzer.linkedProjects": [
-      "./Cargo.toml",
-      "./Cargo.toml",
-      "./Cargo.toml",
-      "./Cargo.toml"
-    ],
-    "workbench.colorCustomizations": {
-      "tab.unfocusedActiveBackground": "#00000000",
-      "tab.activeBackground": "#95195fe1"
-    }
+    "whenFile.change": {
+      "/teams/": {
+        "workbenchColor": {
+          "tab.unfocusedActiveBackground": "#00000000",
+          "tab.activeBackground": "#95195fe1"
+        }
+      }
+    },
+    "workbench.colorCustomizations": {}
   },
   "extensions": {
     "recommendations": ["rioj7.whenFile"]

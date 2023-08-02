@@ -64,6 +64,28 @@ impl App<'_> {
                     self.state.show_help = !self.state.show_help;
                     AppReturn::Continue
                 }
+                Action::ArrowDown => {
+                    if let Some(selected) = self.state.room_list_state.selected() {
+                        if selected >= self.state.teams_store.number_of_rooms() - 1 {
+                            self.state.room_list_state.select(Some(0));
+                        } else {
+                            self.state.room_list_state.select(Some(selected + 1));
+                        }
+                    }
+                    AppReturn::Continue
+                }
+                Action::ArrowUp => {
+                    if let Some(selected) = self.state.room_list_state.selected() {
+                        if selected > 0 {
+                            self.state.room_list_state.select(Some(selected - 1));
+                        } else {
+                            self.state
+                                .room_list_state
+                                .select(Some(self.state.teams_store.number_of_rooms() - 1));
+                        }
+                    }
+                    AppReturn::Continue
+                }
             }
         } else {
             warn!("No action accociated to {}", key);
@@ -97,7 +119,7 @@ impl App<'_> {
             debug!("Won't send and empty message");
             return;
         };
-        match &self.state.active_room {
+        match &self.state.selected_room_id() {
             Some(active_room) => {
                 let lines = self.state.msg_input_textarea.lines();
                 let msg_to_send = webex::types::MessageOut {
@@ -145,13 +167,10 @@ impl App<'_> {
             Action::SendMessage,
             Action::ToggleLogs,
             Action::ToggleHelp,
+            Action::ArrowUp,
+            Action::ArrowDown,
         ]
         .into();
-        self.state.active_room = Some(
-            "Y2lzY29zcGFyazovL3VzL1JPT00vOTA1ZjJjOTAtMjdiZS0xMWVlLWJlY2YtMzNhZGYyOWQzODFj"
-                .to_string(), // bla
-                              // "Y2lzY29zcGFyazovL3VzL1JPT00vYmY4Mzk3NjYtY2NkMy0zMDdhLWFmMzctNWJhYWRjODNkNmQ3", // Raph
-        );
     }
 
     // indicate the completion of a pending teams task

@@ -30,9 +30,12 @@ impl TeamsStore {
         self.rooms_by_id.insert(room.id.to_owned(), room);
     }
 
-    /// Return an interator to the rooms
     pub fn rooms(&self) -> impl Iterator<Item = &Room> {
         self.rooms_by_id.values()
+    }
+
+    pub fn number_of_rooms(&self) -> usize {
+        self.rooms_by_id.len()
     }
 
     pub fn messages_in_room(&self, id: &RoomId) -> Vec<Message> {

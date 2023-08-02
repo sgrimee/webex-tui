@@ -12,16 +12,20 @@ pub enum Action {
     SendMessage,
     ToggleLogs,
     ToggleHelp,
+    ArrowDown,
+    ArrowUp,
 }
 
 impl Action {
     pub fn iterator() -> Iter<'static, Action> {
-        static ACTIONS: [Action; 5] = [
+        static ACTIONS: [Action; 7] = [
             Action::Quit,
             Action::EditMessage,
             Action::SendMessage,
             Action::ToggleLogs,
             Action::ToggleHelp,
+            Action::ArrowDown,
+            Action::ArrowUp,
         ];
         ACTIONS.iter()
     }
@@ -34,6 +38,8 @@ impl Action {
             Action::SendMessage => &[Key::Enter],
             Action::ToggleLogs => &[Key::Char('l')],
             Action::ToggleHelp => &[Key::Char('h')],
+            Action::ArrowDown => &[Key::Down],
+            Action::ArrowUp => &[Key::Up],
         }
     }
 }
@@ -47,6 +53,8 @@ impl Display for Action {
             Action::SendMessage => "Send message",
             Action::ToggleLogs => "Toggle logs",
             Action::ToggleHelp => "Toggle help",
+            Action::ArrowDown => "Next room",
+            Action::ArrowUp => "Previous room",
         };
         write!(f, "{}", str)
     }
