@@ -13,6 +13,8 @@ This is early work in progress. The following will be added:
 - Search for rooms/users
 - Send messages to a new room/user
 
+See also the [TODO list](TODO.md).
+
 ## Installing
 
 Currently the best way to use it is by [installing Rust](https://www.rust-lang.org/tools/install) and then:

@@ -5,15 +5,15 @@ pub mod ui;
 
 use self::{actions::Actions, state::AppState};
 use crate::app::actions::Action;
-
 use crate::inputs::key::Key;
 use crate::inputs::patch::input_from_key_event;
 use crate::teams::app_handler::AppCmdEvent;
 use crossterm::event::KeyEvent;
-use log::{debug, error, warn};
-
+use log::*;
 use tui_textarea::TextArea;
 use webex::{Person, Room};
+
+const TARGET: &str = module_path!();
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum AppReturn {
@@ -45,7 +45,7 @@ impl App<'_> {
     /// Handle a user action (non-editing mode)
     pub async fn do_action(&mut self, key: crate::inputs::key::Key) -> AppReturn {
         if let Some(action) = self.state.actions.find(key) {
-            debug!("Run action [{:?}]", action);
+            debug!(target: TARGET, "Run action [{:?}]", action);
             match action {
                 Action::Quit => AppReturn::Exit,
                 Action::EditMessage => {
@@ -88,9 +88,10 @@ impl App<'_> {
                 }
             }
         } else {
-            warn!("No action accociated to {}", key);
+            warn!(target: TARGET, "No action accociated to {}", key);
             debug!(
-                "If the key actually corresponds to an action, it needs to be added to the list 
+                target: TARGET,
+                "If the key actually corresponds to an action, it needs to be added to the list
             of active actions too."
             );
             AppReturn::Continue
@@ -116,7 +117,7 @@ impl App<'_> {
 
     pub async fn send_message_buffer(&mut self) {
         if self.state.msg_input_textarea.is_empty() {
-            debug!("Won't send and empty message");
+            warn!(target: TARGET, "An empty message cannot be sent.");
             return;
         };
         match &self.state.selected_room_id() {
@@ -127,12 +128,12 @@ impl App<'_> {
                     text: Some(lines.join("\n")),
                     ..Default::default()
                 };
-                debug!("Sending message: {:#?}", msg_to_send);
+                debug!(target: TARGET, "Sending message: {:#?}", msg_to_send);
                 self.dispatch_to_teams(AppCmdEvent::SendMessage(msg_to_send))
                     .await;
                 self.state.msg_input_textarea = TextArea::default();
             }
-            None => warn!("Cannot send message, no room selected."),
+            None => warn!(target: TARGET, "Cannot send message, no room selected."),
         }
     }
 
@@ -147,7 +148,7 @@ impl App<'_> {
         self.state.is_loading = true;
         if let Err(e) = self.app_to_teams_tx.send(action).await {
             self.state.is_loading = false;
-            error!("Error from dispatch {}", e);
+            error!(target: TARGET, "Error from dispatch {}", e);
         };
     }
 
@@ -179,7 +180,7 @@ impl App<'_> {
     }
 
     pub fn message_sent(&mut self) {
-        debug!("Message was sent.");
+        trace!(target: TARGET, "Message was sent.");
     }
 
     pub async fn message_received(&mut self, msg: webex::Message) {

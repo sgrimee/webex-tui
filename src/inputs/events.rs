@@ -1,11 +1,10 @@
+use super::InputEvent;
+use log::*;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use log::error;
-
-// use super::key::Key;
-use super::InputEvent;
+const TARGET: &str = module_path!();
 
 /// A small event handler that wrap crossterm input and tick event. Each event
 /// type is handled in its own thread and returned to a common `Receiver`
@@ -33,12 +32,18 @@ impl Events {
                         crossterm::event::read().unwrap()
                     {
                         if let Err(err) = event_tx.send(InputEvent::Input(key_event)).await {
-                            error!("Oops!, {}", err);
+                            error!(
+                                target: TARGET,
+                                "Could not send terminal event to main thread!, {}", err
+                            );
                         }
                     }
                 }
                 if let Err(err) = event_tx.send(InputEvent::Tick).await {
-                    error!("Oops!, {}", err);
+                    error!(
+                        target: TARGET,
+                        "Could not send tick to main thread!, {}", err
+                    );
                 }
                 if event_stop_capture.load(Ordering::Relaxed) {
                     break;

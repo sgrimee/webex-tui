@@ -1,9 +1,10 @@
+use log::*;
 use std::collections::HashMap;
-
-use log::warn;
 use webex::{Message, Person, Room};
 
 pub(crate) type RoomId = String;
+
+const TARGET: &str = module_path!();
 
 /// A caching store for Webex messages and context
 #[derive(Default, Debug)]
@@ -22,7 +23,7 @@ impl TeamsStore {
                 .and_modify(|messages| messages.push(m.clone()))
                 .or_insert(vec![m]);
         } else {
-            warn!("Message with no room_id: {:#?}", msg);
+            warn!(target: TARGET, "Message with no room_id: {:#?}", msg);
         }
     }
 

@@ -1,9 +1,12 @@
 #![allow(unused_imports)]
 
-use std::time::Duration;
-
-use log::error;
-
+use super::actions;
+use super::actions::Actions;
+use super::state::AppState;
+use super::teams_store::RoomId;
+use super::teams_store::TeamsStore;
+use crate::app::App;
+use log::*;
 use ratatui::backend::Backend;
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
@@ -19,18 +22,13 @@ use ratatui::widgets::ListState;
 use ratatui::widgets::TableState;
 use ratatui::widgets::Wrap;
 use ratatui::widgets::{Borders, Cell, Paragraph, Row, Table};
+use std::time::Duration;
 use tui_logger::TuiLoggerWidget;
-
 #[allow(deprecated)]
 use tui_textarea::TextArea;
 use webex::Room;
 
-use super::actions;
-use super::actions::Actions;
-use super::state::AppState;
-use super::teams_store::RoomId;
-use super::teams_store::TeamsStore;
-use crate::app::App;
+const TARGET: &str = module_path!();
 
 const TITLE_BLOCK_HEIGHT: u16 = 3;
 const ROOM_MIN_HEIGHT: u16 = 8;
@@ -115,20 +113,27 @@ where
 }
 
 fn check_size(rect: &Rect, app: &App) {
+    // TODO: log only once if the size does not change
     let mut min_width = ROOMS_LIST_WIDTH + ACTIVE_ROOM_MIN_WIDTH;
     if app.state.show_help {
         min_width += HELP_WIDTH
     };
     if rect.width < min_width {
-        error!("Require width >= {}, (got {})", min_width, rect.width);
+        warn!(
+            target: TARGET,
+            "Require width >= {}, (got {})", min_width, rect.width
+        );
     }
 
     let mut min_height = TITLE_BLOCK_HEIGHT + ROOM_MIN_HEIGHT + MSG_INPUT_BLOCK_HEIGHT;
-    if app.state.show_help {
+    if app.state.show_logs {
         min_height += LOG_BLOCK_HEIGHT
     };
     if rect.height < min_height {
-        error!("Require height >= {}, (got {})", min_height, rect.height);
+        warn!(
+            target: TARGET,
+            "Require height >= {}, (got {})", min_height, rect.height
+        );
     }
 }
 

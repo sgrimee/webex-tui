@@ -5,6 +5,7 @@ use eyre::Result;
 use log::{debug, error, info};
 use webex::{GlobalId, GlobalIdType, MessageOut, Room};
 
+#[derive(Debug)]
 pub enum AppCmdEvent {
     Initialize(), // Launch to initiate login to Webex
     SendMessage(MessageOut),
