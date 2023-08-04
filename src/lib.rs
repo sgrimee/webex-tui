@@ -23,8 +23,6 @@ pub mod app;
 pub mod inputs;
 pub mod teams;
 
-const TARGET: &str = module_path!();
-
 pub async fn start_ui(app: &Arc<tokio::sync::Mutex<App<'_>>>) -> Result<()> {
     // Configure Crossterm backend for tui
     enable_raw_mode()?;
@@ -51,7 +49,7 @@ pub async fn start_ui(app: &Arc<tokio::sync::Mutex<App<'_>>>) -> Result<()> {
         // Handle terminal inputs
         let result = match events.next().await {
             InputEvent::Input(key_event) if app.is_editing() => {
-                trace!(target: TARGET, "Keyevent: {:#?}", key_event);
+                trace!("Keyevent: {:#?}", key_event);
                 app.process_editing_key(key_event).await
             }
             InputEvent::Input(key_event) => app.do_action(Key::from(key_event)).await,

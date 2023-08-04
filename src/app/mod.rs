@@ -13,8 +13,6 @@ use log::*;
 use tui_textarea::TextArea;
 use webex::{Person, Room};
 
-const TARGET: &str = module_path!();
-
 #[derive(Debug, PartialEq, Eq)]
 pub enum AppReturn {
     Exit,
@@ -45,7 +43,7 @@ impl App<'_> {
     /// Handle a user action (non-editing mode)
     pub async fn do_action(&mut self, key: crate::inputs::key::Key) -> AppReturn {
         if let Some(action) = self.state.actions.find(key) {
-            debug!(target: TARGET, "Run action [{:?}]", action);
+            debug!("Run action [{:?}]", action);
             match action {
                 Action::Quit => AppReturn::Exit,
                 Action::EditMessage => {
@@ -88,9 +86,8 @@ impl App<'_> {
                 }
             }
         } else {
-            warn!(target: TARGET, "No action accociated to {}", key);
+            warn!("No action accociated to {}", key);
             debug!(
-                target: TARGET,
                 "If the key actually corresponds to an action, it needs to be added to the list
             of active actions too."
             );
@@ -117,7 +114,7 @@ impl App<'_> {
 
     pub async fn send_message_buffer(&mut self) {
         if self.state.msg_input_textarea.is_empty() {
-            warn!(target: TARGET, "An empty message cannot be sent.");
+            warn!("An empty message cannot be sent.");
             return;
         };
         match &self.state.selected_room_id() {
@@ -128,12 +125,12 @@ impl App<'_> {
                     text: Some(lines.join("\n")),
                     ..Default::default()
                 };
-                debug!(target: TARGET, "Sending message: {:#?}", msg_to_send);
+                debug!("Sending message: {:#?}", msg_to_send);
                 self.dispatch_to_teams(AppCmdEvent::SendMessage(msg_to_send))
                     .await;
                 self.state.msg_input_textarea = TextArea::default();
             }
-            None => warn!(target: TARGET, "Cannot send message, no room selected."),
+            None => warn!("Cannot send message, no room selected."),
         }
     }
 
@@ -148,7 +145,7 @@ impl App<'_> {
         self.state.is_loading = true;
         if let Err(e) = self.app_to_teams_tx.send(action).await {
             self.state.is_loading = false;
-            error!(target: TARGET, "Error from dispatch {}", e);
+            error!("Error from dispatch {}", e);
         };
     }
 
@@ -160,7 +157,7 @@ impl App<'_> {
         self.state.is_loading
     }
 
-    pub fn initialized(&mut self) {
+    pub async fn initialized(&mut self) {
         // Update contextual actions
         self.state.actions = vec![
             Action::Quit,
@@ -172,6 +169,9 @@ impl App<'_> {
             Action::ArrowDown,
         ]
         .into();
+
+        // Some more heavy tasks that we put after init to ensure quick startup
+        self.dispatch_to_teams(AppCmdEvent::GetAllRooms()).await;
     }
 
     // indicate the completion of a pending teams task
@@ -180,7 +180,7 @@ impl App<'_> {
     }
 
     pub fn message_sent(&mut self) {
-        trace!(target: TARGET, "Message was sent.");
+        trace!("Message was sent.");
     }
 
     pub async fn message_received(&mut self, msg: webex::Message) {

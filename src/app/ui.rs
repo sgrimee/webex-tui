@@ -28,8 +28,6 @@ use tui_logger::TuiLoggerWidget;
 use tui_textarea::TextArea;
 use webex::Room;
 
-const TARGET: &str = module_path!();
-
 const TITLE_BLOCK_HEIGHT: u16 = 3;
 const ROOM_MIN_HEIGHT: u16 = 8;
 const MSG_INPUT_BLOCK_HEIGHT: u16 = 5;
@@ -119,10 +117,7 @@ fn check_size(rect: &Rect, app: &App) {
         min_width += HELP_WIDTH
     };
     if rect.width < min_width {
-        warn!(
-            target: TARGET,
-            "Require width >= {}, (got {})", min_width, rect.width
-        );
+        warn!("Require width >= {}, (got {})", min_width, rect.width);
     }
 
     let mut min_height = TITLE_BLOCK_HEIGHT + ROOM_MIN_HEIGHT + MSG_INPUT_BLOCK_HEIGHT;
@@ -130,10 +125,7 @@ fn check_size(rect: &Rect, app: &App) {
         min_height += LOG_BLOCK_HEIGHT
     };
     if rect.height < min_height {
-        warn!(
-            target: TARGET,
-            "Require height >= {}, (got {})", min_height, rect.height
-        );
+        warn!("Require height >= {}, (got {})", min_height, rect.height);
     }
 }
 

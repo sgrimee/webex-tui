@@ -13,8 +13,6 @@ use open;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
 
-const TARGET: &str = "teams";
-
 // This appears to have neem inspired from https://docs.rs/oauth2/4.4.1/oauth2/index.html
 pub async fn get_integration_token(
     credentials: ClientCredentials,
@@ -37,7 +35,7 @@ pub async fn get_integration_token(
         .add_scope(Scope::new("spark:all".to_string()))
         .url();
 
-    info!(target: TARGET, "Opening browser to: {}", auth_url);
+    info!("Opening browser to: {}", auth_url);
     open::that(auth_url.as_str()).expect("opening browser for authentication");
 
     let listener = TcpListener::bind("127.0.0.1:8080").unwrap();

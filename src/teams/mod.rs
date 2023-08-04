@@ -11,8 +11,6 @@ use std::sync::Arc;
 use tokio::sync::mpsc::Receiver;
 use webex::{GlobalId, GlobalIdType, Person, Webex, WebexEventStream};
 
-const TARGET: &str = module_path!();
-
 #[derive(Clone)]
 pub struct ClientCredentials {
     pub client_id: String,
@@ -42,7 +40,7 @@ impl<'a> Teams<'a> {
             ))
             .await
         {
-            debug!(target: TARGET, "We are: {}", me.display_name);
+            debug!("We are: {}", me.display_name);
             let mut app = app.lock().await;
             app.set_me_user(me);
         }
@@ -68,10 +66,10 @@ impl<'a> Teams<'a> {
                         .expect("sending event from event stream thread to teams thread"),
                     Err(e) => {
                         if !event_stream.is_open {
-                            warn!(target: TARGET, "Even stream closed, reopening.");
+                            warn!("Even stream closed, reopening.");
                             continue;
                         }
-                        error!(target: TARGET, "Error received from event stream: {}", e);
+                        error!("Error received from event stream: {}", e);
                         continue;
                     }
                 }
@@ -81,11 +79,11 @@ impl<'a> Teams<'a> {
         loop {
             tokio::select! {
                 Some(webex_event) = wbx_stream_to_teams_rx.recv() => {
-                trace!(target:TARGET,  "Got webex event: {:#?}", webex_event );
+                trace!("Got webex event: {:#?}", webex_event );
                 self.handle_webex_event(webex_event).await;
                 },
                 Some(app_event) = app_to_teams_rx.recv() => {
-                    trace!(target:TARGET,  "Got app event: {:#?}", app_event);
+                    trace!("Got app event: {:#?}", app_event);
                     self.handle_app_event(app_event).await;
                 }
             }
@@ -107,8 +105,8 @@ async fn initialize_event_stream(client: &Webex) -> WebexEventStream {
             }
             Err(e) => {
                 error!(
-                    target: TARGET,
-                    "Failed to start event stream, trying again in 1 minute: {}", e
+                    "Failed to start event stream, trying again in 1 minute: {}",
+                    e
                 );
                 tokio::time::sleep(std::time::Duration::from_secs(60)).await;
             }

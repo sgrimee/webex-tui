@@ -18,8 +18,19 @@ use webex_tui::teams::Teams;
 #[tokio::main]
 async fn main() -> Result<()> {
     // Configure logger
-    tui_logger::init_logger(LevelFilter::Debug).unwrap();
-    tui_logger::set_default_level(log::LevelFilter::Info);
+    tui_logger::init_logger(LevelFilter::Trace).unwrap();
+    tui_logger::set_default_level(LevelFilter::Debug);
+    for target in [
+        "reqwest::connect",
+        "rustls::client::hs",
+        "rustls::common_state",
+        "rustls::common_state",
+        "tungstenite::handshake::client",
+        "webex",
+    ] {
+        tui_logger::set_level_for_target(target, LevelFilter::Info);
+    }
+
     const LOG_FILE: &str = concat!(env!("CARGO_PKG_NAME"), ".log");
     let _ = tui_logger::set_log_file(LOG_FILE);
 

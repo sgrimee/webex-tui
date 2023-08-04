@@ -4,8 +4,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-const TARGET: &str = module_path!();
-
 /// A small event handler that wrap crossterm input and tick event. Each event
 /// type is handled in its own thread and returned to a common `Receiver`
 pub struct Events {
@@ -32,18 +30,12 @@ impl Events {
                         crossterm::event::read().unwrap()
                     {
                         if let Err(err) = event_tx.send(InputEvent::Input(key_event)).await {
-                            error!(
-                                target: TARGET,
-                                "Could not send terminal event to main thread!, {}", err
-                            );
+                            error!("Could not send terminal event to main thread!, {}", err);
                         }
                     }
                 }
                 if let Err(err) = event_tx.send(InputEvent::Tick).await {
-                    error!(
-                        target: TARGET,
-                        "Could not send tick to main thread!, {}", err
-                    );
+                    error!("Could not send tick to main thread!, {}", err);
                 }
                 if event_stop_capture.load(Ordering::Relaxed) {
                     break;
