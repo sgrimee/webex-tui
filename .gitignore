@@ -13,3 +13,4 @@ secrets*
 data/
 *.log
 out.txt
+.direnv
