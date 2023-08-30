@@ -27,6 +27,7 @@ async fn main() -> Result<()> {
         "rustls::common_state",
         "tungstenite::handshake::client",
         "webex",
+        "webex::types",
     ] {
         tui_logger::set_level_for_target(target, LevelFilter::Info);
     }
