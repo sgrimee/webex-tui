@@ -37,7 +37,9 @@ async fn main() -> Result<()> {
 
     // get credentials from config or user
     let mut client_config = ClientConfig::new();
-    client_config.load_config()?;
+    client_config
+        .load_config()
+        .expect("Loading credentials from config file");
     let credentials = ClientCredentials {
         client_id: client_config.client_id,
         client_secret: client_config.client_secret,
