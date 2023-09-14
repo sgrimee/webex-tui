@@ -28,7 +28,7 @@
           devShells.default = mkShell {
             nativeBuildInputs = [pkg-config];
             buildInputs =
-              [openssl rust-bin.stable.latest.default]
+              [openssl rust-bin.stable.latest.default bacon]
               ++ (
                 lib.lists.optionals stdenv.isDarwin [
                   darwin.apple_sdk.frameworks.Security
