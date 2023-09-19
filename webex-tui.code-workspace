@@ -4,10 +4,10 @@
       "path": "."
     },
     {
-      "path": "../webex-rust"
+      "path": "../vendor/webex-rust"
     },
     {
-      "path": "../tui-textarea"
+      "path": "../vendor/tui-textarea"
     }
   ],
   "settings": {

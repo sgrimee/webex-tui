@@ -15,9 +15,7 @@ use webex_tui::teams::app_handler::AppCmdEvent;
 use webex_tui::teams::ClientCredentials;
 use webex_tui::teams::Teams;
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    // Configure logger
+fn setup_logger() {
     tui_logger::init_logger(LevelFilter::Trace).unwrap();
     tui_logger::set_default_level(LevelFilter::Debug);
     for target in [
@@ -34,17 +32,19 @@ async fn main() -> Result<()> {
 
     const LOG_FILE: &str = concat!(env!("CARGO_PKG_NAME"), ".log");
     let _ = tui_logger::set_log_file(LOG_FILE);
+}
 
-    // get credentials from config or user
+fn get_credentials() -> Result<ClientCredentials> {
     let mut client_config = ClientConfig::new();
     client_config
-        .load_config()
-        .expect("Loading credentials from config file");
-    let credentials = ClientCredentials {
+        .load_config()?;
+    Ok(ClientCredentials {
         client_id: client_config.client_id,
         client_secret: client_config.client_secret,
-    };
+    })
+}
 
+fn set_panic_hook() {
     // Ensure the process terminates if one of the threads panics.
     let orig_hook = panic::take_hook();
     panic::set_hook(Box::new(move |panic_info| {
@@ -52,6 +52,14 @@ async fn main() -> Result<()> {
         orig_hook(panic_info);
         process::exit(1);
     }));
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    setup_logger();
+    let credentials = get_credentials()?;
+    set_panic_hook();
+
 
     // Channel to send commands to the teams thread
     let (app_to_teams_tx, app_to_teams_rx) = tokio::sync::mpsc::channel::<AppCmdEvent>(100);
