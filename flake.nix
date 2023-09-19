@@ -48,7 +48,7 @@
 
         buildInputs =
           [
-            # Add additional build inputs here
+            pkgs.bacon
           ]
           ++ lib.optionals pkgs.stdenv.isDarwin [
             # Additional darwin specific inputs can be set here
