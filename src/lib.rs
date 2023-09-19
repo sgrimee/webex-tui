@@ -1,16 +1,15 @@
-use std::io::stdout;
 use std::sync::Arc;
 use std::time::Duration;
 
 use crate::app::ui;
 use crate::teams::app_handler::AppCmdEvent;
 use app::{App, AppReturn};
+use color_eyre::eyre::Result;
 use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
 use crossterm::execute;
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
-use eyre::Result;
 use inputs::events::Events;
 use inputs::key::Key;
 use inputs::InputEvent;
@@ -23,14 +22,20 @@ pub mod app;
 pub mod inputs;
 pub mod teams;
 
-pub async fn start_ui(app: &Arc<tokio::sync::Mutex<App<'_>>>) -> Result<()> {
-    // Configure Crossterm backend for tui
+fn startup() -> Result<()> {
     enable_raw_mode()?;
-    let mut stdout = stdout();
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
+    execute!(std::io::stderr(), EnterAlternateScreen, EnableMouseCapture)?;
+    Ok(())
+}
 
+fn shutdown() -> Result<()> {
+    execute!(std::io::stderr(), LeaveAlternateScreen, DisableMouseCapture)?;
+    disable_raw_mode()?;
+    Ok(())
+}
+
+async fn run(app: &Arc<tokio::sync::Mutex<App<'_>>>) -> Result<()> {
+    let mut t = Terminal::new(CrosstermBackend::new(std::io::stderr()))?;
     // User event handler
     let tick_rate = Duration::from_millis(200);
     let mut events = Events::new(tick_rate);
@@ -44,7 +49,7 @@ pub async fn start_ui(app: &Arc<tokio::sync::Mutex<App<'_>>>) -> Result<()> {
         let mut app = app.lock().await;
 
         // Render
-        terminal.draw(|rect| ui::draw(rect, &app))?;
+        t.draw(|rect| ui::draw(rect, &app))?;
 
         // Handle terminal inputs
         let result = match events.next().await {
@@ -60,15 +65,19 @@ pub async fn start_ui(app: &Arc<tokio::sync::Mutex<App<'_>>>) -> Result<()> {
             break;
         }
     }
+    Ok(())
+}
 
-    // restore terminal
-    disable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-        DisableMouseCapture
-    )?;
-    terminal.show_cursor()?;
+pub async fn start_ui(app: &Arc<tokio::sync::Mutex<App<'_>>>) -> Result<()> {
+    // setup terminal
+    startup()?;
+
+    let status = run(app).await;
+
+    // teardown terminal before unwrapping Result of app run
+    shutdown()?;
+
+    status?;
 
     Ok(())
 }

@@ -13,9 +13,9 @@ license = "MIT OR Apache-2.0"
 
 [dependencies]
 clap = "4.3.19"
+color-eyre = "0.6.2"
 crossterm = "0.27"
 dirs = "5.0.1"
-eyre = "0.6.8"
 log = "0.4.19"
 oauth2 = "4.4.1"
 open = "5.0.0"

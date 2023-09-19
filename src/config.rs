@@ -1,7 +1,7 @@
 // credits: iRigellute/spotify-tui
 
 use super::banner::BANNER;
-use eyre::{eyre, Error, Result};
+use color_eyre::eyre::{eyre, Error, Result};
 use serde::{Deserialize, Serialize};
 use std::{
     fs,

@@ -1,7 +1,7 @@
 mod banner;
 mod config;
 
-use eyre::Result;
+use color_eyre::eyre::Result;
 use log::*;
 use std::env;
 use std::panic;
@@ -36,8 +36,7 @@ fn setup_logger() {
 
 fn get_credentials() -> Result<ClientCredentials> {
     let mut client_config = ClientConfig::new();
-    client_config
-        .load_config()?;
+    client_config.load_config()?;
     Ok(ClientCredentials {
         client_id: client_config.client_id,
         client_secret: client_config.client_secret,
@@ -56,10 +55,11 @@ fn set_panic_hook() {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    color_eyre::install()?;
+
     setup_logger();
     let credentials = get_credentials()?;
     set_panic_hook();
-
 
     // Channel to send commands to the teams thread
     let (app_to_teams_tx, app_to_teams_rx) = tokio::sync::mpsc::channel::<AppCmdEvent>(100);

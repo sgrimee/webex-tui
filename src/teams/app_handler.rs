@@ -1,7 +1,7 @@
 use crate::app::teams_store::RoomId;
 
 use super::Teams;
-use eyre::Result;
+use color_eyre::eyre::Result;
 use log::{debug, error, info};
 use webex::{GlobalId, GlobalIdType, MessageOut, Room};
 
