@@ -19,17 +19,12 @@ eyre = "0.6.8"
 log = "0.4.19"
 oauth2 = "4.4.1"
 open = "5.0.0"
-ratatui = "0.22.0"
+ratatui = "0.23.0"
+ratatui-textarea = { version = "0.3.2", features = ["ratatui"] }
 serde = { version = "1.0.180", features = ["derive"] }
 serde_yaml = "0.9.25"
 tokio = { version = "1.29.1", features = ["rt", "macros"] }
-tui-logger = { version = "0.9.5", default-features = false, features = [
-    "ratatui-support",
-] }
-# stay at ratatui 0.22, 0.23 is breaking
-tui-textarea = { git = "https://github.com/sgrimee/tui-textarea.git", rev = "5acc089", features = [
-    "ratatui-crossterm",
-], default-features = false } # until https://github.com/rhysd/tui-textarea/issues/18
+tui-logger = { version = "0.9.5", default-features = false, features = ["ratatui-support"] }
 webex = "0.8.0"
 # webex = { version = "0.7.0", git = "https://github.com/sgrimee/webex-rust.git" }
 # webex = { path = "../vendor/webex-rust" }

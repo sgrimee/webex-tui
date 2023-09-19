@@ -10,7 +10,7 @@ use crate::inputs::patch::input_from_key_event;
 use crate::teams::app_handler::AppCmdEvent;
 use crossterm::event::KeyEvent;
 use log::*;
-use tui_textarea::TextArea;
+use ratatui_textarea::TextArea;
 use webex::{Person, Room};
 
 #[derive(Debug, PartialEq, Eq)]

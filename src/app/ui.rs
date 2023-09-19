@@ -22,10 +22,10 @@ use ratatui::widgets::ListState;
 use ratatui::widgets::TableState;
 use ratatui::widgets::Wrap;
 use ratatui::widgets::{Borders, Cell, Paragraph, Row, Table};
+#[allow(deprecated)]
+use ratatui_textarea::TextArea;
 use std::time::Duration;
 use tui_logger::TuiLoggerWidget;
-#[allow(deprecated)]
-use tui_textarea::TextArea;
 use webex::Room;
 
 const TITLE_BLOCK_HEIGHT: u16 = 3;

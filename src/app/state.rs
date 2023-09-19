@@ -1,5 +1,5 @@
 use ratatui::widgets::TableState;
-use tui_textarea::TextArea;
+use ratatui_textarea::TextArea;
 use webex::Room;
 
 use super::{

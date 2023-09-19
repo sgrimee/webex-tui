@@ -1,5 +1,5 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use tui_textarea::{Input, Key};
+use ratatui_textarea::{Input, Key};
 
 pub fn input_from_key_event(key: KeyEvent) -> Input {
     // Convert [`crossterm::event::KeyEvent`] to [`Input`].
