@@ -2,7 +2,6 @@
 
 pub mod events;
 pub mod key;
-pub mod patch;
 
 pub enum InputEvent {
     /// An input event occurred.

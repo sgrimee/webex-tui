@@ -6,11 +6,10 @@ pub mod ui;
 use self::{actions::Actions, state::AppState};
 use crate::app::actions::Action;
 use crate::inputs::key::Key;
-use crate::inputs::patch::input_from_key_event;
 use crate::teams::app_handler::AppCmdEvent;
 use crossterm::event::KeyEvent;
 use log::*;
-use ratatui_textarea::TextArea;
+use ratatui_textarea::{Input, TextArea};
 use webex::{Person, Room};
 
 #[derive(Debug, PartialEq, Eq)]
@@ -102,12 +101,7 @@ impl App<'_> {
             Key::Esc => self.state.editing_mode = false,
             Key::AltEnter => self.state.msg_input_textarea.insert_newline(),
             Key::Enter => self.send_message_buffer().await,
-            _ => {
-                _ = self
-                    .state
-                    .msg_input_textarea
-                    .input(input_from_key_event(key_event))
-            }
+            _ => _ = self.state.msg_input_textarea.input(Input::from(key_event)),
         }
         AppReturn::Continue
     }
