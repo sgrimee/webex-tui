@@ -9,7 +9,6 @@ use oauth2::{
     AccessToken, AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, RedirectUrl, Scope,
     TokenResponse, TokenUrl,
 };
-use open;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
 
