@@ -1,7 +1,6 @@
 pub mod actions;
 pub mod state;
 pub mod teams_store;
-pub mod ui;
 
 use self::{actions::Actions, state::AppState};
 use crate::app::actions::Action;
@@ -20,7 +19,7 @@ pub enum AppReturn {
 
 pub struct App<'a> {
     app_to_teams_tx: tokio::sync::mpsc::Sender<AppCmdEvent>,
-    state: AppState<'a>,
+    pub state: AppState<'a>,
 }
 
 impl App<'_> {

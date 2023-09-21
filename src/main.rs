@@ -1,38 +1,27 @@
+// main.rs
+
+mod app;
 mod banner;
 mod config;
+mod inputs;
+mod logger;
+mod teams;
+mod tui;
+mod ui;
+
+use app::{App, AppReturn};
+use config::ClientConfig;
+use inputs::events::Event;
+use inputs::key::Key;
+use logger::setup_logger;
+use teams::app_handler::AppCmdEvent;
+use teams::ClientCredentials;
+use teams::Teams;
+use tui::Tui;
 
 use color_eyre::eyre::Result;
 use log::*;
-use std::env;
-use std::panic;
-use std::process;
 use std::sync::Arc;
-
-use config::ClientConfig;
-use webex_tui::app::App;
-use webex_tui::start_ui;
-use webex_tui::teams::app_handler::AppCmdEvent;
-use webex_tui::teams::ClientCredentials;
-use webex_tui::teams::Teams;
-
-fn setup_logger() {
-    tui_logger::init_logger(LevelFilter::Trace).unwrap();
-    tui_logger::set_default_level(LevelFilter::Debug);
-    for target in [
-        "reqwest::connect",
-        "rustls::client::hs",
-        "rustls::common_state",
-        "rustls::common_state",
-        "tungstenite::handshake::client",
-        "webex",
-        "webex::types",
-    ] {
-        tui_logger::set_level_for_target(target, LevelFilter::Info);
-    }
-
-    const LOG_FILE: &str = concat!(env!("CARGO_PKG_NAME"), ".log");
-    let _ = tui_logger::set_log_file(LOG_FILE);
-}
 
 fn get_credentials() -> Result<ClientCredentials> {
     let mut client_config = ClientConfig::new();
@@ -43,37 +32,54 @@ fn get_credentials() -> Result<ClientCredentials> {
     })
 }
 
-fn set_panic_hook() {
-    // Ensure the process terminates if one of the threads panics.
-    let orig_hook = panic::take_hook();
-    panic::set_hook(Box::new(move |panic_info| {
-        // invoke the default handler and exit the process
-        orig_hook(panic_info);
-        process::exit(1);
-    }));
-}
-
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Setup logging.
     color_eyre::install()?;
-
     setup_logger();
+
+    // Read configuration
     let credentials = get_credentials()?;
-    set_panic_hook();
 
-    // Channel to send commands to the teams thread
+    // Initialize the terminal user interface with events thread
+    let mut tui = Tui::default()?;
+    tui.init()?;
+
+    // Setup App and Teams thread
     let (app_to_teams_tx, app_to_teams_rx) = tokio::sync::mpsc::channel::<AppCmdEvent>(100);
-
-    // The teams thread communicates back to the app main thread by locking app
     let app = Arc::new(tokio::sync::Mutex::new(App::new(app_to_teams_tx.clone())));
     let app_ui = Arc::clone(&app);
-
     tokio::spawn(async move {
         let mut teams = Teams::new(credentials, app).await;
         teams.handle_events(app_to_teams_rx).await;
     });
+    {
+        let mut app = app_ui.lock().await;
+        app.dispatch_to_teams(AppCmdEvent::Initialize()).await;
+    }
 
-    start_ui(&app_ui).await?;
+    loop {
+        let mut app = app_ui.lock().await;
 
+        // Render
+        tui.draw(&app)?;
+
+        // Handle terminal inputs
+        let result = match tui.events.next().await {
+            Event::Input(key_event) if app.is_editing() => {
+                trace!("Keyevent: {:#?}", key_event);
+                app.process_editing_key(key_event).await
+            }
+            Event::Input(key_event) => app.do_action(Key::from(key_event)).await,
+            Event::Tick => app.update_on_tick().await,
+        };
+        if result == AppReturn::Exit {
+            tui.events.close();
+            break;
+        }
+    }
+
+    // Exit the user interface.
+    tui.exit()?;
     Ok(())
 }

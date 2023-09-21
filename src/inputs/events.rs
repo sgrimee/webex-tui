@@ -1,22 +1,31 @@
-use super::InputEvent;
+// events.rs
+
 use log::*;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
+pub enum Event {
+    /// An input event occurred.
+    // Input(Key),
+    Input(crossterm::event::KeyEvent),
+    /// An tick event occurred.
+    Tick,
+}
+
 /// A small event handler that wrap crossterm input and tick event. Each event
 /// type is handled in its own thread and returned to a common `Receiver`
-pub struct Events {
-    rx: tokio::sync::mpsc::Receiver<InputEvent>,
+pub struct EventHandler {
+    rx: tokio::sync::mpsc::Receiver<Event>,
     // Need to be kept around to prevent disposing the sender side.
-    _tx: tokio::sync::mpsc::Sender<InputEvent>,
+    _tx: tokio::sync::mpsc::Sender<Event>,
     // To stop the loop
     stop_capture: Arc<AtomicBool>,
 }
 
-impl Events {
+impl EventHandler {
     /// Constructs an new instance of `Events` with the default config.
-    pub fn new(tick_rate: Duration) -> Events {
+    pub fn new(tick_rate: Duration) -> Self {
         let (tx, rx) = tokio::sync::mpsc::channel(100);
         let stop_capture = Arc::new(AtomicBool::new(false));
 
@@ -29,12 +38,12 @@ impl Events {
                     if let crossterm::event::Event::Key(key_event) =
                         crossterm::event::read().unwrap()
                     {
-                        if let Err(err) = event_tx.send(InputEvent::Input(key_event)).await {
+                        if let Err(err) = event_tx.send(Event::Input(key_event)).await {
                             error!("Could not send terminal event to main thread!, {}", err);
                         }
                     }
                 }
-                if let Err(err) = event_tx.send(InputEvent::Tick).await {
+                if let Err(err) = event_tx.send(Event::Tick).await {
                     error!("Could not send tick to main thread!, {}", err);
                 }
                 if event_stop_capture.load(Ordering::Relaxed) {
@@ -43,7 +52,7 @@ impl Events {
             }
         });
 
-        Events {
+        EventHandler {
             rx,
             _tx: tx,
             stop_capture,
@@ -51,8 +60,8 @@ impl Events {
     }
 
     /// Attempts to read an event.
-    pub async fn next(&mut self) -> InputEvent {
-        self.rx.recv().await.unwrap_or(InputEvent::Tick)
+    pub async fn next(&mut self) -> Event {
+        self.rx.recv().await.unwrap_or(Event::Tick)
     }
 
     /// Close

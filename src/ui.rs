@@ -1,32 +1,24 @@
-#![allow(unused_imports)]
-
-use super::actions;
-use super::actions::Actions;
-use super::state::AppState;
-use super::teams_store::RoomId;
-use super::teams_store::TeamsStore;
+use crate::app::actions::Actions;
+use crate::app::state::AppState;
 use crate::app::App;
+// use crate::app::teams_store::{RoomId, TeamsStore};
+// use webex::Room;
+
+// use ratatui::backend::CrosstermBackend;
+// use ratatui::terminal::Terminal;
+// use ratatui::widgets::List;
+// use ratatui::widgets::ListState;
+// use ratatui::widgets::TableState;
 use log::*;
 use ratatui::backend::Backend;
-use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
-use ratatui::style::Modifier;
-use ratatui::style::{Color, Style};
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::terminal::Frame;
-use ratatui::terminal::Terminal;
-use ratatui::text::Line;
-use ratatui::text::Span;
+use ratatui::text::{Line, Span};
 use ratatui::widgets::block::{Block, BorderType};
-use ratatui::widgets::List;
-use ratatui::widgets::ListState;
-use ratatui::widgets::TableState;
-use ratatui::widgets::Wrap;
-use ratatui::widgets::{Borders, Cell, Paragraph, Row, Table};
-#[allow(deprecated)]
+use ratatui::widgets::{Borders, Cell, Paragraph, Row, Table, Wrap};
 use ratatui_textarea::TextArea;
-use std::time::Duration;
 use tui_logger::TuiLoggerWidget;
-use webex::Room;
 
 const TITLE_BLOCK_HEIGHT: u16 = 3;
 const ROOM_MIN_HEIGHT: u16 = 8;
@@ -37,7 +29,7 @@ const ROOMS_LIST_WIDTH: u16 = 32;
 const ACTIVE_ROOM_MIN_WIDTH: u16 = 32;
 const HELP_WIDTH: u16 = 32;
 
-pub fn draw<B>(rect: &mut Frame<B>, app: &App)
+pub fn render<B>(rect: &mut Frame<B>, app: &App)
 where
     B: Backend,
 {
