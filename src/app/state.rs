@@ -1,3 +1,5 @@
+// app/state.rs
+
 use ratatui::widgets::TableState;
 use ratatui_textarea::TextArea;
 use webex::Room;
@@ -8,13 +10,18 @@ use super::{
 };
 
 pub struct AppState<'a> {
+    // App
     pub actions: Actions,
     pub editing_mode: bool,
     pub is_loading: bool,
-    pub msg_input_textarea: TextArea<'a>,
+
+    // Webex
+    pub teams_store: TeamsStore,
+
+    // IO
     pub show_logs: bool,
     pub show_help: bool,
-    pub teams_store: TeamsStore,
+    pub msg_input_textarea: TextArea<'a>,
     pub room_list_state: TableState,
 }
 

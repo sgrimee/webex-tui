@@ -1,3 +1,5 @@
+// app/mod.rs
+
 pub mod actions;
 pub mod state;
 pub mod teams_store;
@@ -84,7 +86,7 @@ impl App<'_> {
                 }
             }
         } else {
-            warn!("No action accociated to {}", key);
+            warn!("No action associated with {}", key);
             debug!(
                 "If the key actually corresponds to an action, it needs to be added to the list
             of active actions too."

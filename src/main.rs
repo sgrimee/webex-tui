@@ -11,7 +11,7 @@ mod ui;
 
 use app::{App, AppReturn};
 use config::ClientConfig;
-use inputs::events::Event;
+use inputs::handler::Event;
 use inputs::key::Key;
 use logger::setup_logger;
 use teams::app_handler::AppCmdEvent;

@@ -11,7 +11,7 @@ use std::time::Duration;
 use std::{io, panic};
 
 use crate::app::App;
-use crate::inputs::events::EventHandler;
+use crate::inputs::handler::EventHandler;
 use crate::ui::render;
 
 // pub type Frame<'a> = ratatui::Frame<'a, ratatui::backend::CrosstermBackend<std::io::Stderr>>;
