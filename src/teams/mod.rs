@@ -59,18 +59,20 @@ impl<'a> Teams<'a> {
             // This is the webex events stream thread
             loop {
                 let mut event_stream = initialize_event_stream(&client).await;
-                match event_stream.next().await {
-                    Ok(event) => wbx_stream_to_teams_tx
-                        .send(event)
-                        .await
-                        .expect("sending event from event stream thread to teams thread"),
-                    Err(e) => {
-                        if !event_stream.is_open {
-                            warn!("Even stream closed, reopening.");
+                loop {
+                    match event_stream.next().await {
+                        Ok(event) => wbx_stream_to_teams_tx
+                            .send(event)
+                            .await
+                            .expect("sending event from event stream thread to teams thread"),
+                        Err(e) => {
+                            if !event_stream.is_open {
+                                warn!("Even stream closed, reopening.");
+                                continue;
+                            }
+                            error!("Error received from event stream: {}", e);
                             continue;
                         }
-                        error!("Error received from event stream: {}", e);
-                        continue;
                     }
                 }
             }
