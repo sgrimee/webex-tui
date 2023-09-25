@@ -61,6 +61,9 @@ async fn main() -> Result<()> {
     loop {
         let mut app = app_ui.lock().await;
 
+        // Move logs to main buffer so they are written to file even if widget not shown
+        tui_logger::move_events();
+
         // Render
         tui.draw(&app)?;
 
