@@ -68,10 +68,10 @@ impl<'a> Teams<'a> {
                         Err(e) => {
                             if !event_stream.is_open {
                                 warn!("Even stream closed, reopening.");
-                                continue;
+                                break;
                             }
                             error!("Error received from event stream: {}", e);
-                            continue;
+                            break;
                         }
                     }
                 }
