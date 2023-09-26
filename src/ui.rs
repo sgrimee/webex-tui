@@ -142,11 +142,15 @@ fn draw_rooms_list<'a>(app: &App) -> Table<'a> {
         .borders(Borders::ALL)
         .border_type(BorderType::Plain)
         .title("Rooms");
-    let items: Vec<_> = app
-        .state
-        .teams_store
-        .rooms()
-        .map(|room| Row::new(vec![Cell::from(Span::raw(room.title.to_owned()))]))
+    let rooms_to_display = app.state.teams_store.rooms(); // all
+    let items: Vec<_> = rooms_to_display
+        .map(|room| {
+            let mut style = Style::default();
+            if app.state.teams_store.room_has_unread(&room.id) {
+                style = style.fg(Color::LightBlue).add_modifier(Modifier::BOLD);
+            }
+            Row::new(vec![Cell::from(Span::styled(room.title.to_owned(), style))])
+        })
         .collect();
     Table::new(items)
         .block(block)

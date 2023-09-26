@@ -124,6 +124,7 @@ impl App<'_> {
                 self.dispatch_to_teams(AppCmdEvent::SendMessage(msg_to_send))
                     .await;
                 self.state.msg_input_textarea = TextArea::default();
+                self.state.teams_store.mark_read(active_room);
             }
             None => warn!("Cannot send message, no room selected."),
         }

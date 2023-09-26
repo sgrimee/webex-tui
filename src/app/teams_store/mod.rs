@@ -1,5 +1,5 @@
 use log::*;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use webex::{Message, Person, Room};
 
 pub(crate) type RoomId = String;
@@ -10,16 +10,21 @@ pub struct TeamsStore {
     rooms_by_id: HashMap<RoomId, Room>,
     msg_by_room_id: HashMap<RoomId, Vec<Message>>,
     me: Option<Person>,
+    unread_rooms: HashSet<RoomId>,
 }
 
 impl TeamsStore {
     pub fn add_message(&mut self, msg: Message) {
-        let m = msg.clone();
-        if let Some(room_id) = msg.room_id {
-            self.msg_by_room_id
-                .entry(room_id)
-                .and_modify(|messages| messages.push(m.clone()))
-                .or_insert(vec![m]);
+        if let Some(room_id) = msg.room_id.clone() {
+            let sender = msg.person_id.clone();
+            let messages = self
+                .msg_by_room_id
+                .entry(room_id.clone())
+                .or_insert(Vec::new());
+            messages.push(msg);
+            if !self.is_me(&sender) {
+                self.mark_unread(&room_id);
+            }
         } else {
             warn!("Message with no room_id: {:#?}", msg);
         }
@@ -27,6 +32,20 @@ impl TeamsStore {
 
     pub fn update_room(&mut self, room: Room) {
         self.rooms_by_id.insert(room.id.to_owned(), room);
+    }
+
+    pub fn mark_unread(&mut self, id: &RoomId) {
+        trace!("Marking room {} unread", id);
+        self.unread_rooms.insert(id.clone());
+    }
+
+    pub fn mark_read(&mut self, id: &RoomId) {
+        trace!("Marking room {} read", id);
+        self.unread_rooms.remove(id);
+    }
+
+    pub fn room_has_unread(&self, id: &RoomId) -> bool {
+        self.unread_rooms.contains(id)
     }
 
     pub fn rooms(&self) -> impl Iterator<Item = &Room> {
