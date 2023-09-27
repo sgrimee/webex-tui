@@ -16,6 +16,7 @@ pub fn setup_logger() {
         tui_logger::set_level_for_target(target, LevelFilter::Info);
     }
     for target in [
+        "webex_tui::app",
         "webex_tui::app::teams_store",
         "webex_tui::teams",
         "webex_tui::teams::webex_handler",

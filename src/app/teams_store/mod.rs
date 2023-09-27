@@ -1,3 +1,4 @@
+use chrono::{DateTime, Duration, Utc};
 use log::*;
 use std::collections::{HashMap, HashSet};
 use webex::{Message, Person, Room};
@@ -46,6 +47,13 @@ impl TeamsStore {
 
     pub fn room_has_unread(&self, id: &RoomId) -> bool {
         self.unread_rooms.contains(id)
+    }
+
+    pub fn room_has_activity_since(&self, duration: Duration, id: &RoomId) -> bool {
+        let room = self.rooms_by_id.get(id).unwrap();
+        let last_activity = DateTime::parse_from_rfc3339(&room.last_activity).unwrap();
+        let now = Utc::now();
+        last_activity > (now - duration)
     }
 
     pub fn rooms(&self) -> impl Iterator<Item = &Room> {

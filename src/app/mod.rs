@@ -4,11 +4,17 @@ pub mod actions;
 pub mod state;
 pub mod teams_store;
 
-use self::{actions::Actions, state::AppState};
+use self::{
+    actions::Actions,
+    state::{AppState, RoomsListMode},
+};
 use crate::app::actions::Action;
 use crate::inputs::key::Key;
 use crate::teams::app_handler::AppCmdEvent;
+
+use chrono::Duration;
 use crossterm::event::KeyEvent;
+use enum_iterator::next_cycle;
 use log::*;
 use ratatui_textarea::{Input, TextArea};
 use webex::{Person, Room};
@@ -48,6 +54,19 @@ impl App<'_> {
                 Action::Quit => AppReturn::Exit,
                 Action::EditMessage => {
                     self.state.editing_mode = true;
+                    AppReturn::Continue
+                }
+                Action::MarkRead => {
+                    if let Some(id) = self.state.selected_room_id() {
+                        self.state.teams_store.mark_read(&id);
+                    }
+                    AppReturn::Continue
+                }
+                Action::NextRoomsListMode => {
+                    if let Some(new_mode) = next_cycle(&self.state.room_list_mode) {
+                        debug!("Rooms list mode set to {:?}", new_mode);
+                        self.state.room_list_mode = new_mode;
+                    }
                     AppReturn::Continue
                 }
                 Action::SendMessage => {
@@ -153,21 +172,26 @@ impl App<'_> {
         self.state.is_loading
     }
 
-    pub async fn initialized(&mut self) {
-        // Update contextual actions
-        self.state.actions = vec![
-            Action::Quit,
-            Action::EditMessage,
-            Action::SendMessage,
-            Action::ToggleLogs,
-            Action::ToggleHelp,
-            Action::ArrowUp,
-            Action::ArrowDown,
-        ]
-        .into();
+    pub async fn set_state_initialized(&mut self) {
+        self.state.actions = vec![Action::Quit, Action::ToggleHelp, Action::ToggleLogs].into();
 
         // Some more heavy tasks that we put after init to ensure quick startup
         self.dispatch_to_teams(AppCmdEvent::GetAllRooms()).await;
+    }
+
+    pub async fn set_state_rooms_loaded(&mut self) {
+        self.state.actions = vec![
+            Action::ArrowDown,
+            Action::ArrowUp,
+            Action::EditMessage,
+            Action::MarkRead,
+            Action::NextRoomsListMode,
+            Action::Quit,
+            Action::SendMessage,
+            Action::ToggleHelp,
+            Action::ToggleLogs,
+        ]
+        .into();
     }
 
     // indicate the completion of a pending teams task
@@ -193,5 +217,22 @@ impl App<'_> {
 
     pub fn show_log_window(&self) -> bool {
         self.state.show_logs
+    }
+
+    pub fn rooms_for_list_mode(&self, mode: &RoomsListMode) -> Vec<&Room> {
+        let rooms = self.state.teams_store.rooms();
+        match mode {
+            RoomsListMode::All => (rooms).collect(),
+            RoomsListMode::Recent => rooms
+                .filter(|&room| {
+                    self.state
+                        .teams_store
+                        .room_has_activity_since(Duration::hours(2), &room.id)
+                })
+                .collect(),
+            RoomsListMode::Unread => rooms
+                .filter(|&room| self.state.teams_store.room_has_unread(&room.id))
+                .collect(),
+        }
     }
 }

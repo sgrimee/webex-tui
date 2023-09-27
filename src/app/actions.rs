@@ -1,45 +1,36 @@
+use enum_iterator::{all, Sequence};
 use std::collections::HashMap;
 use std::fmt::{self, Display};
-use std::slice::Iter;
 
 use crate::inputs::key::Key;
 
 /// We define all available user actions
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Sequence)]
 pub enum Action {
-    Quit,
-    EditMessage,
-    SendMessage,
-    ToggleLogs,
-    ToggleHelp,
     ArrowDown,
     ArrowUp,
+    EditMessage,
+    MarkRead,
+    NextRoomsListMode,
+    Quit,
+    SendMessage,
+    ToggleHelp,
+    ToggleLogs,
 }
 
 impl Action {
-    pub fn iterator() -> Iter<'static, Action> {
-        static ACTIONS: [Action; 7] = [
-            Action::Quit,
-            Action::EditMessage,
-            Action::SendMessage,
-            Action::ToggleLogs,
-            Action::ToggleHelp,
-            Action::ArrowDown,
-            Action::ArrowUp,
-        ];
-        ACTIONS.iter()
-    }
-
     /// List of key associated to action
     pub fn keys(&self) -> &[Key] {
         match self {
-            Action::Quit => &[Key::Ctrl('c'), Key::Char('q')],
-            Action::EditMessage => &[Key::Enter],
-            Action::SendMessage => &[],
-            Action::ToggleLogs => &[Key::Char('l')],
-            Action::ToggleHelp => &[Key::Char('h')],
             Action::ArrowDown => &[Key::Down],
             Action::ArrowUp => &[Key::Up],
+            Action::EditMessage => &[Key::Enter],
+            Action::MarkRead => &[Key::Char('r')],
+            Action::NextRoomsListMode => &[Key::Tab],
+            Action::Quit => &[Key::Ctrl('c'), Key::Char('q')],
+            Action::SendMessage => &[],
+            Action::ToggleHelp => &[Key::Char('h')],
+            Action::ToggleLogs => &[Key::Char('l')],
         }
     }
 }
@@ -48,13 +39,15 @@ impl Action {
 impl Display for Action {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let str = match self {
-            Action::Quit => "Quit",
-            Action::EditMessage => "Edit message",
-            Action::SendMessage => "Send message",
-            Action::ToggleLogs => "Toggle logs",
-            Action::ToggleHelp => "Toggle help",
             Action::ArrowDown => "Next room",
             Action::ArrowUp => "Previous room",
+            Action::EditMessage => "Edit message",
+            Action::MarkRead => "Mark as read",
+            Action::NextRoomsListMode => "Next list mode",
+            Action::Quit => "Quit",
+            Action::SendMessage => "Send message",
+            Action::ToggleHelp => "Toggle help",
+            Action::ToggleLogs => "Toggle logs",
         };
         write!(f, "{}", str)
     }
@@ -65,8 +58,8 @@ pub struct Actions(Vec<Action>);
 
 impl Actions {
     /// Given a key, find the corresponding action
-    pub fn find(&self, key: Key) -> Option<&Action> {
-        Action::iterator()
+    pub fn find(&self, key: Key) -> Option<Action> {
+        all::<Action>()
             .filter(|action| self.0.contains(action))
             .find(|action| action.keys().contains(&key))
     }
@@ -124,7 +117,7 @@ mod tests {
     fn should_find_action_by_key() {
         let actions: Actions = vec![Action::Quit, Action::SendMessage].into();
         let result = actions.find(Key::Char('q'));
-        assert_eq!(result, Some(&Action::Quit));
+        assert_eq!(result, Some(Action::Quit));
     }
 
     #[test]

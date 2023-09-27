@@ -142,8 +142,9 @@ fn draw_rooms_list<'a>(app: &App) -> Table<'a> {
         .borders(Borders::ALL)
         .border_type(BorderType::Plain)
         .title("Rooms");
-    let rooms_to_display = app.state.teams_store.rooms(); // all
+    let rooms_to_display = app.rooms_for_list_mode(&app.state.room_list_mode);
     let items: Vec<_> = rooms_to_display
+        .iter()
         .map(|room| {
             let mut style = Style::default();
             if app.state.teams_store.room_has_unread(&room.id) {

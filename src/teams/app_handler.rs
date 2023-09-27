@@ -34,7 +34,7 @@ impl Teams<'_> {
     async fn do_initialize(&mut self) -> Result<()> {
         info!("🚀 Initializing to Webex");
         let mut app = self.app.lock().await;
-        app.initialized().await;
+        app.set_state_initialized().await;
         info!("👍 Webex initialization successful");
         Ok(())
     }
@@ -66,6 +66,7 @@ impl Teams<'_> {
         for room in rooms.unwrap_or_default() {
             app.room_updated(room)
         }
+        app.set_state_rooms_loaded().await;
         Ok(())
     }
 }
