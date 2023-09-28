@@ -1,13 +1,11 @@
 // app/mod.rs
 
 pub mod actions;
+pub mod rooms_list;
 pub mod state;
 pub mod teams_store;
 
-use self::{
-    actions::Actions,
-    state::{AppState, RoomsListMode},
-};
+use self::{actions::Actions, rooms_list::RoomsListMode, state::AppState};
 use crate::app::actions::Action;
 use crate::inputs::key::Key;
 use crate::teams::app_handler::AppCmdEvent;
@@ -246,5 +244,17 @@ impl App<'_> {
 
     pub fn number_of_displayed_rooms(&self) -> usize {
         self.rooms_for_list_mode(&self.state.room_list_mode).len()
+    }
+
+    pub fn selected_room_id(&self) -> Option<RoomId> {
+        match self.room_list_state.selected() {
+            Some(selected) => self
+                .teams_store
+                .rooms()
+                .collect::<Vec<&Room>>()
+                .get(selected)
+                .map(|room| room.id.to_owned()),
+            None => None,
+        }
     }
 }

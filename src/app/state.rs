@@ -1,26 +1,12 @@
 // app/state.rs
 
-use enum_iterator::Sequence;
-use ratatui::widgets::TableState;
 use ratatui_textarea::TextArea;
-
-use webex::Room;
 
 use super::{
     actions::{Action, Actions},
-    teams_store::{RoomId, TeamsStore},
+    rooms_list::RoomsList,
+    teams_store::TeamsStore,
 };
-
-// #[allow(dead_code)]
-#[derive(Debug, PartialEq, Sequence)]
-pub enum RoomsListMode {
-    All,
-    // Direct,
-    // Public,
-    Recent,
-    // Spaces,
-    Unread,
-}
 
 pub struct AppState<'a> {
     // App
@@ -35,15 +21,11 @@ pub struct AppState<'a> {
     pub show_logs: bool,
     pub show_help: bool,
     pub msg_input_textarea: TextArea<'a>,
-    pub room_list_state: TableState,
-    pub room_list_mode: RoomsListMode,
+    pub rooms_list: RoomsList,
 }
 
 impl Default for AppState<'_> {
     fn default() -> Self {
-        let mut room_list_state = TableState::default();
-        room_list_state.select(Some(0));
-        let room_list_mode = RoomsListMode::All;
         AppState {
             actions: vec![Action::Quit, Action::ToggleHelp, Action::ToggleLogs].into(),
             editing_mode: false,
@@ -52,22 +34,7 @@ impl Default for AppState<'_> {
             show_logs: false,
             show_help: true,
             teams_store: TeamsStore::default(),
-            room_list_state,
-            room_list_mode,
-        }
-    }
-}
-
-impl AppState<'_> {
-    pub fn selected_room_id(&self) -> Option<RoomId> {
-        match self.room_list_state.selected() {
-            Some(selected) => self
-                .teams_store
-                .rooms()
-                .collect::<Vec<&Room>>()
-                .get(selected)
-                .map(|room| room.id.to_owned()),
-            None => None,
+            rooms_list: RoomsList::default(),
         }
     }
 }
