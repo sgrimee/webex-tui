@@ -19,6 +19,8 @@ pub fn setup_logger() {
         "webex_tui::app",
         "webex_tui::app::teams_store",
         "webex_tui::teams",
+        "webex_tui::teams::app_handler",
+        "webex_tui::teams:auth",
         "webex_tui::teams::webex_handler",
     ] {
         tui_logger::set_level_for_target(target, LevelFilter::Trace);

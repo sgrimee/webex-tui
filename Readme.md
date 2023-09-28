@@ -1,15 +1,17 @@
 [webex-tui](https://github.com/sgrimee/webex-tui) is an unofficial [Webex](https://www.webex.com/) chat client for the terminal.
 
 ## Features
-- View a list of rooms that have received a message since launch (for now...)
+- View a list of rooms
+  - from all user rooms (not all rooms are shown at this time)
+  - that have received a message since launch
+  - that have been updated since some Duration
 - Select a room and send messages to the room
 
 ## Missing features
 
 This is early work in progress. The following will be added:
-- View a list of all of the user's rooms
 - Handle message edits, both incoming and outgoing
-- Handle conversations within a room
+- Handle nested conversations within a room
 - Search for rooms/users
 - Send messages to a new room/user
 
