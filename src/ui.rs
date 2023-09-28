@@ -141,7 +141,7 @@ fn draw_rooms_list<'a>(app: &App) -> Table<'a> {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Plain)
-        .title("Rooms");
+        .title(format!("{:?} rooms", app.state.room_list_mode));
     let rooms_to_display = app.rooms_for_list_mode(&app.state.room_list_mode);
     let items: Vec<_> = rooms_to_display
         .iter()

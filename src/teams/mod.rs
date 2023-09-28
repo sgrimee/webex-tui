@@ -4,12 +4,17 @@ pub mod app_handler;
 mod auth;
 mod client;
 mod webex_handler;
+
 use self::{app_handler::AppCmdEvent, client::get_webex_client};
+use crate::app::teams_store::RoomId;
 use crate::app::App;
+
+// use color_eyre::eyre::Result;
 use log::*;
 use std::sync::Arc;
 use tokio::sync::mpsc::Receiver;
-use webex::{GlobalId, GlobalIdType, Person, Webex, WebexEventStream};
+
+use webex::{GlobalId, GlobalIdType, Person, Room, Webex, WebexEventStream};
 
 #[derive(Clone)]
 pub struct ClientCredentials {
@@ -89,6 +94,23 @@ impl<'a> Teams<'a> {
                     self.handle_app_event(app_event).await;
                 }
             }
+        }
+    }
+
+    pub async fn refresh_room_roomid(&mut self, id: &RoomId) {
+        debug!("Getting room with local id: {}", id);
+        let global_id = GlobalId::new(GlobalIdType::Room, id.to_owned()).unwrap();
+        self.refresh_room_globalid(global_id).await
+    }
+
+    pub async fn refresh_room_globalid(&mut self, global_id: GlobalId) {
+        debug!("Getting room with global id: {:?}", global_id);
+        match self.client.get::<Room>(&global_id).await {
+            Ok(room) => {
+                let mut app = self.app.lock().await;
+                app.room_updated(room);
+            }
+            Err(error) => error!("Error retrieving room: {}", error),
         }
     }
 }

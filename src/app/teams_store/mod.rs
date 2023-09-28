@@ -60,10 +60,6 @@ impl TeamsStore {
         self.rooms_by_id.values()
     }
 
-    pub fn number_of_rooms(&self) -> usize {
-        self.rooms_by_id.len()
-    }
-
     pub fn messages_in_room(&self, id: &RoomId) -> Vec<Message> {
         let empty_vec: Vec<Message> = vec![];
         self.msg_by_room_id.get(id).unwrap_or(&empty_vec).to_vec()

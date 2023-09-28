@@ -60,14 +60,14 @@ impl Default for AppState<'_> {
 
 impl AppState<'_> {
     pub fn selected_room_id(&self) -> Option<RoomId> {
-        self.teams_store
-            .rooms()
-            .collect::<Vec<&Room>>()
-            .get(
-                self.room_list_state
-                    .selected()
-                    .expect("there is always a selected room"),
-            )
-            .map(|room| room.id.to_owned())
+        match self.room_list_state.selected() {
+            Some(selected) => self
+                .teams_store
+                .rooms()
+                .collect::<Vec<&Room>>()
+                .get(selected)
+                .map(|room| room.id.to_owned()),
+            None => None,
+        }
     }
 }

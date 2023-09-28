@@ -66,6 +66,12 @@ impl App<'_> {
                     if let Some(new_mode) = next_cycle(&self.state.room_list_mode) {
                         debug!("Rooms list mode set to {:?}", new_mode);
                         self.state.room_list_mode = new_mode;
+                        let selected = if self.number_of_displayed_rooms() > 0 {
+                            Some(0)
+                        } else {
+                            None
+                        };
+                        self.state.room_list_state.select(selected);
                     }
                     AppReturn::Continue
                 }
@@ -83,7 +89,7 @@ impl App<'_> {
                 }
                 Action::ArrowDown => {
                     if let Some(selected) = self.state.room_list_state.selected() {
-                        if selected >= self.state.teams_store.number_of_rooms() - 1 {
+                        if selected >= self.number_of_displayed_rooms() - 1 {
                             self.state.room_list_state.select(Some(0));
                         } else {
                             self.state.room_list_state.select(Some(selected + 1));
@@ -98,7 +104,7 @@ impl App<'_> {
                         } else {
                             self.state
                                 .room_list_state
-                                .select(Some(self.state.teams_store.number_of_rooms() - 1));
+                                .select(Some(self.number_of_displayed_rooms() - 1));
                         }
                     }
                     AppReturn::Continue
@@ -204,10 +210,12 @@ impl App<'_> {
     }
 
     pub async fn message_received(&mut self, msg: webex::Message) {
+        // update room details, including title, adding room if needed
         if let Some(id) = &msg.room_id {
             self.dispatch_to_teams(AppCmdEvent::UpdateRoom(id.to_owned()))
                 .await;
         }
+        // store the message for that room id
         self.state.teams_store.add_message(msg);
     }
 
@@ -234,5 +242,9 @@ impl App<'_> {
                 .filter(|&room| self.state.teams_store.room_has_unread(&room.id))
                 .collect(),
         }
+    }
+
+    pub fn number_of_displayed_rooms(&self) -> usize {
+        self.rooms_for_list_mode(&self.state.room_list_mode).len()
     }
 }

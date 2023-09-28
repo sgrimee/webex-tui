@@ -3,7 +3,7 @@ use crate::app::teams_store::RoomId;
 use super::Teams;
 use color_eyre::eyre::Result;
 use log::{debug, error, info};
-use webex::{GlobalId, GlobalIdType, MessageOut, Room};
+use webex::MessageOut;
 
 #[derive(Debug)]
 pub enum AppCmdEvent {
@@ -51,11 +51,7 @@ impl Teams<'_> {
     }
 
     async fn do_update_room(&mut self, id: RoomId) -> Result<()> {
-        debug!("Going to refresh room id: {}", id);
-        let id = GlobalId::new(GlobalIdType::Room, id).unwrap();
-        let room = self.client.get::<Room>(&id).await.expect("updating room");
-        let mut app = self.app.lock().await;
-        app.room_updated(room);
+        self.refresh_room_roomid(&id).await;
         Ok(())
     }
 
