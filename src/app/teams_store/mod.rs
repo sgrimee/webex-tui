@@ -3,6 +3,8 @@ use log::*;
 use std::collections::{HashMap, HashSet};
 use webex::{Message, Person, Room};
 
+use super::rooms_list::RoomsListMode;
+
 pub(crate) type RoomId = String;
 
 /// A caching store for Webex messages and context
@@ -31,6 +33,10 @@ impl TeamsStore {
         }
     }
 
+    pub fn room_with_id(&self, id: &RoomId) -> Option<&Room> {
+        self.rooms_by_id.get(id)
+    }
+
     pub fn update_room(&mut self, room: Room) {
         self.rooms_by_id.insert(room.id.to_owned(), room);
     }
@@ -56,8 +62,17 @@ impl TeamsStore {
         last_activity > (now - duration)
     }
 
-    pub fn rooms(&self) -> impl Iterator<Item = &Room> {
-        self.rooms_by_id.values()
+    // pub fn rooms(&self) ->  {
+    //     self.rooms_by_id.values()
+    // }
+
+    #[allow(clippy::needless_lifetimes)]
+    pub fn rooms_filtered_by<'a>(&'a self, mode: RoomsListMode) -> impl Iterator<Item = &'a Room> {
+        self.rooms_by_id.values().filter(move |room| match mode {
+            RoomsListMode::All => true,
+            RoomsListMode::Recent => self.room_has_activity_since(Duration::hours(24), &room.id),
+            RoomsListMode::Unread => self.room_has_unread(&room.id),
+        })
     }
 
     pub fn messages_in_room(&self, id: &RoomId) -> Vec<Message> {

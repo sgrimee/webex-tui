@@ -67,7 +67,7 @@ impl Tui {
     ///
     /// [`Draw`]: tui::Terminal::draw
     /// [`rendering`]: crate::ui:render
-    pub fn draw(&mut self, app: &tokio::sync::MutexGuard<App>) -> Result<()> {
+    pub fn draw(&mut self, app: &mut tokio::sync::MutexGuard<App>) -> Result<()> {
         self.terminal.draw(|rect| render(rect, app))?;
         Ok(())
     }

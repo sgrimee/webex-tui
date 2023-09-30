@@ -29,7 +29,7 @@ const ROOMS_LIST_WIDTH: u16 = 32;
 const ACTIVE_ROOM_MIN_WIDTH: u16 = 32;
 const HELP_WIDTH: u16 = 32;
 
-pub fn render<B>(rect: &mut Frame<B>, app: &App)
+pub fn render<B>(rect: &mut Frame<B>, app: &mut App)
 where
     B: Backend,
 {
@@ -70,8 +70,8 @@ where
 
     // Rooms list
     let rooms_list = draw_rooms_list(app);
-    let mut room_list_state = app.state.room_list_state.clone();
-    rect.render_stateful_widget(rooms_list, body_columns[0], &mut room_list_state);
+    let room_list_state = app.state.rooms_list.table_state_mut();
+    rect.render_stateful_widget(rooms_list, body_columns[0], room_list_state);
 
     // Room and message edit
     let room_constraints = vec![
@@ -141,10 +141,11 @@ fn draw_rooms_list<'a>(app: &App) -> Table<'a> {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Plain)
-        .title(format!("{:?} rooms", app.state.room_list_mode));
-    let rooms_to_display = app.rooms_for_list_mode(&app.state.room_list_mode);
-    let items: Vec<_> = rooms_to_display
-        .iter()
+        .title(format!("{:?} rooms", app.state.rooms_list.mode()));
+    let items: Vec<_> = app
+        .state
+        .teams_store
+        .rooms_filtered_by(app.state.rooms_list.mode())
         .map(|room| {
             let mut style = Style::default();
             if app.state.teams_store.room_has_unread(&room.id) {
@@ -167,8 +168,10 @@ fn draw_rooms_list<'a>(app: &App) -> Table<'a> {
 
 fn draw_room_messages<'a>(app: &App) -> Paragraph<'a> {
     let mut text = vec![];
-    if let Some(selected_room_id) = app.state.selected_room_id() {
-        let messages = app.state.teams_store.messages_in_room(&selected_room_id);
+    let mut title = "No active room".to_string();
+    if let Some(room) = app.state.active_room() {
+        title = room.title.clone();
+        let messages = app.state.teams_store.messages_in_room(&room.id);
         for msg in messages.iter() {
             let mut line: Vec<Span> = Vec::new();
             if let Some(sender) = &msg.person_email {
@@ -190,11 +193,7 @@ fn draw_room_messages<'a>(app: &App) -> Paragraph<'a> {
         }
     }
     Paragraph::new(text)
-        .block(
-            Block::default()
-                .title("Messages in room")
-                .borders(Borders::ALL),
-        )
+        .block(Block::default().title(title).borders(Borders::ALL))
         .wrap(Wrap { trim: true })
 }
 

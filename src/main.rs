@@ -65,7 +65,7 @@ async fn main() -> Result<()> {
         tui_logger::move_events();
 
         // Render
-        tui.draw(&app)?;
+        tui.draw(&mut app)?;
 
         // Handle terminal inputs
         let result = match tui.events.next().await {

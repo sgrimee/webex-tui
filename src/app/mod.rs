@@ -5,14 +5,12 @@ pub mod rooms_list;
 pub mod state;
 pub mod teams_store;
 
-use self::{actions::Actions, rooms_list::RoomsListMode, state::AppState};
+use self::{actions::Actions, state::AppState};
 use crate::app::actions::Action;
 use crate::inputs::key::Key;
 use crate::teams::app_handler::AppCmdEvent;
 
-use chrono::Duration;
 use crossterm::event::KeyEvent;
-use enum_iterator::next_cycle;
 use log::*;
 use ratatui_textarea::{Input, TextArea};
 use webex::{Person, Room};
@@ -55,22 +53,11 @@ impl App<'_> {
                     AppReturn::Continue
                 }
                 Action::MarkRead => {
-                    if let Some(id) = self.state.selected_room_id() {
-                        self.state.teams_store.mark_read(&id);
-                    }
+                    self.state.mark_active_read();
                     AppReturn::Continue
                 }
                 Action::NextRoomsListMode => {
-                    if let Some(new_mode) = next_cycle(&self.state.room_list_mode) {
-                        debug!("Rooms list mode set to {:?}", new_mode);
-                        self.state.room_list_mode = new_mode;
-                        let selected = if self.number_of_displayed_rooms() > 0 {
-                            Some(0)
-                        } else {
-                            None
-                        };
-                        self.state.room_list_state.select(selected);
-                    }
+                    self.state.next_filtering_mode();
                     AppReturn::Continue
                 }
                 Action::SendMessage => {
@@ -86,25 +73,11 @@ impl App<'_> {
                     AppReturn::Continue
                 }
                 Action::ArrowDown => {
-                    if let Some(selected) = self.state.room_list_state.selected() {
-                        if selected >= self.number_of_displayed_rooms() - 1 {
-                            self.state.room_list_state.select(Some(0));
-                        } else {
-                            self.state.room_list_state.select(Some(selected + 1));
-                        }
-                    }
+                    self.state.next_room();
                     AppReturn::Continue
                 }
                 Action::ArrowUp => {
-                    if let Some(selected) = self.state.room_list_state.selected() {
-                        if selected > 0 {
-                            self.state.room_list_state.select(Some(selected - 1));
-                        } else {
-                            self.state
-                                .room_list_state
-                                .select(Some(self.number_of_displayed_rooms() - 1));
-                        }
-                    }
+                    self.state.previous_room();
                     AppReturn::Continue
                 }
             }
@@ -135,19 +108,20 @@ impl App<'_> {
             warn!("An empty message cannot be sent.");
             return;
         };
-        match &self.state.selected_room_id() {
-            Some(active_room) => {
+        match self.state.active_room() {
+            Some(room) => {
+                let id = room.id.clone();
                 let lines = self.state.msg_input_textarea.lines();
                 let msg_to_send = webex::types::MessageOut {
-                    room_id: Some(active_room.clone()),
+                    room_id: Some(id.clone()),
                     text: Some(lines.join("\n")),
                     ..Default::default()
                 };
-                debug!("Sending message: {:#?}", msg_to_send);
+                debug!("Sending message to room {:?}", room.title);
                 self.dispatch_to_teams(AppCmdEvent::SendMessage(msg_to_send))
                     .await;
                 self.state.msg_input_textarea = TextArea::default();
-                self.state.teams_store.mark_read(active_room);
+                self.state.teams_store.mark_read(&id);
             }
             None => warn!("Cannot send message, no room selected."),
         }
@@ -219,42 +193,10 @@ impl App<'_> {
 
     pub fn room_updated(&mut self, room: Room) {
         self.state.teams_store.update_room(room);
+        self.state.update_selection_with_active_room();
     }
 
     pub fn show_log_window(&self) -> bool {
         self.state.show_logs
-    }
-
-    pub fn rooms_for_list_mode(&self, mode: &RoomsListMode) -> Vec<&Room> {
-        let rooms = self.state.teams_store.rooms();
-        match mode {
-            RoomsListMode::All => (rooms).collect(),
-            RoomsListMode::Recent => rooms
-                .filter(|&room| {
-                    self.state
-                        .teams_store
-                        .room_has_activity_since(Duration::hours(2), &room.id)
-                })
-                .collect(),
-            RoomsListMode::Unread => rooms
-                .filter(|&room| self.state.teams_store.room_has_unread(&room.id))
-                .collect(),
-        }
-    }
-
-    pub fn number_of_displayed_rooms(&self) -> usize {
-        self.rooms_for_list_mode(&self.state.room_list_mode).len()
-    }
-
-    pub fn selected_room_id(&self) -> Option<RoomId> {
-        match self.room_list_state.selected() {
-            Some(selected) => self
-                .teams_store
-                .rooms()
-                .collect::<Vec<&Room>>()
-                .get(selected)
-                .map(|room| room.id.to_owned()),
-            None => None,
-        }
     }
 }

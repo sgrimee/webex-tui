@@ -17,6 +17,7 @@ pub fn setup_logger() {
     }
     for target in [
         "webex_tui::app",
+        "webex_tui::app::rooms_list",
         "webex_tui::app::teams_store",
         "webex_tui::teams",
         "webex_tui::teams::app_handler",
