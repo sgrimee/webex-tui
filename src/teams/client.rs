@@ -1,14 +1,11 @@
-use super::{auth::get_integration_token, ClientCredentials};
+// use super::{auth::get_integration_token, ClientCredentials};
 use log::*;
+use oauth2::AccessToken;
 use webex::Webex;
 
-pub async fn get_webex_client(credentials: ClientCredentials) -> Webex {
-    trace!("Getting OAuth token");
-    let token = get_integration_token(credentials)
-        .await
-        .expect("Need token to continue");
-    let token: &str = token.secret();
-    let client = Webex::new(token).await;
+pub async fn get_webex_client(token: AccessToken) -> Webex {
+    let secret: &str = token.secret();
+    let client = Webex::new(secret).await;
     debug!("Authenticated.");
     client
 }

@@ -1,7 +1,7 @@
 /// The teams module handles IO for Webex, including making
 /// network calls and listening to events.
 pub mod app_handler;
-mod auth;
+pub mod auth;
 mod client;
 mod webex_handler;
 
@@ -11,6 +11,7 @@ use crate::app::App;
 
 // use color_eyre::eyre::Result;
 use log::*;
+use oauth2::AccessToken;
 use std::sync::Arc;
 use tokio::sync::mpsc::Receiver;
 
@@ -30,10 +31,11 @@ pub struct Teams<'a> {
 
 impl<'a> Teams<'a> {
     pub async fn new(
-        credentials: ClientCredentials,
+        // credentials: ClientCredentials,
+        token: AccessToken,
         app: Arc<tokio::sync::Mutex<App<'a>>>,
     ) -> Teams<'a> {
-        let client = get_webex_client(credentials).await;
+        let client = get_webex_client(token).await;
 
         // Retrieve the logged in user
         // TODO: should we do this after initialisation to reduce startup time

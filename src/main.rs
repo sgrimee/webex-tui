@@ -10,18 +10,20 @@ mod tui;
 mod ui;
 
 use app::{App, AppReturn};
+use color_eyre::eyre::Result;
 use config::ClientConfig;
 use inputs::handler::Event;
 use inputs::key::Key;
+use log::*;
 use logger::setup_logger;
+// use oauth2::AccessToken;
+use std::sync::Arc;
 use teams::app_handler::AppCmdEvent;
+use teams::auth::get_integration_token;
 use teams::ClientCredentials;
 use teams::Teams;
+use tokio::time::{sleep, Duration};
 use tui::Tui;
-
-use color_eyre::eyre::Result;
-use log::*;
-use std::sync::Arc;
 
 fn get_credentials() -> Result<ClientCredentials> {
     let mut client_config = ClientConfig::new();
@@ -41,6 +43,11 @@ async fn main() -> Result<()> {
     // Read configuration
     let credentials = get_credentials()?;
 
+    // Start authentication via web browser
+    let token = get_integration_token(credentials)
+        .await
+        .expect("Need token to continue");
+
     // Initialize the terminal user interface with events thread
     let mut tui = Tui::default()?;
     tui.init()?;
@@ -50,13 +57,16 @@ async fn main() -> Result<()> {
     let app = Arc::new(tokio::sync::Mutex::new(App::new(app_to_teams_tx.clone())));
     let app_ui = Arc::clone(&app);
     tokio::spawn(async move {
-        let mut teams = Teams::new(credentials, app).await;
+        let mut teams = Teams::new(token, app).await;
         teams.handle_events(app_to_teams_rx).await;
     });
     {
         let mut app = app_ui.lock().await;
         app.dispatch_to_teams(AppCmdEvent::Initialize()).await;
     }
+
+    info!("Sleeping a while");
+    sleep(Duration::from_millis(5000)).await;
 
     loop {
         let mut app = app_ui.lock().await;
@@ -82,7 +92,6 @@ async fn main() -> Result<()> {
         }
     }
 
-    // Exit the user interface.
     tui.exit()?;
     Ok(())
 }

@@ -49,6 +49,8 @@
         buildInputs =
           [
             pkgs.bacon
+            pkgs.pkg-config
+            pkgs.openssl
           ]
           ++ lib.optionals pkgs.stdenv.isDarwin [
             # Additional darwin specific inputs can be set here

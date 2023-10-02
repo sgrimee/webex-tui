@@ -11,6 +11,7 @@ use oauth2::{
 };
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
+use webbrowser;
 
 // This appears to have been inspired from https://docs.rs/oauth2/4.4.1/oauth2/index.html
 pub async fn get_integration_token(
@@ -34,11 +35,8 @@ pub async fn get_integration_token(
         .add_scope(Scope::new("spark:all".to_string()))
         .url();
 
-    let mut cmds = open::commands(auth_url.as_str());
-    debug!("Opening browser with the first command of: {:#?}", cmds);
-    cmds[0]
-        .status()
-        .expect("opening browser for authentication");
+    info!("Attempting to open web browser for authentication");
+    webbrowser::open(auth_url.as_str()).expect("Could not open web browser");
 
     let listener = TcpListener::bind("127.0.0.1:8080").unwrap();
     if let Some(mut stream) = listener.incoming().flatten().next() {
