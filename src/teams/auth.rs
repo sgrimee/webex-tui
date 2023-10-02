@@ -1,6 +1,7 @@
 // taken from https://github.com/Nabushika/webexterm
 
 use super::ClientCredentials;
+use color_eyre::eyre::{eyre, Result};
 use log::*;
 use oauth2::basic::BasicClient;
 use oauth2::reqwest::async_http_client as http_client;
@@ -11,12 +12,34 @@ use oauth2::{
 };
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
+use std::net::TcpStream;
 use webbrowser;
 
-// This appears to have been inspired from https://docs.rs/oauth2/4.4.1/oauth2/index.html
-pub async fn get_integration_token(
-    credentials: ClientCredentials,
-) -> Result<AccessToken, Box<dyn std::error::Error + Send + Sync>> {
+pub async fn get_integration_token(credentials: ClientCredentials) -> Result<AccessToken> {
+    let client = create_basic_client(credentials)?;
+
+    let (auth_url, csrf_state) = get_authorize_url(&client)?;
+
+    open_web_browser(&auth_url)?;
+
+    let mut stream = await_authorization_callback().await?;
+    let (code, state) = parse_authorization_response(&mut stream)?;
+    send_success_response(&mut stream)?;
+
+    if state.secret() != csrf_state.secret() {
+        return Err(eyre!(
+            "Invalid CSRF authorization code received on callback"
+        ));
+    }
+    let token_res = client
+        .exchange_code(code)
+        .request_async(http_client)
+        .await?;
+
+    return Ok(token_res.access_token().clone());
+}
+
+fn create_basic_client(credentials: ClientCredentials) -> Result<BasicClient> {
     let client = BasicClient::new(
         ClientId::new(credentials.client_id),
         Some(ClientSecret::new(credentials.client_secret)),
@@ -29,69 +52,72 @@ pub async fn get_integration_token(
         RedirectUrl::new("http://localhost:8080".to_string()).expect("Invalid redirect url"),
     );
 
+    Ok(client)
+}
+
+fn get_authorize_url(client: &BasicClient) -> Result<(Url, CsrfToken)> {
     let (auth_url, csrf_state) = client
         .authorize_url(CsrfToken::new_random)
-        // This example is requesting access to the user's public repos and email.
         .add_scope(Scope::new("spark:all".to_string()))
         .url();
 
+    Ok((auth_url, csrf_state))
+}
+
+fn open_web_browser(auth_url: &Url) -> Result<()> {
     info!("Attempting to open web browser for authentication");
     webbrowser::open(auth_url.as_str()).expect("Could not open web browser");
 
-    let listener = TcpListener::bind("127.0.0.1:8080").unwrap();
-    if let Some(mut stream) = listener.incoming().flatten().next() {
-        let code;
-        let state;
-        {
-            let mut reader = BufReader::new(&stream);
+    Ok(())
+}
 
-            let mut request_line = String::new();
-            reader.read_line(&mut request_line).unwrap();
+async fn await_authorization_callback() -> Result<TcpStream> {
+    let listener = TcpListener::bind("127.0.0.1:8080")?;
+    let stream = listener.incoming().flatten().next().unwrap();
+    Ok(stream)
+}
 
-            let redirect_url = request_line.split_whitespace().nth(1).unwrap();
-            let url = Url::parse(&("http://localhost".to_string() + redirect_url)).unwrap();
+fn parse_authorization_response(stream: &mut TcpStream) -> Result<(AuthorizationCode, CsrfToken)> {
+    let mut reader = BufReader::new(stream);
 
-            let code_pair = url
-                .query_pairs()
-                .find(|pair| {
-                    let (key, _) = pair;
-                    key == "code"
-                })
-                .unwrap();
+    let mut request_line = String::new();
+    reader.read_line(&mut request_line).unwrap();
 
-            let (_, value) = code_pair;
-            code = AuthorizationCode::new(value.into_owned());
+    let redirect_url = request_line.split_whitespace().nth(1).unwrap();
+    let url = Url::parse(&("http://localhost".to_string() + redirect_url)).unwrap();
 
-            let state_pair = url
-                .query_pairs()
-                .find(|pair| {
-                    let (key, _) = pair;
-                    key == "state"
-                })
-                .unwrap();
+    let code_pair = url
+        .query_pairs()
+        .find(|pair| {
+            let (key, _) = pair;
+            key == "code"
+        })
+        .unwrap();
 
-            let (_, value) = state_pair;
-            state = CsrfToken::new(value.into_owned());
-        }
+    let (_, value) = code_pair;
+    let code = AuthorizationCode::new(value.into_owned());
 
-        let message = "Webex authentication complete. You can close this and enjoy webex-tui.";
-        let response = format!(
-            "HTTP/1.1 200 OK\r\ncontent-length: {}\r\n\r\n{}",
-            message.len(),
-            message
-        );
-        stream.write_all(response.as_bytes()).unwrap();
+    let state_pair = url
+        .query_pairs()
+        .find(|pair| {
+            let (key, _) = pair;
+            key == "state"
+        })
+        .unwrap();
 
-        if state.secret() != csrf_state.secret() {
-            return Err("returned state != csrf_state".into());
-        }
+    let (_, value) = state_pair;
+    let state = CsrfToken::new(value.into_owned());
 
-        // Exchange the code with a token.
-        let token_res = client.exchange_code(code).request_async(http_client).await;
+    Ok((code, state))
+}
 
-        if let Ok(token) = token_res {
-            return Ok(token.access_token().clone());
-        }
-    }
-    Err("Error".into())
+fn send_success_response(stream: &mut TcpStream) -> Result<()> {
+    let message = "Webex authentication complete. You can close this and enjoy webex-tui.";
+    let response = format!(
+        "HTTP/1.1 200 OK\r\ncontent-length: {}\r\n\r\n{}",
+        message.len(),
+        message
+    );
+    let _ = stream.write_all(response.as_bytes());
+    Ok(())
 }
