@@ -10,12 +10,14 @@ pub fn setup_logger() {
         "rustls::common_state",
         "rustls::common_state",
         "tungstenite::handshake::client",
-        "webex",
-        "webex::types",
+        // "webex",
+        // "webex::types",
     ] {
         tui_logger::set_level_for_target(target, LevelFilter::Info);
     }
     for target in [
+        "webex",
+        "webex::types",
         "webex_tui::app",
         "webex_tui::app::rooms_list",
         "webex_tui::app::teams_store",

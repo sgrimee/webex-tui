@@ -50,6 +50,7 @@ impl App<'_> {
                 Action::Quit => AppReturn::Exit,
                 Action::EditMessage => {
                     self.state.editing_mode = true;
+                    self.set_state_message_writing();
                     AppReturn::Continue
                 }
                 Action::MarkRead => {
@@ -80,6 +81,10 @@ impl App<'_> {
                     self.state.previous_room();
                     AppReturn::Continue
                 }
+                _ => {
+                    warn!("Unsupported action {} in this context", action);
+                    AppReturn::Continue
+                }
             }
         } else {
             warn!("No action associated with {}", key);
@@ -95,9 +100,14 @@ impl App<'_> {
         let key = Key::from(key_event);
         match key {
             Key::Ctrl('c') => return AppReturn::Exit,
-            Key::Esc => self.state.editing_mode = false,
+            Key::Esc => {
+                self.state.editing_mode = false;
+                self.set_state_room_selection();
+            }
             Key::AltEnter => self.state.msg_input_textarea.insert_newline(),
-            Key::Enter => self.send_message_buffer().await,
+            Key::Enter => {
+                self.send_message_buffer().await;
+            }
             _ => _ = self.state.msg_input_textarea.input(Input::from(key_event)),
         }
         AppReturn::Continue
@@ -157,7 +167,7 @@ impl App<'_> {
         self.dispatch_to_teams(AppCmdEvent::GetAllRooms()).await;
     }
 
-    pub async fn set_state_rooms_loaded(&mut self) {
+    pub fn set_state_room_selection(&mut self) {
         self.state.actions = vec![
             Action::ArrowDown,
             Action::ArrowUp,
@@ -170,6 +180,10 @@ impl App<'_> {
             Action::ToggleLogs,
         ]
         .into();
+    }
+
+    pub fn set_state_message_writing(&mut self) {
+        self.state.actions = vec![Action::SendMessage, Action::EndEditMessage].into();
     }
 
     // indicate the completion of a pending teams task

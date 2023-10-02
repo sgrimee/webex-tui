@@ -11,6 +11,7 @@ pub enum AppCmdEvent {
     SendMessage(MessageOut),
     UpdateRoom(RoomId),
     GetAllRooms(),
+    // Quit(),
 }
 
 impl Teams<'_> {
@@ -21,6 +22,7 @@ impl Teams<'_> {
             AppCmdEvent::SendMessage(msg_to_send) => self.do_send_message(msg_to_send).await,
             AppCmdEvent::UpdateRoom(room_id) => self.do_update_room(room_id).await,
             AppCmdEvent::GetAllRooms() => self.do_get_all_rooms().await,
+            // AppCmdEvent::Quit() => self.do_quit().await,
         };
 
         if let Err(err) = result {
@@ -62,7 +64,12 @@ impl Teams<'_> {
         for room in rooms.unwrap_or_default() {
             app.room_updated(room)
         }
-        app.set_state_rooms_loaded().await;
+        app.set_state_room_selection();
         Ok(())
     }
+
+    // async fn do_quit(&mut self) {
+    //     debug!("Going to close webex event loop");
+
+    // }
 }

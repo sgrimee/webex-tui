@@ -12,7 +12,7 @@ use oauth2::{
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
 
-// This appears to have neem inspired from https://docs.rs/oauth2/4.4.1/oauth2/index.html
+// This appears to have been inspired from https://docs.rs/oauth2/4.4.1/oauth2/index.html
 pub async fn get_integration_token(
     credentials: ClientCredentials,
 ) -> Result<AccessToken, Box<dyn std::error::Error + Send + Sync>> {
@@ -34,8 +34,11 @@ pub async fn get_integration_token(
         .add_scope(Scope::new("spark:all".to_string()))
         .url();
 
-    info!("Opening browser to: {}", auth_url);
-    open::that(auth_url.as_str()).expect("opening browser for authentication");
+    let mut cmds = open::commands(auth_url.as_str());
+    debug!("Opening browser with the first command of: {:#?}", cmds);
+    cmds[0]
+        .status()
+        .expect("opening browser for authentication");
 
     let listener = TcpListener::bind("127.0.0.1:8080").unwrap();
     if let Some(mut stream) = listener.incoming().flatten().next() {
