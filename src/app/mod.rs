@@ -87,11 +87,8 @@ impl App<'_> {
                 }
             }
         } else {
-            warn!("No action associated with {}", key);
-            debug!(
-                "If the key actually corresponds to an action, it needs to be added to the list
-            of active actions too."
-            );
+            warn!("No action associated with {} in this mode", key);
+            // If the key actually corresponds to an action, it needs to be added to the list of active actions too.
             AppReturn::Continue
         }
     }
