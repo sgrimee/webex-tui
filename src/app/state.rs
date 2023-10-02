@@ -53,10 +53,6 @@ impl AppState<'_> {
         self.visible_rooms().collect::<Vec<_>>().len()
     }
 
-    // pub fn index_of_active_room(&self) Option<usize> {
-    //     self.visible_rooms
-    // }
-
     pub fn id_of_selected_room(&self) -> Option<RoomId> {
         self.rooms_list
             .id_of_selected(self.visible_rooms().collect::<Vec<_>>().as_slice())
