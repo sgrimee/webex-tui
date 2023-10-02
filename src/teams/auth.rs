@@ -57,7 +57,7 @@ fn create_basic_client(credentials: ClientCredentials) -> Result<BasicClient> {
         )?),
     )
     .set_redirect_uri(
-        RedirectUrl::new("http://127.0.0.1:8080".to_string()).expect("Invalid redirect url"),
+        RedirectUrl::new("http://localhost:8080".to_string()).expect("Invalid redirect url"),
     );
 
     Ok(client)
@@ -91,7 +91,7 @@ fn parse_authorization_response(stream: &mut TcpStream) -> Result<(Authorization
     println!("parse_authorization_response line: {}", &request_line);
 
     let redirect_url = request_line.split_whitespace().nth(1).unwrap();
-    let url = Url::parse(redirect_url).unwrap();
+    let url = Url::parse(&("http://localhost".to_string() + redirect_url)).unwrap();
 
     let code_pair = url
         .query_pairs()
