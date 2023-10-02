@@ -1,6 +1,5 @@
 // credits: iRigellute/spotify-tui
 
-use super::banner::BANNER;
 use color_eyre::eyre::{eyre, Error, Result};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -86,8 +85,6 @@ impl ClientConfig {
 
             Ok(())
         } else {
-            println!("{}", BANNER);
-
             println!(
                 "Config will be saved to {}",
                 paths.config_file_path.display()

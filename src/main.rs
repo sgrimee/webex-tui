@@ -10,13 +10,14 @@ mod tui;
 mod ui;
 
 use app::{App, AppReturn};
-use color_eyre::eyre::Result;
+use banner::BANNER;
 use config::ClientConfig;
 use inputs::handler::Event;
 use inputs::key::Key;
+
+use color_eyre::eyre::Result;
 use log::*;
 use logger::setup_logger;
-// use oauth2::AccessToken;
 use std::sync::Arc;
 use teams::app_handler::AppCmdEvent;
 use teams::auth::get_integration_token;
@@ -38,15 +39,21 @@ fn get_credentials() -> Result<ClientCredentials> {
 async fn main() -> Result<()> {
     // Setup logging.
     color_eyre::install()?;
-    setup_logger();
+    setup_logger(); // only for tui mode
 
-    // Read configuration
+    println!("{}", BANNER);
+
+    // Read configuration or prompt for integration details
     let credentials = get_credentials()?;
 
     // Start authentication via web browser
+    println!("Opening a browser and waiting for authentication.");
     let token = get_integration_token(credentials)
         .await
         .expect("Need token to continue");
+
+    println!("Taking a short break");
+    sleep(Duration::from_secs(5)).await;
 
     // Initialize the terminal user interface with events thread
     let mut tui = Tui::default()?;
@@ -64,9 +71,6 @@ async fn main() -> Result<()> {
         let mut app = app_ui.lock().await;
         app.dispatch_to_teams(AppCmdEvent::Initialize()).await;
     }
-
-    info!("Sleeping a while");
-    sleep(Duration::from_millis(5000)).await;
 
     loop {
         let mut app = app_ui.lock().await;

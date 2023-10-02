@@ -2,7 +2,6 @@
 
 use super::ClientCredentials;
 use color_eyre::eyre::{eyre, Result};
-use log::*;
 use oauth2::basic::BasicClient;
 use oauth2::reqwest::async_http_client as http_client;
 use oauth2::url::Url;
@@ -20,9 +19,18 @@ pub async fn get_integration_token(credentials: ClientCredentials) -> Result<Acc
 
     let (auth_url, csrf_state) = get_authorize_url(&client)?;
 
-    open_web_browser(&auth_url)?;
+    if open_web_browser(&auth_url).is_err() {
+        let msg = format!("We were unable to open a browser. You may try again after setting the BROWSER environment variable,
+or open the following url manually:\n{}\n",
+        auth_url
+    );
+        println!("{}", msg);
+        qr2term::print_qr(auth_url.as_str()).unwrap();
+    }
 
     let mut stream = await_authorization_callback().await?;
+    println!("Got callback");
+
     let (code, state) = parse_authorization_response(&mut stream)?;
     send_success_response(&mut stream)?;
 
@@ -49,7 +57,7 @@ fn create_basic_client(credentials: ClientCredentials) -> Result<BasicClient> {
         )?),
     )
     .set_redirect_uri(
-        RedirectUrl::new("http://localhost:8080".to_string()).expect("Invalid redirect url"),
+        RedirectUrl::new("http://127.0.0.1:8080".to_string()).expect("Invalid redirect url"),
     );
 
     Ok(client)
@@ -65,14 +73,12 @@ fn get_authorize_url(client: &BasicClient) -> Result<(Url, CsrfToken)> {
 }
 
 fn open_web_browser(auth_url: &Url) -> Result<()> {
-    info!("Attempting to open web browser for authentication");
-    webbrowser::open(auth_url.as_str()).expect("Could not open web browser");
-
+    webbrowser::open(auth_url.as_str())?;
     Ok(())
 }
 
 async fn await_authorization_callback() -> Result<TcpStream> {
-    let listener = TcpListener::bind("127.0.0.1:8080")?;
+    let listener = TcpListener::bind("0.0.0.0:8080")?;
     let stream = listener.incoming().flatten().next().unwrap();
     Ok(stream)
 }
@@ -82,9 +88,10 @@ fn parse_authorization_response(stream: &mut TcpStream) -> Result<(Authorization
 
     let mut request_line = String::new();
     reader.read_line(&mut request_line).unwrap();
+    println!("parse_authorization_response line: {}", &request_line);
 
     let redirect_url = request_line.split_whitespace().nth(1).unwrap();
-    let url = Url::parse(&("http://localhost".to_string() + redirect_url)).unwrap();
+    let url = Url::parse(redirect_url).unwrap();
 
     let code_pair = url
         .query_pairs()
@@ -92,7 +99,7 @@ fn parse_authorization_response(stream: &mut TcpStream) -> Result<(Authorization
             let (key, _) = pair;
             key == "code"
         })
-        .unwrap();
+        .expect("Could not find code param in incoming redirect call.");
 
     let (_, value) = code_pair;
     let code = AuthorizationCode::new(value.into_owned());
@@ -103,7 +110,7 @@ fn parse_authorization_response(stream: &mut TcpStream) -> Result<(Authorization
             let (key, _) = pair;
             key == "state"
         })
-        .unwrap();
+        .expect("Could not find state param in incoming redirect call.");
 
     let (_, value) = state_pair;
     let state = CsrfToken::new(value.into_owned());
