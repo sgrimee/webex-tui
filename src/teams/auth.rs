@@ -77,7 +77,7 @@ fn open_web_browser(auth_url: &Url) -> Result<()> {
 }
 
 async fn await_authorization_callback() -> Result<TcpStream> {
-    let listener = TcpListener::bind("0.0.0.0:8080")?;
+    let listener = TcpListener::bind("127.0.0.1:8080")?;
     let stream = listener.incoming().flatten().next().unwrap();
     Ok(stream)
 }
