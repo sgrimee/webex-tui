@@ -23,7 +23,6 @@ use teams::app_handler::AppCmdEvent;
 use teams::auth::get_integration_token;
 use teams::ClientCredentials;
 use teams::Teams;
-use tokio::time::{sleep, Duration};
 use tui::Tui;
 
 fn get_credentials() -> Result<ClientCredentials> {
@@ -51,9 +50,6 @@ async fn main() -> Result<()> {
     let token = get_integration_token(credentials)
         .await
         .expect("Need token to continue");
-
-    println!("Taking a short break");
-    sleep(Duration::from_secs(5)).await;
 
     // Initialize the terminal user interface with events thread
     let mut tui = Tui::default()?;

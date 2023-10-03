@@ -1,4 +1,4 @@
-// taken from https://github.com/Nabushika/webexterm
+// inspired by https://github.com/Nabushika/webexterm
 
 use super::ClientCredentials;
 use color_eyre::eyre::{eyre, Result};
@@ -20,12 +20,11 @@ pub async fn get_integration_token(credentials: ClientCredentials) -> Result<Acc
     let (auth_url, csrf_state) = get_authorize_url(&client)?;
 
     if open_web_browser(&auth_url).is_err() {
-        let msg = format!("We were unable to open a browser. You may try again after setting the BROWSER environment variable,
-or open the following url manually:\n{}\n",
+        let msg = format!("We were unable to open a browser. You may quit with Ctrl+C and try again after setting 
+the BROWSER environment variable, or open the following url manually (on this computer):\n{}\n",
         auth_url
     );
         println!("{}", msg);
-        qr2term::print_qr(auth_url.as_str()).unwrap();
     }
 
     let mut stream = await_authorization_callback().await?;
