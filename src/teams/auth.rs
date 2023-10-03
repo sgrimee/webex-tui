@@ -28,7 +28,6 @@ the BROWSER environment variable, or open the following url manually (on this co
     }
 
     let mut stream = await_authorization_callback().await?;
-    println!("Got callback");
 
     let (code, state) = parse_authorization_response(&mut stream)?;
     send_success_response(&mut stream)?;
@@ -87,7 +86,6 @@ fn parse_authorization_response(stream: &mut TcpStream) -> Result<(Authorization
 
     let mut request_line = String::new();
     reader.read_line(&mut request_line).unwrap();
-    println!("parse_authorization_response line: {}", &request_line);
 
     let redirect_url = request_line.split_whitespace().nth(1).unwrap();
     let url = Url::parse(&("http://localhost".to_string() + redirect_url)).unwrap();
