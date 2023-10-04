@@ -5,6 +5,7 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
+use log::*;
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
 use std::time::Duration;
@@ -60,6 +61,8 @@ impl Tui {
 
         self.terminal.hide_cursor()?;
         self.terminal.clear()?;
+        // A little marker to separate a new run from the previous one
+        debug!("=========================================================================");
         Ok(())
     }
 
