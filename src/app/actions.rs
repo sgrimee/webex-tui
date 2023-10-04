@@ -45,7 +45,7 @@ impl Display for Action {
             Action::ArrowUp => "Previous room",
             Action::EditMessage => "Edit message",
             Action::EndEditMessage => "End editing message",
-            Action::MarkRead => "Mark as read",
+            Action::MarkRead => "Mark read (locally)",
             Action::NextRoomsListMode => "Next list mode",
             Action::Quit => "Quit",
             Action::SendMessage => "Send message",

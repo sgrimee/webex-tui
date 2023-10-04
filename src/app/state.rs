@@ -31,18 +31,14 @@ impl AppState<'_> {
         &self.active_room_id
     }
 
-    pub fn set_active_room_id(&mut self, active_room_id: Option<RoomId>) {
-        self.active_room_id = active_room_id;
+    pub fn set_active_room_id(&mut self, active_room_id: &Option<RoomId>) {
+        self.active_room_id = active_room_id.clone();
     }
 
     pub fn active_room(&self) -> Option<&Room> {
         self.active_room_id()
             .clone()
             .and_then(|id| self.teams_store.room_with_id(&id))
-    }
-
-    pub fn set_active_room_to_selection(&mut self) {
-        self.set_active_room_id(self.id_of_selected_room());
     }
 
     pub fn visible_rooms(&self) -> impl Iterator<Item = &Room> {
@@ -65,23 +61,6 @@ impl AppState<'_> {
                 self.rooms_list.table_state_mut().select(Some(position))
             }
         }
-    }
-
-    pub fn next_filtering_mode(&mut self) {
-        self.rooms_list.next_mode(&self.teams_store);
-        self.set_active_room_to_selection();
-    }
-
-    pub fn next_room(&mut self) {
-        let num_rooms = self.num_of_visible_rooms();
-        self.rooms_list.select_next_room(num_rooms);
-        self.set_active_room_to_selection();
-    }
-
-    pub fn previous_room(&mut self) {
-        let num_rooms = self.num_of_visible_rooms();
-        self.rooms_list.select_previous_room(num_rooms);
-        self.set_active_room_to_selection();
     }
 
     pub fn mark_active_read(&mut self) {

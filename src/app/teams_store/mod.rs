@@ -17,14 +17,14 @@ pub struct TeamsStore {
 }
 
 impl TeamsStore {
-    pub fn add_message(&mut self, msg: Message) {
+    pub fn add_message(&mut self, msg: &Message) {
         if let Some(room_id) = msg.room_id.clone() {
             let sender = msg.person_id.clone();
             let messages = self
                 .msg_by_room_id
                 .entry(room_id.clone())
                 .or_insert(Vec::new());
-            messages.push(msg);
+            messages.push(msg.clone());
             if !self.is_me(&sender) {
                 self.mark_unread(&room_id);
             }
@@ -106,7 +106,7 @@ mod tests {
             room_id: Some(room_id.to_string()),
             ..Default::default()
         };
-        store.add_message(message);
+        store.add_message(&message);
         assert_eq!(store.msg_by_room_id[room_id].len(), 1);
     }
 
@@ -119,9 +119,9 @@ mod tests {
             ..Default::default()
         };
         // add the message once to the empty store
-        store.add_message(message.clone());
+        store.add_message(&message);
         // add the message again, it should get added
-        store.add_message(message);
+        store.add_message(&message);
         assert_eq!(store.msg_by_room_id[room_id].len(), 2);
     }
 }

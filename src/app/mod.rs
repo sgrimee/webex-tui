@@ -5,7 +5,7 @@ pub mod rooms_list;
 pub mod state;
 pub mod teams_store;
 
-use self::{actions::Actions, state::AppState};
+use self::{actions::Actions, state::AppState, teams_store::RoomId};
 use crate::app::actions::Action;
 use crate::inputs::key::Key;
 use crate::teams::app_handler::AppCmdEvent;
@@ -13,7 +13,8 @@ use crate::teams::app_handler::AppCmdEvent;
 use crossterm::event::KeyEvent;
 use log::*;
 use ratatui_textarea::{Input, TextArea};
-use webex::{Person, Room};
+use std::collections::HashSet;
+use webex::{Message, Person, Room};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum AppReturn {
@@ -58,7 +59,7 @@ impl App<'_> {
                     AppReturn::Continue
                 }
                 Action::NextRoomsListMode => {
-                    self.state.next_filtering_mode();
+                    self.next_filtering_mode().await;
                     AppReturn::Continue
                 }
                 Action::SendMessage => {
@@ -74,11 +75,11 @@ impl App<'_> {
                     AppReturn::Continue
                 }
                 Action::ArrowDown => {
-                    self.state.next_room();
+                    self.next_room().await;
                     AppReturn::Continue
                 }
                 Action::ArrowUp => {
-                    self.state.previous_room();
+                    self.previous_room().await;
                     AppReturn::Continue
                 }
                 _ => {
@@ -134,6 +135,13 @@ impl App<'_> {
         }
     }
 
+    pub async fn get_messages_if_room_empty(&mut self, id: &RoomId) {
+        if self.state.teams_store.messages_in_room(id).is_empty() {
+            self.dispatch_to_teams(AppCmdEvent::ListMessagesInRoom(id.clone()))
+                .await;
+        }
+    }
+
     /// We could update the app or dispatch event on tick
     pub async fn update_on_tick(&mut self) -> AppReturn {
         AppReturn::Continue
@@ -159,9 +167,8 @@ impl App<'_> {
 
     pub async fn set_state_initialized(&mut self) {
         self.state.actions = vec![Action::Quit, Action::ToggleHelp, Action::ToggleLogs].into();
-
         // Some more heavy tasks that we put after init to ensure quick startup
-        self.dispatch_to_teams(AppCmdEvent::GetAllRooms()).await;
+        self.dispatch_to_teams(AppCmdEvent::ListAllRooms()).await;
     }
 
     pub fn set_state_room_selection(&mut self) {
@@ -179,6 +186,31 @@ impl App<'_> {
         .into();
     }
 
+    pub async fn set_active_room_to_selection(&mut self) {
+        let id_option = self.state.id_of_selected_room();
+        self.state.set_active_room_id(&id_option);
+        if let Some(id) = id_option {
+            self.get_messages_if_room_empty(&id).await;
+        }
+    }
+
+    pub async fn next_filtering_mode(&mut self) {
+        self.state.rooms_list.next_mode(&self.state.teams_store);
+        self.set_active_room_to_selection().await;
+    }
+
+    pub async fn next_room(&mut self) {
+        let num_rooms = self.state.num_of_visible_rooms();
+        self.state.rooms_list.select_next_room(num_rooms);
+        self.set_active_room_to_selection().await;
+    }
+
+    pub async fn previous_room(&mut self) {
+        let num_rooms = self.state.num_of_visible_rooms();
+        self.state.rooms_list.select_previous_room(num_rooms);
+        self.set_active_room_to_selection().await;
+    }
+
     pub fn set_state_message_writing(&mut self) {
         self.state.actions = vec![Action::SendMessage, Action::EndEditMessage].into();
     }
@@ -192,14 +224,26 @@ impl App<'_> {
         trace!("Message was sent.");
     }
 
-    pub async fn message_received(&mut self, msg: webex::Message) {
+    pub async fn message_received(&mut self, msg: &Message) {
+        let messages: [Message; 1] = [msg.clone()];
+        self.messages_received(&messages).await
+    }
+
+    pub async fn messages_received(&mut self, messages: &[Message]) {
+        // keep track of rooms we add messages to
+        let mut room_ids = HashSet::new();
+        // store the message
+        for msg in messages {
+            if let Some(id) = &msg.room_id {
+                room_ids.insert(id);
+            }
+            self.state.teams_store.add_message(msg);
+        }
         // update room details, including title, adding room if needed
-        if let Some(id) = &msg.room_id {
-            self.dispatch_to_teams(AppCmdEvent::UpdateRoom(id.to_owned()))
+        for room_id in room_ids {
+            self.dispatch_to_teams(AppCmdEvent::UpdateRoom(room_id.to_owned()))
                 .await;
         }
-        // store the message for that room id
-        self.state.teams_store.add_message(msg);
     }
 
     pub fn room_updated(&mut self, room: Room) {

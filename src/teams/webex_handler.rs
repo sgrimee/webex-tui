@@ -15,7 +15,7 @@ impl Teams<'_> {
                 {
                     trace!("Message: {:?}", msg);
                     let mut app = self.app.lock().await;
-                    app.message_received(msg).await;
+                    app.message_received(&msg).await;
                 }
             }
             _ => {
