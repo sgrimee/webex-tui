@@ -25,7 +25,7 @@ pub struct RoomsList {
 impl RoomsList {
     pub fn new() -> Self {
         Self {
-            mode: RoomsListMode::All,
+            mode: RoomsListMode::Recent,
             table_state: TableState::default(),
         }
     }
