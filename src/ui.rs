@@ -169,19 +169,38 @@ fn draw_rooms_list<'a>(app: &App) -> Table<'a> {
         )
 }
 
-fn color_for_user(id: &Option<String>) -> Color {
+fn style_for_user(id: &Option<String>) -> Style {
+    let colors = [
+        Color::Red,
+        Color::Green,
+        Color::Yellow,
+        Color::Blue,
+        Color::Magenta,
+        Color::Cyan,
+        Color::Gray,
+        Color::LightRed,
+        Color::LightGreen,
+        Color::LightYellow,
+        Color::LightBlue,
+        Color::LightMagenta,
+        Color::LightCyan,
+    ];
     match id {
-        Some(id) => Color::Indexed(hash_string_to_number(id)),
-        None => Color::Black,
+        Some(id) => {
+            let upper = colors.len() as u64;
+            let index = hash_string_to_number(id, upper) as usize;
+            Style::default().fg(colors[index])
+        }
+        None => Style::default().add_modifier(Modifier::REVERSED),
     }
 }
 
-// Hash a string to a number between 1 and 14 inclusive
-fn hash_string_to_number(s: &str) -> u8 {
+// Hash a string to a number in [0, upper[
+fn hash_string_to_number(s: &str, upper: u64) -> u64 {
     let mut hasher = DefaultHasher::new();
     s.hash(&mut hasher);
     let hash = hasher.finish();
-    ((hash % 14) + 1) as u8
+    (hash % upper) as u64
 }
 
 fn draw_room_messages<'a>(app: &App) -> Paragraph<'a> {
@@ -193,11 +212,7 @@ fn draw_room_messages<'a>(app: &App) -> Paragraph<'a> {
         for msg in messages.iter() {
             let mut line: Vec<Span> = Vec::new();
             if let Some(sender) = &msg.person_email {
-                let sender_color = color_for_user(&msg.person_id);
-                line.push(Span::styled(
-                    sender.clone(),
-                    Style::default().fg(sender_color),
-                ));
+                line.push(Span::styled(sender.clone(), style_for_user(&msg.person_id)));
                 line.push(Span::raw(" > "));
             }
             if let Some(raw_text) = &msg.text {
