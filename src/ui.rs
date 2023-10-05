@@ -9,6 +9,7 @@ use crate::app::App;
 // use ratatui::widgets::List;
 // use ratatui::widgets::ListState;
 // use ratatui::widgets::TableState;
+
 use log::*;
 use ratatui::backend::Backend;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
@@ -18,6 +19,8 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::block::{Block, BorderType};
 use ratatui::widgets::{Borders, Cell, Paragraph, Row, Table, Wrap};
 use ratatui_textarea::TextArea;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use tui_logger::TuiLoggerWidget;
 
 const TITLE_BLOCK_HEIGHT: u16 = 3;
@@ -166,6 +169,21 @@ fn draw_rooms_list<'a>(app: &App) -> Table<'a> {
         )
 }
 
+fn color_for_user(id: &Option<String>) -> Color {
+    match id {
+        Some(id) => Color::Indexed(hash_string_to_number(id)),
+        None => Color::Black,
+    }
+}
+
+// Hash a string to a number between 1 and 14 inclusive
+fn hash_string_to_number(s: &str) -> u8 {
+    let mut hasher = DefaultHasher::new();
+    s.hash(&mut hasher);
+    let hash = hasher.finish();
+    ((hash % 14) + 1) as u8
+}
+
 fn draw_room_messages<'a>(app: &App) -> Paragraph<'a> {
     let mut text = vec![];
     let mut title = "No active room".to_string();
@@ -175,11 +193,7 @@ fn draw_room_messages<'a>(app: &App) -> Paragraph<'a> {
         for msg in messages.iter() {
             let mut line: Vec<Span> = Vec::new();
             if let Some(sender) = &msg.person_email {
-                let sender_color = if app.state.teams_store.is_me(&msg.person_id) {
-                    Color::Yellow
-                } else {
-                    Color::Red
-                };
+                let sender_color = color_for_user(&msg.person_id);
                 line.push(Span::styled(
                     sender.clone(),
                     Style::default().fg(sender_color),
