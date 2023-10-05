@@ -232,8 +232,8 @@ impl App<'_> {
     pub async fn messages_received(&mut self, messages: &[Message]) {
         // keep track of rooms we add messages to
         let mut room_ids = HashSet::new();
-        // store the message
-        for msg in messages {
+        // messages came in with most recent first, so reverse them
+        for msg in messages.iter().rev() {
             if let Some(id) = &msg.room_id {
                 room_ids.insert(id);
             }
