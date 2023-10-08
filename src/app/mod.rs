@@ -136,7 +136,7 @@ impl App<'_> {
     }
 
     pub async fn get_messages_if_room_empty(&mut self, id: &RoomId) {
-        if self.state.teams_store.messages_in_room(id).is_empty() {
+        if self.state.teams_store.messages_in_room(id).next().is_none() {
             self.dispatch_to_teams(AppCmdEvent::ListMessagesInRoom(id.clone()))
                 .await;
         }

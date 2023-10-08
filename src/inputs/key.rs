@@ -5,22 +5,21 @@ use crossterm::event;
 /// Represents an key.
 #[derive(PartialEq, Eq, Clone, Copy, Hash, Debug)]
 pub enum Key {
-    Enter,
-    Tab,
+    Alt(char),
+    AltEnter,
     Backspace,
-    Esc,
-    Left,
-    Right,
-    Up,
-    Down,
-    Ins,
+    Char(char),
+    Ctrl(char),
     Delete,
-    Home,
+    Down,
     End,
-    PageUp,
-    PageDown,
+    Enter,
+    Esc,
     F0,
     F1,
+    F10,
+    F11,
+    F12,
     F2,
     F3,
     F4,
@@ -29,14 +28,16 @@ pub enum Key {
     F7,
     F8,
     F9,
-    F10,
-    F11,
-    F12,
-    Char(char),
-    Ctrl(char),
-    AltEnter,
-    Alt(char),
+    Home,
+    Ins,
+    Left,
+    PageDown,
+    PageUp,
+    Right,
+    ShiftTab,
+    Tab,
     Unknown,
+    Up,
 }
 
 impl Key {
@@ -76,12 +77,13 @@ impl Display for Key {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match *self {
             Key::Alt(' ') => write!(f, "<Alt+Space>"),
-            Key::Ctrl(' ') => write!(f, "<Ctrl+Space>"),
-            Key::Char(' ') => write!(f, "<Space>"),
             Key::Alt(c) => write!(f, "<Alt+{}>", c),
-            Key::Ctrl(c) => write!(f, "<Ctrl+{}>", c),
             Key::AltEnter => write!(f, "<Alt+Enter>"),
+            Key::Char(' ') => write!(f, "<Space>"),
             Key::Char(c) => write!(f, "<{}>", c),
+            Key::Ctrl(' ') => write!(f, "<Ctrl+Space>"),
+            Key::Ctrl(c) => write!(f, "<Ctrl+{}>", c),
+            Key::ShiftTab => write!(f, "<Shift+Tab>"),
             _ => write!(f, "<{:?}>", self),
         }
     }
@@ -152,6 +154,10 @@ impl From<event::KeyEvent> for Key {
                 code: event::KeyCode::Enter,
                 ..
             } => Key::Enter,
+            event::KeyEvent {
+                code: event::KeyCode::BackTab,
+                ..
+            } => Key::ShiftTab,
             event::KeyEvent {
                 code: event::KeyCode::Tab,
                 ..

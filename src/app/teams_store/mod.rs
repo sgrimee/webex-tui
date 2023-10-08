@@ -75,9 +75,8 @@ impl TeamsStore {
         })
     }
 
-    pub fn messages_in_room(&self, id: &RoomId) -> Vec<Message> {
-        let empty_vec: Vec<Message> = vec![];
-        self.msg_by_room_id.get(id).unwrap_or(&empty_vec).to_vec()
+    pub fn messages_in_room<'a>(&'a self, id: &RoomId) -> impl Iterator<Item = &'a Message> {
+        self.msg_by_room_id.get(id).into_iter().flatten()
     }
 
     pub fn set_me_user(&mut self, me: Person) {
