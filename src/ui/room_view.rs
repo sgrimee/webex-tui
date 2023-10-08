@@ -1,4 +1,4 @@
-pub const ACTIVE_ROOM_MIN_WIDTH: u16 = 32;
+pub const ACTIVE_ROOM_MIN_WIDTH: u16 = 30;
 pub const MSG_INPUT_BLOCK_HEIGHT: u16 = 5;
 pub const ROOM_MIN_HEIGHT: u16 = 8;
 
@@ -59,7 +59,7 @@ fn rows_for_message(msg: Message) -> Vec<Row<'static>> {
         rows.push(row);
     }
     if let Some(raw_text) = &msg.text {
-        rows.push(Row::new(vec![Span::raw(raw_text.clone())]).height(5));
+        rows.push(Row::new(vec![Span::raw(raw_text.clone())]).height(3));
     }
     rows
 }
@@ -84,11 +84,7 @@ pub fn draw_room_messages<'a>(app: &'a App) -> Table<'a> {
 
     Table::new(rows)
         .block(block)
-        .widths(&[
-            Constraint::Percentage(80),
-            // Constraint::Max(30),
-            Constraint::Min(ACTIVE_ROOM_MIN_WIDTH),
-        ])
+        .widths(&[Constraint::Percentage(100)])
         .column_spacing(1)
         .highlight_style(
             Style::default()
