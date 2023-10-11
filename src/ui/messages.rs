@@ -1,9 +1,12 @@
 pub const ACTIVE_ROOM_MIN_WIDTH: u16 = 30;
 pub const MSG_INPUT_BLOCK_HEIGHT: u16 = 5;
 pub const ROOM_MIN_HEIGHT: u16 = 8;
+const MESSAGES_RIGHT_MARGIN: u16 = 1;
+const MESSAGES_INDENT: &str = "  ";
 
 use crate::app::state::AppState;
 use crate::app::App;
+use ratatui::prelude::Rect;
 use webex::Message;
 
 use ratatui::layout::Constraint;
@@ -15,6 +18,11 @@ use ratatui_textarea::TextArea;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use textwrap::wrap;
+
+struct MessageDisplay<'a> {
+    rows: Vec<Row<'a>>,
+    _height: u16,
+}
 
 // Assign a color/style to each message sender, spreading over the palette
 // while ensuring each user always gets the same style for consistency
@@ -52,9 +60,11 @@ fn hash_string_to_number(s: &str, upper: u64) -> u64 {
     hash % upper
 }
 
-// Format a message, returning rows to display it
-fn rows_for_message(msg: Message, width: u16) -> Vec<Row<'static>> {
+// Format a message, returning a struct with data to display it
+fn display_for_message<'a>(msg: Message, width: u16) -> MessageDisplay<'a> {
     let mut rows: Vec<Row> = Vec::new();
+
+    const SENDER_HEIGHT: u16 = 1;
     if let Some(sender_email) = &msg.person_email {
         let row = Row::new(vec![Span::styled(
             sender_email.clone(),
@@ -62,48 +72,64 @@ fn rows_for_message(msg: Message, width: u16) -> Vec<Row<'static>> {
         )]);
         rows.push(row);
     }
+
+    let mut text_height: u16 = 0;
     if let Some(raw_text) = msg.text {
-        // width -1 to keep a right margin
-        let options = textwrap::Options::new((width - 1) as usize)
-            .initial_indent("  ")
-            .subsequent_indent("  ");
+        let options = textwrap::Options::new((width - MESSAGES_RIGHT_MARGIN) as usize)
+            .initial_indent(MESSAGES_INDENT)
+            .subsequent_indent(MESSAGES_INDENT);
         let wrapped_lines = wrap(&raw_text, &options);
-        let height = wrapped_lines.len() as u16;
+        text_height = wrapped_lines.len() as u16;
         let cell = Cell::from(wrapped_lines.join("\n"));
-        rows.push(Row::new(vec![cell]).height(height));
+        rows.push(Row::new(vec![cell]).height(text_height));
     }
-    rows
+
+    MessageDisplay {
+        rows,
+        _height: text_height + SENDER_HEIGHT,
+    }
 }
 
 // Draw a table containing the formatted messages for the active room
-pub fn draw_room_messages<'a>(app: &'a App, width: u16) -> Table<'a> {
+// Also returns the number or rows in the table
+pub fn draw_msg_table<'a>(app: &App, rect: &Rect) -> (Table<'a>, usize) {
     let mut title = "No selected room".to_string();
     let mut rows = Vec::<Row>::new();
-    if let Some(room) = &app.state.active_room() {
+
+    // let mut content_length = 0;
+    if let Some(room) = app.state.active_room() {
         title = room.title.clone();
         rows = app
             .state
             .teams_store
             .messages_in_room(&room.id)
-            .flat_map(|msg| rows_for_message(msg.clone(), width - 2))
+            .flat_map(|msg| {
+                let display = display_for_message(msg.clone(), rect.width - 2);
+                // content_length += display.height;
+                display.rows
+            })
             .collect();
     };
+    let nb_rows = rows.len();
 
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Plain)
         .title(title);
 
-    Table::new(rows)
-        .block(block)
-        .widths(&[Constraint::Percentage(100)])
-        .column_spacing(1)
-        .highlight_style(
-            Style::default()
-                .bg(Color::Yellow)
-                .fg(Color::Black)
-                .add_modifier(Modifier::BOLD),
-        )
+    (
+        Table::new(rows)
+            .block(block)
+            .widths(&[Constraint::Percentage(100)])
+            .column_spacing(1)
+            .highlight_style(
+                Style::default()
+                    .bg(Color::Yellow)
+                    .fg(Color::Black)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        nb_rows,
+    )
 }
 
 // Draw a text editor where the user can type a message

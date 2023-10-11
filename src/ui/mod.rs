@@ -13,10 +13,9 @@ use crate::app::App;
 use help::{draw_help, HELP_WIDTH};
 use logs::{draw_logs, LOG_BLOCK_HEIGHT};
 use messages::{
-    draw_msg_input, draw_room_messages, ACTIVE_ROOM_MIN_WIDTH, MSG_INPUT_BLOCK_HEIGHT,
-    ROOM_MIN_HEIGHT,
+    draw_msg_input, draw_msg_table, ACTIVE_ROOM_MIN_WIDTH, MSG_INPUT_BLOCK_HEIGHT, ROOM_MIN_HEIGHT,
 };
-use rooms::{draw_rooms_list, ROOMS_LIST_WIDTH};
+use rooms::{draw_rooms_table, ROOMS_LIST_WIDTH};
 use title::{draw_title, TITLE_BLOCK_HEIGHT};
 
 // render all blocks
@@ -60,9 +59,9 @@ where
         .split(app_rows[1]);
 
     // Rooms list
-    let rooms_list = draw_rooms_list(app);
-    let room_list_state = app.state.rooms_list.table_state_mut();
-    rect.render_stateful_widget(rooms_list, body_columns[0], room_list_state);
+    let rooms_table = draw_rooms_table(app);
+    let room_table_state = app.state.rooms_list.table_state_mut();
+    rect.render_stateful_widget(rooms_table, body_columns[0], room_table_state);
 
     // Room and message edit
     let room_constraints = vec![
@@ -74,10 +73,15 @@ where
         .constraints(room_constraints)
         .split(body_columns[1]);
 
-    let area = room_rows[0];
-    let room_messages = draw_room_messages(app, area.width);
-    rect.render_widget(room_messages, area);
+    // Messages list
+    let messages_area = room_rows[0];
+    let (msg_table, nb_rows) = draw_msg_table(app, &messages_area);
+    let msg_table_state = app.state.messages_list.table_state_mut();
+    // scroll to botto
+    msg_table_state.select(Some(nb_rows));
+    rect.render_stateful_widget(msg_table, messages_area, msg_table_state);
 
+    // Message input
     let msg_input = draw_msg_input(&app.state);
     rect.render_widget(msg_input.widget(), room_rows[1]);
 

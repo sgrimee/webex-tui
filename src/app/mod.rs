@@ -1,6 +1,7 @@
 // app/mod.rs
 
 pub mod actions;
+pub mod messages_list;
 pub mod rooms_list;
 pub mod state;
 pub mod teams_store;

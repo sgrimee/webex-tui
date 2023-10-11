@@ -9,7 +9,7 @@ use ratatui::widgets::block::{Block, BorderType};
 use ratatui::widgets::{Borders, Cell, Row, Table};
 
 // Draw the list of rooms as per selected filtering mode
-pub fn draw_rooms_list<'a>(app: &App) -> Table<'a> {
+pub fn draw_rooms_table<'a>(app: &App) -> Table<'a> {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Plain)
