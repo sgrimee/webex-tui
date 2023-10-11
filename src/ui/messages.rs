@@ -10,11 +10,14 @@ use ratatui::layout::Constraint;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::Span;
 use ratatui::widgets::block::{Block, BorderType};
-use ratatui::widgets::{Borders, Row, Table};
+use ratatui::widgets::{Borders, Cell, Row, Table};
 use ratatui_textarea::TextArea;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+use textwrap::wrap;
 
+// Assign a color/style to each message sender, spreading over the palette
+// while ensuring each user always gets the same style for consistency
 fn style_for_user(id: &Option<String>) -> Style {
     let colors = [
         Color::Red,
@@ -49,7 +52,8 @@ fn hash_string_to_number(s: &str, upper: u64) -> u64 {
     hash % upper
 }
 
-fn rows_for_message(msg: Message) -> Vec<Row<'static>> {
+// Format a message, returning rows to display it
+fn rows_for_message(msg: Message, width: u16) -> Vec<Row<'static>> {
     let mut rows: Vec<Row> = Vec::new();
     if let Some(sender_email) = &msg.person_email {
         let row = Row::new(vec![Span::styled(
@@ -58,13 +62,21 @@ fn rows_for_message(msg: Message) -> Vec<Row<'static>> {
         )]);
         rows.push(row);
     }
-    if let Some(raw_text) = &msg.text {
-        rows.push(Row::new(vec![Span::raw(raw_text.clone())]).height(3));
+    if let Some(raw_text) = msg.text {
+        // width -1 to keep a right margin
+        let options = textwrap::Options::new((width - 1) as usize)
+            .initial_indent("  ")
+            .subsequent_indent("  ");
+        let wrapped_lines = wrap(&raw_text, &options);
+        let height = wrapped_lines.len() as u16;
+        let cell = Cell::from(wrapped_lines.join("\n"));
+        rows.push(Row::new(vec![cell]).height(height));
     }
     rows
 }
 
-pub fn draw_room_messages<'a>(app: &'a App) -> Table<'a> {
+// Draw a table containing the formatted messages for the active room
+pub fn draw_room_messages<'a>(app: &'a App, width: u16) -> Table<'a> {
     let mut title = "No selected room".to_string();
     let mut rows = Vec::<Row>::new();
     if let Some(room) = &app.state.active_room() {
@@ -73,7 +85,7 @@ pub fn draw_room_messages<'a>(app: &'a App) -> Table<'a> {
             .state
             .teams_store
             .messages_in_room(&room.id)
-            .flat_map(|msg| rows_for_message(msg.clone()))
+            .flat_map(|msg| rows_for_message(msg.clone(), width - 2))
             .collect();
     };
 
@@ -94,6 +106,7 @@ pub fn draw_room_messages<'a>(app: &'a App) -> Table<'a> {
         )
 }
 
+// Draw a text editor where the user can type a message
 pub fn draw_msg_input<'a>(state: &'a AppState<'a>) -> TextArea<'a> {
     let (title, borders_style) = if state.editing_mode {
         (

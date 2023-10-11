@@ -5,20 +5,21 @@ use ratatui::terminal::Frame;
 
 mod help;
 mod logs;
-mod room_view;
-mod rooms_list;
+mod messages;
+mod rooms;
 mod title;
 
 use crate::app::App;
 use help::{draw_help, HELP_WIDTH};
 use logs::{draw_logs, LOG_BLOCK_HEIGHT};
-use room_view::{
+use messages::{
     draw_msg_input, draw_room_messages, ACTIVE_ROOM_MIN_WIDTH, MSG_INPUT_BLOCK_HEIGHT,
     ROOM_MIN_HEIGHT,
 };
-use rooms_list::{draw_rooms_list, ROOMS_LIST_WIDTH};
+use rooms::{draw_rooms_list, ROOMS_LIST_WIDTH};
 use title::{draw_title, TITLE_BLOCK_HEIGHT};
 
+// render all blocks
 pub fn render<B>(rect: &mut Frame<B>, app: &mut App)
 where
     B: Backend,
@@ -73,8 +74,9 @@ where
         .constraints(room_constraints)
         .split(body_columns[1]);
 
-    let room_messages = draw_room_messages(app);
-    rect.render_widget(room_messages, room_rows[0]);
+    let area = room_rows[0];
+    let room_messages = draw_room_messages(app, area.width);
+    rect.render_widget(room_messages, area);
 
     let msg_input = draw_msg_input(&app.state);
     rect.render_widget(msg_input.widget(), room_rows[1]);
@@ -92,6 +94,7 @@ where
     }
 }
 
+// log warnings when constraints are not respected
 fn check_size(rect: &Rect, app: &App) {
     // TODO: log only once if the size does not change
     let mut min_width = ROOMS_LIST_WIDTH + ACTIVE_ROOM_MIN_WIDTH;

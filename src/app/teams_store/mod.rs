@@ -3,7 +3,7 @@ use log::*;
 use std::collections::{HashMap, HashSet};
 use webex::{Message, Person, Room};
 
-use super::rooms_list::RoomsListMode;
+use super::rooms_list::RoomsListFilter;
 
 pub(crate) type RoomId = String;
 
@@ -20,10 +20,7 @@ impl TeamsStore {
     pub fn add_message(&mut self, msg: &Message) {
         if let Some(room_id) = msg.room_id.clone() {
             let sender = msg.person_id.clone();
-            let messages = self
-                .msg_by_room_id
-                .entry(room_id.clone())
-                .or_insert(Vec::new());
+            let messages = self.msg_by_room_id.entry(room_id.clone()).or_default();
             messages.push(msg.clone());
             if !self.is_me(&sender) {
                 self.mark_unread(&room_id);
@@ -33,28 +30,34 @@ impl TeamsStore {
         }
     }
 
+    // Return the room for given id, if found
     pub fn room_with_id(&self, id: &RoomId) -> Option<&Room> {
         self.rooms_by_id.get(id)
     }
 
+    // Add or update the room to the store
     pub fn update_room(&mut self, room: Room) {
         self.rooms_by_id.insert(room.id.to_owned(), room);
     }
 
+    // Mark a room as unread
     pub fn mark_unread(&mut self, id: &RoomId) {
         trace!("Marking room {} unread", id);
         self.unread_rooms.insert(id.clone());
     }
 
+    // Mark a room as read
     pub fn mark_read(&mut self, id: &RoomId) {
         trace!("Marking room {} read", id);
         self.unread_rooms.remove(id);
     }
 
+    // Returns whether the room has unread messages
     pub fn room_has_unread(&self, id: &RoomId) -> bool {
         self.unread_rooms.contains(id)
     }
 
+    // Returns whether the room has seen any activity in the past specified period
     pub fn room_has_activity_since(&self, duration: Duration, id: &RoomId) -> bool {
         let room = self.rooms_by_id.get(id).unwrap();
         let last_activity = DateTime::parse_from_rfc3339(&room.last_activity).unwrap();
@@ -62,28 +65,31 @@ impl TeamsStore {
         last_activity > (now - duration)
     }
 
-    // pub fn rooms(&self) ->  {
-    //     self.rooms_by_id.values()
-    // }
-
+    // Return an iterator to rooms with the given filter
     #[allow(clippy::needless_lifetimes)]
-    pub fn rooms_filtered_by<'a>(&'a self, mode: RoomsListMode) -> impl Iterator<Item = &'a Room> {
-        self.rooms_by_id.values().filter(move |room| match mode {
-            RoomsListMode::All => true,
-            RoomsListMode::Recent => self.room_has_activity_since(Duration::hours(24), &room.id),
-            RoomsListMode::Unread => self.room_has_unread(&room.id),
+    pub fn rooms_filtered_by<'a>(
+        &'a self,
+        filter: RoomsListFilter,
+    ) -> impl Iterator<Item = &'a Room> {
+        self.rooms_by_id.values().filter(move |room| match filter {
+            RoomsListFilter::All => true,
+            RoomsListFilter::Recent => self.room_has_activity_since(Duration::hours(24), &room.id),
+            RoomsListFilter::Unread => self.room_has_unread(&room.id),
         })
     }
 
+    // Return an iterator to all pre-loaded messages in the room
+    // Currently by order of reception, not supporing conversations
     pub fn messages_in_room<'a>(&'a self, id: &RoomId) -> impl Iterator<Item = &'a Message> {
         self.msg_by_room_id.get(id).into_iter().flatten()
     }
 
+    // Sets the user of the app, used to filter its own messages
     pub fn set_me_user(&mut self, me: Person) {
         self.me = Some(me);
     }
 
-    /// Return true if me is not None, p is not None and p equals me
+    /// Return true if me is not None, person_id is not None and person_id equals me
     /// Return false if they are different or either is None.
     pub fn is_me(&self, person_id: &Option<String>) -> bool {
         match (&self.me, person_id) {
