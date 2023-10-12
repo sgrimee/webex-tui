@@ -6,7 +6,7 @@ use ratatui::widgets::{Borders, Cell, Row, Table};
 
 use crate::app::actions::Actions;
 
-const HELP_KEY_WIDTH: u16 = 11;
+const HELP_KEY_WIDTH: u16 = 14;
 const HELP_ACTION_WIDTH: u16 = 20;
 pub const HELP_WIDTH: u16 = HELP_KEY_WIDTH + HELP_ACTION_WIDTH;
 
