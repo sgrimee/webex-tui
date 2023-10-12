@@ -25,6 +25,7 @@ jobs:
         with:
           RUSTTARGET: ${{ matrix.target }}
           ARCHIVE_TYPES: ${{ matrix.archive }}
+          TOOLCHAIN_VERSION: 1.73.0
   # windows-msvc-release:
   #   name: release windows msvc
   #   runs-on: windows-latest
