@@ -28,7 +28,7 @@ impl Action {
             Action::EditMessage => &[Key::Enter],
             Action::EndEditMessage => &[Key::Esc],
             Action::MarkRead => &[Key::Char('r')],
-            Action::NextRoomsListMode => &[Key::Tab],
+            Action::NextRoomsListMode => &[Key::ShiftTab],
             Action::Quit => &[Key::Ctrl('c'), Key::Char('q')],
             Action::SendMessage => &[],
             Action::ToggleHelp => &[Key::Char('h')],

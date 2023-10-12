@@ -1,15 +1,14 @@
 [package]
-name = "webex-tui"
-version = "0.1.0"
+authors = ["Sam Grimee <sgrimee@gmail.com>"]
+categories = ["command-line-utilities"]
+documentation = "https://github.com/sgrimee/webex-tui"
 edition = "2021"
 homepage = "https://github.com/sgrimee/webex-tui"
-documentation = "https://github.com/sgrimee/webex-tui"
-repository = "https://github.com/sgrimee/webex-tui"
 keywords = ["cisco", "webex", "tui", "cli", "terminal"]
-categories = ["command-line-utilities"]
-authors = ["Sam Grimee <sgrimee@gmail.com>"]
 license = "MIT OR Apache-2.0"
-
+name = "webex-tui"
+repository = "https://github.com/sgrimee/webex-tui"
+version = "0.1.0"
 
 [dependencies]
 chrono = { version = "0.4.31" }
@@ -26,11 +25,12 @@ ratatui = "0.23.0"
 ratatui-textarea = { version = "0.3.2", features = ["ratatui"] }
 serde = { version = "1.0.180", features = ["derive"] }
 serde_yaml = "0.9.25"
+textwrap = "0.16.0"
 tokio = { version = "1.29.1", features = ["rt", "macros"] }
 tui-logger = { version = "0.9.5", default-features = false, features = [
     "ratatui-support",
 ] }
 webbrowser = "0.8.11"
 # webex = "0.8.0"
-webex = { version = "0.8.0", git = "https://github.com/sgrimee/webex-rust.git", branch = "messages_list" }
+webex = { version = "1.0.0", git = "https://github.com/sgrimee/webex-rust.git", branch = "messages_list" }
 # webex = { path = "../vendor/webex-rust" }

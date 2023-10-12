@@ -1,6 +1,7 @@
 // app/mod.rs
 
 pub mod actions;
+pub mod messages_list;
 pub mod rooms_list;
 pub mod state;
 pub mod teams_store;
@@ -136,7 +137,7 @@ impl App<'_> {
     }
 
     pub async fn get_messages_if_room_empty(&mut self, id: &RoomId) {
-        if self.state.teams_store.messages_in_room(id).is_empty() {
+        if self.state.teams_store.messages_in_room(id).next().is_none() {
             self.dispatch_to_teams(AppCmdEvent::ListMessagesInRoom(id.clone()))
                 .await;
         }

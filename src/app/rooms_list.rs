@@ -8,7 +8,7 @@ use webex::Room;
 use super::teams_store::{RoomId, TeamsStore};
 
 #[derive(Clone, Debug, PartialEq, Sequence)]
-pub enum RoomsListMode {
+pub enum RoomsListFilter {
     All,
     // Direct,
     // Public,
@@ -18,14 +18,14 @@ pub enum RoomsListMode {
 }
 
 pub struct RoomsList {
-    mode: RoomsListMode,
+    mode: RoomsListFilter,
     table_state: TableState,
 }
 
 impl RoomsList {
     pub fn new() -> Self {
         Self {
-            mode: RoomsListMode::Recent,
+            mode: RoomsListFilter::Recent,
             table_state: TableState::default(),
         }
     }
@@ -46,6 +46,7 @@ impl RoomsList {
         }
     }
 
+    // Return the id of the selected room if there is one
     pub fn id_of_selected(&self, rooms: &[&Room]) -> Option<RoomId> {
         let id = match self.table_state.selected() {
             Some(selected) => rooms.get(selected).map(|room| room.id.to_owned()),
@@ -54,16 +55,6 @@ impl RoomsList {
         trace!("Id of selected room: {:?}", id);
         id
     }
-
-    // pub fn selected_room<'a>(&'a self, rooms: &'a [&Room]) -> Option<&Room> {
-    //     let room = self
-    //         .table_state
-    //         .selected()
-    //         .and_then(|position| rooms.get(position))
-    //         .copied();
-    //     trace!("Selected room: {:?}", room);
-    //     room
-    // }
 
     /// Selects the next room in the list and updates the table_state
     /// Does not update the active room
@@ -98,7 +89,7 @@ impl RoomsList {
                 // no items so deselect
                 self.table_state.select(None)
             }
-            Some(selected) if (selected == 0) => {
+            Some(0) => {
                 // first was selected, select last
                 self.table_state.select(Some(num_rooms - 1));
             }
@@ -119,7 +110,7 @@ impl RoomsList {
         &mut self.table_state
     }
 
-    pub fn mode(&self) -> RoomsListMode {
+    pub fn mode(&self) -> RoomsListFilter {
         self.mode.clone()
     }
 }
