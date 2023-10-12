@@ -9,20 +9,16 @@ use crate::app::App;
 use ratatui::prelude::Rect;
 use webex::Message;
 
+use chrono::{DateTime, Local, Utc};
 use ratatui::layout::Constraint;
-use ratatui::style::{Color, Modifier, Style};
-use ratatui::text::Span;
+use ratatui::style::{Color, Modifier, Style, Stylize};
+use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::block::{Block, BorderType};
 use ratatui::widgets::{Borders, Cell, Row, Table};
 use ratatui_textarea::TextArea;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use textwrap::wrap;
-
-struct MessageDisplay<'a> {
-    rows: Vec<Row<'a>>,
-    _height: u16,
-}
+use textwrap::fill;
 
 // Assign a color/style to each message sender, spreading over the palette
 // while ensuring each user always gets the same style for consistency
@@ -60,34 +56,56 @@ fn hash_string_to_number(s: &str, upper: u64) -> u64 {
     hash % upper
 }
 
-// Format a message, returning a struct with data to display it
-fn display_for_message<'a>(msg: Message, width: u16) -> MessageDisplay<'a> {
-    let mut rows: Vec<Row> = Vec::new();
+// Returns a human friendly view of the timestamp
+// panics if the timestamp cannot be parsed
+fn human_timestamp(datetime_str: &str) -> String {
+    let datetime = DateTime::parse_from_rfc3339(datetime_str).unwrap();
 
-    const SENDER_HEIGHT: u16 = 1;
-    if let Some(sender_email) = &msg.person_email {
-        let row = Row::new(vec![Span::styled(
-            sender_email.clone(),
-            style_for_user(&msg.person_id),
-        )]);
-        rows.push(row);
+    // Display more detail for further dates
+    let now = Utc::now();
+    let format = match now.signed_duration_since(datetime).num_days() {
+        0 => "%H:%M",
+        1..=7 => "%a, %H:%M",
+        8..=365 => "%h %d, %H:%M",
+        _ => "%v,%Y %H:%M",
+    };
+
+    let local_datetime = datetime.with_timezone(&Local);
+    local_datetime.format(format).to_string()
+}
+
+// Return a row with the formatted message and the number of lines
+fn row_for_message<'a>(msg: Message, width: u16) -> (Row<'a>, usize) {
+    // One line for the author and timestamp
+    let mut line = Line::default();
+    if let Some(sender_email) = msg.person_email {
+        line.spans
+            .push(Span::styled(sender_email, style_for_user(&msg.person_id)));
     }
+    // Add message timestamp
+    line.spans.push(Span::from("  "));
+    let mut stamp = String::new();
+    if let Some(updated) = &msg.updated {
+        stamp = format!("{} (edited)", human_timestamp(updated));
+    } else if let Some(created) = &msg.created {
+        stamp = human_timestamp(created);
+    }
+    line.spans.push(Span::styled(stamp, Style::new().gray()));
+    let mut text = Text::from(line);
 
-    let mut text_height: u16 = 0;
+    // More lines for message content
     if let Some(raw_text) = msg.text {
         let options = textwrap::Options::new((width - MESSAGES_RIGHT_MARGIN) as usize)
             .initial_indent(MESSAGES_INDENT)
             .subsequent_indent(MESSAGES_INDENT);
-        let wrapped_lines = wrap(&raw_text, &options);
-        text_height = wrapped_lines.len() as u16;
-        let cell = Cell::from(wrapped_lines.join("\n"));
-        rows.push(Row::new(vec![cell]).height(text_height));
+        text.extend(Text::from(fill(&raw_text, options)));
     }
+    text.extend(Text::from("\n"));
 
-    MessageDisplay {
-        rows,
-        _height: text_height + SENDER_HEIGHT,
-    }
+    let height = text.height();
+    let cell = Cell::from(text);
+    let row = Row::new(vec![cell]).height(height as u16);
+    (row, height)
 }
 
 // Draw a table containing the formatted messages for the active room
@@ -96,17 +114,17 @@ pub fn draw_msg_table<'a>(app: &App, rect: &Rect) -> (Table<'a>, usize) {
     let mut title = "No selected room".to_string();
     let mut rows = Vec::<Row>::new();
 
-    // let mut content_length = 0;
+    let mut _content_length = 0;
     if let Some(room) = app.state.active_room() {
         title = room.title.clone();
         rows = app
             .state
             .teams_store
             .messages_in_room(&room.id)
-            .flat_map(|msg| {
-                let display = display_for_message(msg.clone(), rect.width - 2);
-                // content_length += display.height;
-                display.rows
+            .map(|msg| {
+                let (row, height) = row_for_message(msg.clone(), rect.width - 2);
+                _content_length += height;
+                row
             })
             .collect();
     };
