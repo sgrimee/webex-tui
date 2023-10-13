@@ -31,6 +31,6 @@ tui-logger = { version = "0.9.5", default-features = false, features = [
     "ratatui-support",
 ] }
 webbrowser = "0.8.11"
-# webex = "0.8.0"
-webex = { version = "1.0.0", git = "https://github.com/sgrimee/webex-rust.git", branch = "messages_list" }
+# webex = "0.9.0"
+webex = { version = "0.9.0", git = "https://github.com/sgrimee/webex-rust.git", branch = "messages_list" }
 # webex = { path = "../vendor/webex-rust" }
