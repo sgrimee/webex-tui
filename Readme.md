@@ -19,7 +19,23 @@ See also the [TODO list](TODO.md).
 
 ## Installing
 
-Currently the best way to use it is by [installing Rust](https://www.rust-lang.org/tools/install) and then:
+## Homebrew
+
+```
+brew install sgrimee/webex-tui/webex-tui
+```
+
+or
+
+```
+brew tap sgrimee/webex-tui
+brew install webex-tui
+```
+
+## From source
+
+You will need to [have Rust installed](https://www.rust-lang.org/tools/install) and then:
+
 ```shell
 cargo install --git https://github.com/sgrimee/webex-tui
 ```
