@@ -17,7 +17,7 @@ jobs:
       pkg-version: ${{ steps.pkg-version.outputs.PKG_VERSION }}
     steps:
       - name: "Check out the repo"
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -27,30 +27,13 @@ jobs:
         run: |
           echo PKG_VERSION=$(awk -F ' = ' '$1 ~ /version/ { gsub(/["]/, "", $2); printf("%s",$2) }' Cargo.toml) >> $GITHUB_OUTPUT
 
-  create-release:
-    name: "Create release"
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
-    needs: "get-tag"
-    runs-on: "ubuntu-latest"
-    steps:
-      - name: "Check out the repo"
-        uses: actions/checkout@v3
-
-      - name: "Create release"
-        uses: "taiki-e/create-gh-release-action@v1"
-        with:
-          # Changelog is generated after the tag is set by this job
-          # changelog: CHANGELOG.md
-          branch: "main"
-          ref: refs/tags/v${{ needs.get-tag.outputs.pkg-version }}
-          token: ${{ secrets.GITHUB_TOKEN }}
-
   changelog:
     name: Generate changelog
+    needs: ["get-tag"]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -59,12 +42,34 @@ jobs:
         id: git-cliff
         with:
           config: cliff.toml
-          args: --verbose
+          args: --verbose --tag v${{ needs.get-tag.outputs.pkg-version }}
         env:
           OUTPUT: CHANGELOG.md
 
       - name: Print the changelog
         run: cat "${{ steps.git-cliff.outputs.changelog }}"
+
+      - name: write changelog to repo
+        uses: stefanzweifel/git-auto-commit-action@v4
+        with:
+          commit_message: Update CHANGELOG
+
+  create-release:
+    name: "Create release"
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    needs: ["get-tag", "changelog"]
+    runs-on: "ubuntu-latest"
+    steps:
+      - name: "Check out the repo"
+        uses: actions/checkout@v4
+
+      - name: "Create release"
+        uses: "taiki-e/create-gh-release-action@v1"
+        with:
+          changelog: CHANGELOG.md
+          branch: "main"
+          ref: refs/tags/v${{ needs.get-tag.outputs.pkg-version }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
   upload-assets:
     name: "Upload assets to Github releases"
@@ -87,7 +92,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: "Check out the repo"
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: "Upload Binaries"
         uses: "taiki-e/upload-rust-binary-action@v1"
