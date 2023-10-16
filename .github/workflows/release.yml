@@ -39,11 +39,32 @@ jobs:
       - name: "Create release"
         uses: "taiki-e/create-gh-release-action@v1"
         with:
-          # (optional) Path to changelog.
+          # Changelog is generated after the tag is set by this job
           # changelog: CHANGELOG.md
           branch: "main"
           ref: refs/tags/v${{ needs.get-tag.outputs.pkg-version }}
           token: ${{ secrets.GITHUB_TOKEN }}
+
+  changelog:
+    name: Generate changelog
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Generate a changelog
+        uses: orhun/git-cliff-action@v2
+        id: git-cliff
+        with:
+          config: cliff.toml
+          args: --verbose
+        env:
+          OUTPUT: CHANGELOG.md
+
+      - name: Print the changelog
+        run: cat "${{ steps.git-cliff.outputs.changelog }}"
 
   upload-assets:
     name: "Upload assets to Github releases"

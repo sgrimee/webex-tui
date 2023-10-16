@@ -32,6 +32,8 @@
               extensions = ["rust-src" "cargo" "rustc"];
             })
             gcc
+            openssl.dev
+            pkg-config
           ];
 
           RUST_SRC_PATH = "${pkgs.rust-bin.stable.latest.default.override {
@@ -40,11 +42,9 @@
 
           buildInputs = with pkgs;
             [
-              pkg-config
-              openssl.dev
-
               bacon
               clippy
+              git-cliff
               rust-analyzer
             ]
             ++ lib.optionals pkgs.stdenv.isDarwin [
@@ -54,6 +54,11 @@
               pkgs.darwin.apple_sdk.frameworks.CoreServices
               pkgs.darwin.apple_sdk.frameworks.SystemConfiguration
             ];
+        };
+
+        defaultPackage = pkgs.mkRustPackage {
+          cargoSha256 = "46652094fc5f1f00761992c876b6712052edd15eefd93b2e309833a30af94a95";
+          src = ./.;
         };
       }
     );
