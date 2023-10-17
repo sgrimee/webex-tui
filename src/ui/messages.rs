@@ -77,29 +77,39 @@ fn human_timestamp(datetime_str: &str) -> String {
 // Return a row with the formatted message and the number of lines
 fn row_for_message<'a>(msg: Message, width: u16) -> (Row<'a>, usize) {
     // One line for the author and timestamp
-    let mut line = Line::default();
+    let mut title_line = Line::default();
     if let Some(sender_email) = msg.person_email {
-        line.spans
+        title_line
+            .spans
             .push(Span::styled(sender_email, style_for_user(&msg.person_id)));
     }
     // Add message timestamp
-    line.spans.push(Span::from("  "));
+    title_line.spans.push(Span::from("  "));
     let mut stamp = String::new();
     if let Some(updated) = &msg.updated {
         stamp = format!("{} (edited)", human_timestamp(updated));
     } else if let Some(created) = &msg.created {
         stamp = human_timestamp(created);
     }
-    line.spans.push(Span::styled(stamp, Style::new().gray()));
-    let mut text = Text::from(line);
+    title_line
+        .spans
+        .push(Span::styled(stamp, Style::new().gray()));
 
-    // More lines for message content
-    if let Some(raw_text) = msg.text {
-        let options = textwrap::Options::new((width - MESSAGES_RIGHT_MARGIN) as usize)
-            .initial_indent(MESSAGES_INDENT)
-            .subsequent_indent(MESSAGES_INDENT);
-        text.extend(Text::from(fill(&raw_text, options)));
+    // Message content
+    let options = textwrap::Options::new((width - MESSAGES_RIGHT_MARGIN) as usize)
+        .initial_indent(MESSAGES_INDENT)
+        .subsequent_indent(MESSAGES_INDENT);
+    let mut content = String::new();
+    if msg.markdown.is_some() {
+        // Detect markdown, but do not render it yet
+        title_line.spans.push(Span::from("  MD"));
     }
+    if let Some(raw_text) = msg.text {
+        content = raw_text;
+    }
+
+    let mut text = Text::from(title_line);
+    text.extend(Text::from(fill(&content, options)));
     text.extend(Text::from("\n"));
 
     let height = text.height();
