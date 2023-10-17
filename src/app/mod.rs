@@ -190,12 +190,16 @@ impl App<'_> {
     pub async fn set_active_room_to_selection(&mut self) {
         let id_option = self.state.id_of_selected_room();
         self.state.set_active_room_id(&id_option);
+        // Changing active room may have affected the selection
+        // e.g. with Unread filter which includes active room
+        self.state.update_selection_with_active_room();
         if let Some(id) = id_option {
             self.get_messages_if_room_empty(&id).await;
         }
     }
 
     pub async fn next_filtering_mode(&mut self) {
+        self.state.set_active_room_id(&None);
         self.state.rooms_list.next_mode(&self.state.teams_store);
         self.set_active_room_to_selection().await;
     }

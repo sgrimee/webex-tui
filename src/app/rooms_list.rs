@@ -19,6 +19,7 @@ pub enum RoomsListFilter {
 pub struct RoomsList {
     mode: RoomsListFilter,
     table_state: TableState,
+    pub active_room_id: Option<RoomId>,
 }
 
 impl RoomsList {
@@ -26,6 +27,7 @@ impl RoomsList {
         Self {
             mode: RoomsListFilter::Recent,
             table_state: TableState::default(),
+            active_room_id: None,
         }
     }
 
@@ -37,7 +39,7 @@ impl RoomsList {
             self.mode = new_mode;
             // Reset selection when we change modes
             let num_rooms = store
-                .rooms_filtered_by(self.mode())
+                .rooms_filtered_by(self.mode(), self.active_room_id.clone())
                 .collect::<Vec<_>>()
                 .len();
             let selected = if num_rooms == 0 { None } else { Some(0) };

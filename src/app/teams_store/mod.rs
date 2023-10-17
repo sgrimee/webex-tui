@@ -81,13 +81,16 @@ impl TeamsStore {
     pub fn rooms_filtered_by<'a>(
         &'a self,
         filter: RoomsListFilter,
+        active: Option<RoomId>,
     ) -> impl Iterator<Item = &'a Room> {
         self.rooms_by_id.values().filter(move |room| match filter {
             RoomsListFilter::All => true,
             RoomsListFilter::Direct => self.room_is_direct(&room.id),
             RoomsListFilter::Recent => self.room_has_activity_since(Duration::hours(24), &room.id),
             RoomsListFilter::Spaces => self.room_is_space(&room.id),
-            RoomsListFilter::Unread => self.room_has_unread(&room.id),
+            RoomsListFilter::Unread => {
+                self.room_has_unread(&room.id) || (Some(&room.id) == active.as_ref())
+            }
         })
     }
 

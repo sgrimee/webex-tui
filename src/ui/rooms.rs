@@ -17,7 +17,7 @@ pub fn draw_rooms_table<'a>(app: &App) -> Table<'a> {
     let items: Vec<_> = app
         .state
         .teams_store
-        .rooms_filtered_by(app.state.rooms_list.mode())
+        .rooms_filtered_by(app.state.rooms_list.mode(), app.state.active_room_id())
         .map(|room| {
             let mut style = Style::default();
             if app.state.teams_store.room_has_unread(&room.id) {

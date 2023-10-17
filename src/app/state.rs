@@ -23,16 +23,15 @@ pub struct AppState<'a> {
     pub msg_input_textarea: TextArea<'a>,
     pub rooms_list: RoomsList,
     pub messages_list: MessagesList,
-    active_room_id: Option<RoomId>,
 }
 
 impl AppState<'_> {
     pub fn active_room_id(&self) -> Option<RoomId> {
-        self.active_room_id.clone()
+        self.rooms_list.active_room_id.clone()
     }
 
     pub fn set_active_room_id(&mut self, active_room_id: &Option<RoomId>) {
-        self.active_room_id = active_room_id.clone();
+        self.rooms_list.active_room_id = active_room_id.clone();
     }
 
     pub fn active_room(&self) -> Option<&Room> {
@@ -41,7 +40,8 @@ impl AppState<'_> {
     }
 
     pub fn visible_rooms(&self) -> impl Iterator<Item = &Room> {
-        self.teams_store.rooms_filtered_by(self.rooms_list.mode())
+        self.teams_store
+            .rooms_filtered_by(self.rooms_list.mode(), self.active_room_id())
     }
 
     pub fn num_of_visible_rooms(&self) -> usize {
@@ -81,7 +81,6 @@ impl Default for AppState<'_> {
             teams_store: TeamsStore::default(),
             messages_list: MessagesList::new(),
             rooms_list: RoomsList::new(),
-            active_room_id: None,
         }
     }
 }
