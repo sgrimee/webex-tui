@@ -66,10 +66,9 @@ impl Tui {
         Ok(())
     }
 
-    /// [`Draw`] the terminal interface by [`rendering`] the widgets.
+    /// Draw the terminal interface by [`rendering`] the widgets.
     ///
-    /// [`Draw`]: tui::Terminal::draw
-    /// [`rendering`]: crate::ui:render
+    /// [`rendering`]: render
     pub fn draw(&mut self, app: &mut tokio::sync::MutexGuard<App>) -> Result<()> {
         self.terminal.draw(|rect| render(rect, app))?;
         Ok(())
