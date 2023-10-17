@@ -12,6 +12,10 @@ All notable changes to this project will be documented in this file.
 
 - Improve changelog generation
 
+### Ignore
+
+- Include changelog in release
+
 ## [0.1.2] - 2023-10-16
 
 ### Bug Fixes
