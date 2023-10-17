@@ -9,5 +9,6 @@
         "tab.activeBackground": "#95195fe1"
       }
     }
-  }
+  },
+  "workbench.colorCustomizations": {}
 }
