@@ -10,10 +10,9 @@ use super::teams_store::{RoomId, TeamsStore};
 #[derive(Clone, Debug, PartialEq, Sequence)]
 pub enum RoomsListFilter {
     All,
-    // Direct,
-    // Public,
+    Direct,
     Recent,
-    // Spaces,
+    Spaces,
     Unread,
 }
 

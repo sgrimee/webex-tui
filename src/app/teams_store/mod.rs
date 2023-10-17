@@ -58,11 +58,26 @@ impl TeamsStore {
     }
 
     // Returns whether the room has seen any activity in the past specified period
+    // panics if room is not known
     pub fn room_has_activity_since(&self, duration: Duration, id: &RoomId) -> bool {
         let room = self.rooms_by_id.get(id).unwrap();
         let last_activity = DateTime::parse_from_rfc3339(&room.last_activity).unwrap();
         let now = Utc::now();
         last_activity > (now - duration)
+    }
+
+    // Returns whether a room is a 1-1 chat
+    // panics if room is not known
+    pub fn room_is_direct(&self, id: &RoomId) -> bool {
+        let room = self.rooms_by_id.get(id).unwrap();
+        room.room_type == "direct"
+    }
+
+    // Returns whether a room is a space
+    // panics if room is not known
+    pub fn room_is_space(&self, id: &RoomId) -> bool {
+        let room = self.rooms_by_id.get(id).unwrap();
+        room.room_type == "group"
     }
 
     // Return an iterator to rooms with the given filter
@@ -73,7 +88,9 @@ impl TeamsStore {
     ) -> impl Iterator<Item = &'a Room> {
         self.rooms_by_id.values().filter(move |room| match filter {
             RoomsListFilter::All => true,
+            RoomsListFilter::Direct => self.room_is_direct(&room.id),
             RoomsListFilter::Recent => self.room_has_activity_since(Duration::hours(24), &room.id),
+            RoomsListFilter::Spaces => self.room_is_space(&room.id),
             RoomsListFilter::Unread => self.room_has_unread(&room.id),
         })
     }

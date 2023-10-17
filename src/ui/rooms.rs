@@ -13,7 +13,7 @@ pub fn draw_rooms_table<'a>(app: &App) -> Table<'a> {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Plain)
-        .title(format!("{:?} rooms", app.state.rooms_list.mode()));
+        .title(format!("Filter: {:?}", app.state.rooms_list.mode()));
     let items: Vec<_> = app
         .state
         .teams_store
