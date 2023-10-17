@@ -28,7 +28,7 @@ See also the [TODO list](TODO.md).
 ## Homebrew
 
 ```shell
-brew install sgrimee/webex-tui/webex-tui
+brew install sgrimee/tap/webex-tui
 ```
 
 ## From source
