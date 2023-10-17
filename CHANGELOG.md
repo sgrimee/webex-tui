@@ -6,6 +6,12 @@ This project tries to follow semantic versioning.
 
 ## [0.2.1] - 2023-10-17
 
+### Documentation
+
+- Update brew tap location
+
+## [0.2.1] - 2023-10-17
+
 ### Bug Fixes
 
 - History messages do not set unread status
