@@ -225,18 +225,21 @@ impl App<'_> {
         trace!("Message was sent.");
     }
 
-    pub async fn message_received(&mut self, msg: &Message) {
+    pub async fn message_received(&mut self, msg: &Message, mark_unread: bool) {
         let messages: [Message; 1] = [msg.clone()];
-        self.messages_received(&messages).await
+        self.messages_received(&messages, mark_unread).await
     }
 
-    pub async fn messages_received(&mut self, messages: &[Message]) {
+    pub async fn messages_received(&mut self, messages: &[Message], mark_unread: bool) {
         // keep track of rooms we add messages to
         let mut room_ids = HashSet::new();
         // messages came in with most recent first, so reverse them
         for msg in messages.iter().rev() {
             if let Some(id) = &msg.room_id {
                 room_ids.insert(id);
+                if mark_unread && !self.state.teams_store.is_me(&msg.person_id) {
+                    self.state.teams_store.mark_unread(id);
+                }
             }
             self.state.teams_store.add_message(msg);
         }

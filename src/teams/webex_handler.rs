@@ -15,7 +15,8 @@ impl Teams<'_> {
                 {
                     trace!("Message: {:?}", msg);
                     let mut app = self.app.lock().await;
-                    app.message_received(&msg).await;
+                    // add message and mark room as unread
+                    app.message_received(&msg, true).await;
                 }
             }
             _ => {

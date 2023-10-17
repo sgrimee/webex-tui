@@ -70,7 +70,8 @@ impl Teams<'_> {
         match self.client.list_messages_in_room(&gid).await {
             Ok(messages) => {
                 let mut app = self.app.lock().await;
-                app.messages_received(&messages).await;
+                // add messages but do not mark the room as unread
+                app.messages_received(&messages, false).await;
             }
             Err(error) => error!("Error retrieving messages in room: {}", error),
         }

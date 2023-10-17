@@ -19,12 +19,8 @@ pub struct TeamsStore {
 impl TeamsStore {
     pub fn add_message(&mut self, msg: &Message) {
         if let Some(room_id) = msg.room_id.clone() {
-            let sender = msg.person_id.clone();
             let messages = self.msg_by_room_id.entry(room_id.clone()).or_default();
             messages.push(msg.clone());
-            if !self.is_me(&sender) {
-                self.mark_unread(&room_id);
-            }
         } else {
             warn!("Message with no room_id: {:#?}", msg);
         }
