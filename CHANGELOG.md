@@ -4,13 +4,21 @@ All notable changes to this project will be documented in this file.
 
 This project tries to follow semantic versioning.
 
-## [0.2.1] - 2023-10-17
+## [0.2.1] - 2023-10-18
+
+### Bug Fixes
+
+- #20 keep active room in Unread filter mode
 
 ### Documentation
 
 - Update brew tap location
 
-## [0.2.1] - 2023-10-17
+### Features
+
+- Switch rooms list with Left/Right arrows
+
+## [0.2.1] - 2023-10-18
 
 ### Bug Fixes
 
