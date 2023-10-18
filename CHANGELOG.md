@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 This project tries to follow semantic versioning.
 
-## [0.2.1] - 2023-10-18
+## [0.2.2] - 2023-10-18
 
 ### Bug Fixes
 
@@ -18,7 +18,7 @@ This project tries to follow semantic versioning.
 
 - Switch rooms list with Left/Right arrows
 
-## [0.2.1] - 2023-10-18
+## [0.2.1] - 2023-10-17
 
 ### Bug Fixes
 
