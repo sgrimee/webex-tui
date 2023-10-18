@@ -63,6 +63,10 @@ impl App<'_> {
                     self.next_filtering_mode().await;
                     AppReturn::Continue
                 }
+                Action::PreviousRoomsListMode => {
+                    self.previous_filtering_mode().await;
+                    AppReturn::Continue
+                }
                 Action::SendMessage => {
                     self.send_message_buffer().await;
                     AppReturn::Continue
@@ -179,6 +183,7 @@ impl App<'_> {
             Action::EditMessage,
             Action::MarkRead,
             Action::NextRoomsListMode,
+            Action::PreviousRoomsListMode,
             Action::Quit,
             Action::SendMessage,
             Action::ToggleHelp,
@@ -196,6 +201,12 @@ impl App<'_> {
         if let Some(id) = id_option {
             self.get_messages_if_room_empty(&id).await;
         }
+    }
+
+    pub async fn previous_filtering_mode(&mut self) {
+        self.state.set_active_room_id(&None);
+        self.state.rooms_list.previous_mode(&self.state.teams_store);
+        self.set_active_room_to_selection().await;
     }
 
     pub async fn next_filtering_mode(&mut self) {

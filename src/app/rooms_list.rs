@@ -1,6 +1,6 @@
 // rooms_list.rs
 
-use enum_iterator::{next_cycle, Sequence};
+use enum_iterator::{next_cycle, previous_cycle, Sequence};
 use log::*;
 use ratatui::widgets::TableState;
 use webex::Room;
@@ -35,6 +35,22 @@ impl RoomsList {
     /// Does not update the active room
     pub fn next_mode(&mut self, store: &TeamsStore) {
         if let Some(new_mode) = next_cycle(&self.mode) {
+            debug!("Rooms list mode set to {:?}", new_mode);
+            self.mode = new_mode;
+            // Reset selection when we change modes
+            let num_rooms = store
+                .rooms_filtered_by(self.mode(), self.active_room_id.clone())
+                .collect::<Vec<_>>()
+                .len();
+            let selected = if num_rooms == 0 { None } else { Some(0) };
+            self.table_state.select(selected);
+        }
+    }
+
+    /// Switch the rooms list table to the previous filtering mode
+    /// Does not update the active room
+    pub fn previous_mode(&mut self, store: &TeamsStore) {
+        if let Some(new_mode) = previous_cycle(&self.mode) {
             debug!("Rooms list mode set to {:?}", new_mode);
             self.mode = new_mode;
             // Reset selection when we change modes
