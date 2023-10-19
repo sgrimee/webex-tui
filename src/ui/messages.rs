@@ -4,6 +4,7 @@ pub const ROOM_MIN_HEIGHT: u16 = 8;
 const MESSAGES_RIGHT_MARGIN: u16 = 1;
 const MESSAGES_INDENT: &str = "  ";
 
+use crate::app::state::ActivePane;
 use crate::app::state::AppState;
 use crate::app::App;
 use ratatui::prelude::Rect;
@@ -140,9 +141,16 @@ pub fn draw_msg_table<'a>(app: &App, rect: &Rect) -> (Table<'a>, usize) {
     };
     let nb_rows = rows.len();
 
+    // Highlight pane if active
+    let border_style = match app.state.active_pane {
+        ActivePane::MessagesPane => Style::default().fg(Color::Cyan),
+        _ => Style::default(),
+    };
+
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Plain)
+        .border_style(border_style)
         .title(title);
 
     (

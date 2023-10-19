@@ -1,5 +1,6 @@
 pub const ROOMS_LIST_WIDTH: u16 = 32;
 
+use crate::app::state::ActivePane;
 use crate::app::App;
 
 use ratatui::layout::Constraint;
@@ -10,9 +11,15 @@ use ratatui::widgets::{Borders, Cell, Row, Table};
 
 // Draw the list of rooms as per selected filtering mode
 pub fn draw_rooms_table<'a>(app: &App) -> Table<'a> {
+    // highlight pane if it is active
+    let border_style = match app.state.active_pane {
+        ActivePane::RoomsPane => Style::default().fg(Color::Cyan),
+        _ => Style::default(),
+    };
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Plain)
+        .border_style(border_style)
         .title(format!("Filter: {:?}", app.state.rooms_list.mode()));
     let items: Vec<_> = app
         .state

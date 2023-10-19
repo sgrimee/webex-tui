@@ -7,10 +7,11 @@ use webex::Room;
 
 use super::teams_store::{RoomId, TeamsStore};
 
-#[derive(Clone, Debug, PartialEq, Sequence)]
+#[derive(Clone, Debug, PartialEq, Default, Sequence)]
 pub enum RoomsListFilter {
     All,
     Direct,
+    #[default]
     Recent,
     Spaces,
     Unread,
@@ -25,7 +26,7 @@ pub struct RoomsList {
 impl RoomsList {
     pub fn new() -> Self {
         Self {
-            mode: RoomsListFilter::Recent,
+            mode: RoomsListFilter::default(),
             table_state: TableState::default(),
             active_room_id: None,
         }

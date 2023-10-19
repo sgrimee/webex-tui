@@ -1,11 +1,12 @@
 // app/state.rs
 
+use enum_iterator::Sequence;
 use ratatui_textarea::TextArea;
 use webex::Room;
 
 use super::actions::{Action, Actions};
-use super::messages_list::MessagesList;
-use super::rooms_list::RoomsList;
+use super::messages_pane::MessagesList;
+use super::rooms_pane::RoomsList;
 use super::teams_store::{RoomId, TeamsStore};
 
 pub struct AppState<'a> {
@@ -23,6 +24,14 @@ pub struct AppState<'a> {
     pub msg_input_textarea: TextArea<'a>,
     pub rooms_list: RoomsList,
     pub messages_list: MessagesList,
+    pub active_pane: ActivePane,
+}
+
+#[derive(Clone, Debug, PartialEq, Sequence, Default)]
+pub enum ActivePane {
+    #[default]
+    RoomsPane,
+    MessagesPane,
 }
 
 impl AppState<'_> {
@@ -89,6 +98,7 @@ impl Default for AppState<'_> {
             teams_store: TeamsStore::default(),
             messages_list: MessagesList::new(),
             rooms_list: RoomsList::new(),
+            active_pane: ActivePane::default(),
         }
     }
 }

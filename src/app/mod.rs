@@ -1,8 +1,8 @@
 // app/mod.rs
 
 pub mod actions;
-pub mod messages_list;
-pub mod rooms_list;
+pub mod messages_pane;
+pub mod rooms_pane;
 pub mod state;
 pub mod teams_store;
 
@@ -12,6 +12,7 @@ use crate::inputs::key::Key;
 use crate::teams::app_handler::AppCmdEvent;
 
 use crossterm::event::KeyEvent;
+use enum_iterator::next_cycle;
 use log::*;
 use ratatui_textarea::{Input, TextArea};
 use std::collections::HashSet;
@@ -57,6 +58,12 @@ impl App<'_> {
                 }
                 Action::MarkRead => {
                     self.state.mark_active_read();
+                    AppReturn::Continue
+                }
+                Action::NextPane => {
+                    if let Some(new_pane) = next_cycle(&self.state.active_pane) {
+                        self.state.active_pane = new_pane;
+                    };
                     AppReturn::Continue
                 }
                 Action::NextRoomsListMode => {
@@ -173,6 +180,7 @@ impl App<'_> {
             Action::ArrowUp,
             Action::EditMessage,
             Action::MarkRead,
+            Action::NextPane,
             Action::NextRoomsListMode,
             Action::PreviousRoomsListMode,
             Action::Quit,

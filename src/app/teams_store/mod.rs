@@ -3,7 +3,7 @@ use log::*;
 use std::collections::{HashMap, HashSet};
 use webex::{Message, Person, Room};
 
-use super::rooms_list::RoomsListFilter;
+use super::rooms_pane::RoomsListFilter;
 
 pub(crate) type RoomId = String;
 
