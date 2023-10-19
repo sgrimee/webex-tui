@@ -17,6 +17,9 @@ pub enum AppCmdEvent {
 impl Teams<'_> {
     /// Handle events dispatched by the App
     pub async fn handle_app_event(&mut self, app_cmd_event: AppCmdEvent) {
+        {
+            self.app.lock().await.state.set_loading(true);
+        }
         match app_cmd_event {
             AppCmdEvent::Initialize() => self.do_initialize().await,
             AppCmdEvent::ListAllRooms() => self.do_list_all_rooms().await,
@@ -27,10 +30,9 @@ impl Teams<'_> {
             AppCmdEvent::UpdateRoom(room_id) => self.do_update_room(&room_id).await,
             // AppCmdEvent::Quit() => self.do_quit().await,
         };
-
-        // TODO: do we need this?
-        let mut app = self.app.lock().await;
-        app.loaded();
+        {
+            self.app.lock().await.state.set_loading(false);
+        }
     }
 
     async fn do_initialize(&mut self) {

@@ -12,7 +12,7 @@ pub struct AppState<'a> {
     // App
     pub actions: Actions,
     pub editing_mode: bool,
-    pub is_loading: bool,
+    is_loading: bool,
 
     // Webex
     pub teams_store: TeamsStore,
@@ -66,6 +66,14 @@ impl AppState<'_> {
         if let Some(id) = self.id_of_selected_room() {
             self.teams_store.mark_read(&id);
         }
+    }
+
+    pub fn set_loading(&mut self, loading: bool) {
+        self.is_loading = loading;
+    }
+
+    pub fn is_loading(&self) -> bool {
+        self.is_loading
     }
 }
 

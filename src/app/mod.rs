@@ -154,20 +154,13 @@ impl App<'_> {
 
     /// Send a command to the teams thread
     pub async fn dispatch_to_teams(&mut self, action: AppCmdEvent) {
-        // `is_loading` will be set to false again after the async action has finished in io/handler.rs
-        self.state.is_loading = true;
         if let Err(e) = self.app_to_teams_tx.send(action).await {
-            self.state.is_loading = false;
             error!("Error from dispatch {}", e);
         };
     }
 
     pub fn actions(&self) -> &Actions {
         &self.state.actions
-    }
-
-    pub fn is_loading(&self) -> bool {
-        self.state.is_loading
     }
 
     pub async fn set_state_initialized(&mut self) {
@@ -229,11 +222,6 @@ impl App<'_> {
 
     pub fn set_state_message_writing(&mut self) {
         self.state.actions = vec![Action::SendMessage, Action::EndEditMessage].into();
-    }
-
-    // indicate the completion of a pending teams task
-    pub fn loaded(&mut self) {
-        self.state.is_loading = false;
     }
 
     pub fn message_sent(&mut self) {

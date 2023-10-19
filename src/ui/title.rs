@@ -8,7 +8,7 @@ use crate::app::App;
 pub const TITLE_BLOCK_HEIGHT: u16 = 3;
 
 pub fn draw_title<'a>(app: &App) -> Paragraph<'a> {
-    let title = match app.is_loading() {
+    let title = match app.state.is_loading() {
         true => "webex-tui (loading)",
         false => "webex-tui",
     };
