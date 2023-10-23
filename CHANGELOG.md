@@ -4,13 +4,14 @@ All notable changes to this project will be documented in this file.
 
 This project tries to follow semantic versioning.
 
-## [0.2.2] - 2023-10-23
+## [0.2.3] - 2023-10-23
 
 ### Bug Fixes
 
 - #8 loading indicator accuracy
+- Do not hang with many tasks in parallel
 
-## [0.2.2] - 2023-10-23
+## [0.2.2] - 2023-10-18
 
 ### Bug Fixes
 
