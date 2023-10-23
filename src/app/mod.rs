@@ -45,6 +45,15 @@ impl App<'_> {
         self.state.teams_store.set_me_user(me);
     }
 
+    pub async fn process_key_event(&mut self, key_event: KeyEvent) -> AppReturn {
+        if self.is_editing() {
+            trace!("Keyevent: {:#?}", key_event);
+            self.process_editing_key(key_event).await
+        } else {
+            self.do_action(Key::from(key_event)).await
+        }
+    }
+
     /// Handle a user action (non-editing mode)
     pub async fn do_action(&mut self, key: crate::inputs::key::Key) -> AppReturn {
         if let Some(action) = self.state.actions.find(key) {
@@ -66,11 +75,11 @@ impl App<'_> {
                     };
                     AppReturn::Continue
                 }
-                Action::NextRoomsListMode => {
+                Action::NextRoomFilter => {
                     self.next_filtering_mode().await;
                     AppReturn::Continue
                 }
-                Action::PreviousRoomsListMode => {
+                Action::PreviousRoomFilter => {
                     self.previous_filtering_mode().await;
                     AppReturn::Continue
                 }
@@ -86,11 +95,11 @@ impl App<'_> {
                     self.state.show_help = !self.state.show_help;
                     AppReturn::Continue
                 }
-                Action::ArrowDown => {
+                Action::NextRoom => {
                     self.next_room().await;
                     AppReturn::Continue
                 }
-                Action::ArrowUp => {
+                Action::PreviousRoom => {
                     self.previous_room().await;
                     AppReturn::Continue
                 }
@@ -107,7 +116,7 @@ impl App<'_> {
     }
     // Handle a key while in text editing mode
     pub async fn process_editing_key(&mut self, key_event: KeyEvent) -> AppReturn {
-        let key = Key::from(key_event);
+        let key: Key = key_event.into();
         match key {
             Key::Ctrl('c') => return AppReturn::Exit,
             Key::Esc => {
@@ -191,6 +200,10 @@ impl App<'_> {
         .into();
     }
 
+    pub fn set_state_message_writing(&mut self) {
+        self.state.actions = vec![Action::SendMessage, Action::EndEditMessage].into();
+    }
+
     pub async fn set_active_room_to_selection(&mut self) {
         let id_option = self.state.id_of_selected_room();
         self.state.set_active_room_id(&id_option);
@@ -224,10 +237,6 @@ impl App<'_> {
         let num_rooms = self.state.num_of_visible_rooms();
         self.state.rooms_list.select_previous_room(num_rooms);
         self.set_active_room_to_selection().await;
-    }
-
-    pub fn set_state_message_writing(&mut self) {
-        self.state.actions = vec![Action::SendMessage, Action::EndEditMessage].into();
     }
 
     pub fn message_sent(&mut self) {

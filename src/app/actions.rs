@@ -7,14 +7,16 @@ use crate::inputs::key::Key;
 /// We define all available user actions
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Sequence)]
 pub enum Action {
-    ArrowDown,
-    ArrowUp,
     EditMessage,
     EndEditMessage,
     MarkRead,
+    NextMessage,
     NextPane,
-    NextRoomsListMode,
-    PreviousRoomsListMode,
+    NextRoom,
+    NextRoomFilter,
+    PreviousMessage,
+    PreviousRoom,
+    PreviousRoomFilter,
     Quit,
     SendMessage,
     ToggleHelp,
@@ -25,14 +27,16 @@ impl Action {
     /// List of key associated to action
     pub fn keys(&self) -> &[Key] {
         match self {
-            Action::ArrowDown => &[Key::Down],
-            Action::ArrowUp => &[Key::Up],
             Action::EditMessage => &[Key::Enter],
             Action::EndEditMessage => &[Key::Esc],
             Action::MarkRead => &[Key::Char('r')],
+            Action::NextMessage => &[Key::Down],
             Action::NextPane => &[Key::Tab],
-            Action::NextRoomsListMode => &[Key::Right],
-            Action::PreviousRoomsListMode => &[Key::Left],
+            Action::NextRoom => &[Key::Down],
+            Action::NextRoomFilter => &[Key::Right],
+            Action::PreviousMessage => &[Key::Up],
+            Action::PreviousRoom => &[Key::Up],
+            Action::PreviousRoomFilter => &[Key::Left],
             Action::Quit => &[Key::Ctrl('c'), Key::Char('q')],
             Action::SendMessage => &[],
             Action::ToggleHelp => &[Key::Char('h')],
@@ -45,14 +49,16 @@ impl Action {
 impl Display for Action {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let str = match self {
-            Action::ArrowDown => "Next room",
-            Action::ArrowUp => "Previous room",
             Action::EditMessage => "Edit message",
             Action::EndEditMessage => "End editing message",
             Action::MarkRead => "Mark read (locally)",
+            Action::NextMessage => "Next message",
             Action::NextPane => "Next pane",
-            Action::NextRoomsListMode => "Next room filter",
-            Action::PreviousRoomsListMode => "Previous room filter",
+            Action::NextRoom => "Next room",
+            Action::NextRoomFilter => "Next room filter",
+            Action::PreviousMessage => "Previous message",
+            Action::PreviousRoom => "Previous room",
+            Action::PreviousRoomFilter => "Previous room filter",
             Action::Quit => "Quit",
             Action::SendMessage => "Send message",
             Action::ToggleHelp => "Toggle help",
