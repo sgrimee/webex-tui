@@ -4,7 +4,13 @@ All notable changes to this project will be documented in this file.
 
 This project tries to follow semantic versioning.
 
-## [0.2.2] - 2023-10-18
+## [0.2.2] - 2023-10-23
+
+### Bug Fixes
+
+- #8 loading indicator accuracy
+
+## [0.2.2] - 2023-10-23
 
 ### Bug Fixes
 
