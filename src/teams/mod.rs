@@ -13,7 +13,7 @@ use crate::app::App;
 use log::*;
 use oauth2::AccessToken;
 use std::sync::Arc;
-use tokio::sync::mpsc::Receiver;
+use tokio::sync::mpsc::UnboundedReceiver;
 
 use webex::{GlobalId, GlobalIdType, Person, Room, Webex, WebexEventStream};
 
@@ -56,7 +56,7 @@ impl<'a> Teams<'a> {
     }
 
     // pub async fn handle_events(&mut self, app_to_teams_rx: Receiver<AppCmdEvent>) {
-    pub async fn handle_events(&mut self, mut app_to_teams_rx: Receiver<AppCmdEvent>) {
+    pub async fn handle_events(&mut self, mut app_to_teams_rx: UnboundedReceiver<AppCmdEvent>) {
         // Webex events
         let client = self.client.clone();
         let (wbx_stream_to_teams_tx, mut wbx_stream_to_teams_rx) =

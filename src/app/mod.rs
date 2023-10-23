@@ -24,12 +24,12 @@ pub enum AppReturn {
 }
 
 pub struct App<'a> {
-    app_to_teams_tx: tokio::sync::mpsc::Sender<AppCmdEvent>,
+    app_to_teams_tx: tokio::sync::mpsc::UnboundedSender<AppCmdEvent>,
     pub state: AppState<'a>,
 }
 
 impl App<'_> {
-    pub fn new(app_to_teams_tx: tokio::sync::mpsc::Sender<AppCmdEvent>) -> Self {
+    pub fn new(app_to_teams_tx: tokio::sync::mpsc::UnboundedSender<AppCmdEvent>) -> Self {
         Self {
             app_to_teams_tx,
             state: AppState::default(),
@@ -131,8 +131,7 @@ impl App<'_> {
                     ..Default::default()
                 };
                 debug!("Sending message to room {:?}", room.title);
-                self.dispatch_to_teams(AppCmdEvent::SendMessage(msg_to_send))
-                    .await;
+                self.dispatch_to_teams(AppCmdEvent::SendMessage(msg_to_send));
                 self.state.msg_input_textarea = TextArea::default();
                 self.state.teams_store.mark_read(&id);
             }
@@ -142,8 +141,7 @@ impl App<'_> {
 
     pub async fn get_messages_if_room_empty(&mut self, id: &RoomId) {
         if self.state.teams_store.messages_in_room(id).next().is_none() {
-            self.dispatch_to_teams(AppCmdEvent::ListMessagesInRoom(id.clone()))
-                .await;
+            self.dispatch_to_teams(AppCmdEvent::ListMessagesInRoom(id.clone()));
         }
     }
 
@@ -153,8 +151,8 @@ impl App<'_> {
     }
 
     /// Send a command to the teams thread
-    pub async fn dispatch_to_teams(&mut self, action: AppCmdEvent) {
-        if let Err(e) = self.app_to_teams_tx.send(action).await {
+    pub fn dispatch_to_teams(&mut self, action: AppCmdEvent) {
+        if let Err(e) = self.app_to_teams_tx.send(action) {
             error!("Error from dispatch {}", e);
         };
     }
@@ -163,10 +161,10 @@ impl App<'_> {
         &self.state.actions
     }
 
-    pub async fn set_state_initialized(&mut self) {
+    pub fn set_state_initialized(&mut self) {
         self.state.actions = vec![Action::Quit, Action::ToggleHelp, Action::ToggleLogs].into();
         // Some more heavy tasks that we put after init to ensure quick startup
-        self.dispatch_to_teams(AppCmdEvent::ListAllRooms()).await;
+        self.dispatch_to_teams(AppCmdEvent::ListAllRooms());
     }
 
     pub fn set_state_room_selection(&mut self) {
@@ -248,8 +246,7 @@ impl App<'_> {
         }
         // update room details, including title, adding room if needed
         for room_id in room_ids {
-            self.dispatch_to_teams(AppCmdEvent::UpdateRoom(room_id.to_owned()))
-                .await;
+            self.dispatch_to_teams(AppCmdEvent::UpdateRoom(room_id.to_owned()));
         }
     }
 

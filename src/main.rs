@@ -56,7 +56,7 @@ async fn main() -> Result<()> {
     tui.init()?;
 
     // Setup App and Teams thread
-    let (app_to_teams_tx, app_to_teams_rx) = tokio::sync::mpsc::channel::<AppCmdEvent>(100);
+    let (app_to_teams_tx, app_to_teams_rx) = tokio::sync::mpsc::unbounded_channel::<AppCmdEvent>();
     let app = Arc::new(tokio::sync::Mutex::new(App::new(app_to_teams_tx.clone())));
     let app_ui = Arc::clone(&app);
     tokio::spawn(async move {
@@ -65,7 +65,7 @@ async fn main() -> Result<()> {
     });
     {
         let mut app = app_ui.lock().await;
-        app.dispatch_to_teams(AppCmdEvent::Initialize()).await;
+        app.dispatch_to_teams(AppCmdEvent::Initialize());
     }
 
     loop {
