@@ -70,7 +70,7 @@ impl Tui {
     ///
     /// [`rendering`]: render
     pub fn draw(&mut self, app: &mut tokio::sync::MutexGuard<App>) -> Result<()> {
-        self.terminal.draw(|rect| render(rect, app))?;
+        self.terminal.draw(|rect| render(rect, &mut app.state))?;
         Ok(())
     }
 

@@ -4,9 +4,7 @@ pub const ROOM_MIN_HEIGHT: u16 = 8;
 const MESSAGES_RIGHT_MARGIN: u16 = 1;
 const MESSAGES_INDENT: &str = "  ";
 
-use crate::app::state::ActivePane;
-use crate::app::state::AppState;
-use crate::app::App;
+use crate::app::state::{ActivePane, AppState};
 use ratatui::prelude::Rect;
 use webex::Message;
 
@@ -121,15 +119,14 @@ fn row_for_message<'a>(msg: Message, width: u16) -> (Row<'a>, usize) {
 
 // Draw a table containing the formatted messages for the active room
 // Also returns the number or rows in the table
-pub fn draw_msg_table<'a>(app: &App, rect: &Rect) -> (Table<'a>, usize) {
+pub fn draw_msg_table<'a>(state: &AppState, rect: &Rect) -> (Table<'a>, usize) {
     let mut title = "No selected room".to_string();
     let mut rows = Vec::<Row>::new();
 
     let mut _content_length = 0;
-    if let Some(room) = app.state.active_room() {
+    if let Some(room) = state.active_room() {
         title = room.title.clone();
-        rows = app
-            .state
+        rows = state
             .teams_store
             .messages_in_room(&room.id)
             .map(|msg| {
@@ -142,8 +139,8 @@ pub fn draw_msg_table<'a>(app: &App, rect: &Rect) -> (Table<'a>, usize) {
     let nb_rows = rows.len();
 
     // Highlight pane if active
-    let border_style = match app.state.active_pane {
-        ActivePane::MessagesPane => Style::default().fg(Color::Cyan),
+    let border_style = match state.active_pane() {
+        Some(ActivePane::Messages) => Style::default().fg(Color::Cyan),
         _ => Style::default(),
     };
 
@@ -170,25 +167,27 @@ pub fn draw_msg_table<'a>(app: &App, rect: &Rect) -> (Table<'a>, usize) {
 
 // Draw a text editor where the user can type a message
 pub fn draw_msg_input<'a>(state: &'a AppState<'a>) -> TextArea<'a> {
-    let (title, borders_style) = if state.editing_mode {
-        (
-            Span::styled(
-                "Type your message, Enter to send, Alt+Enter for new line, Esc to exit.",
-                Style::default().fg(Color::Yellow),
-            ),
+    // Update title when in editing mode
+    let title = if state.editing_mode {
+        Span::styled(
+            "Type your message, Enter to send, Alt+Enter for new line, Esc to exit.",
             Style::default().fg(Color::Yellow),
         )
     } else {
-        (
-            Span::styled("Press Enter with a selected room to type", Style::default()),
-            Style::default(),
-        )
+        Span::styled("Press Enter with a selected room to type", Style::default())
     };
+
+    // Highlight pane if active
+    let border_style = match state.active_pane() {
+        Some(ActivePane::Compose) => Style::default().fg(Color::Cyan),
+        _ => Style::default(),
+    };
+
     let mut textarea = state.msg_input_textarea.clone();
     textarea.set_block(
         Block::default()
             .borders(Borders::ALL)
-            .border_style(borders_style)
+            .border_style(border_style)
             .title(title),
     );
     textarea.set_cursor_line_style(Style::default());

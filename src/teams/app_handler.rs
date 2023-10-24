@@ -1,3 +1,4 @@
+use crate::app::state::ActivePane;
 use crate::app::teams_store::RoomId;
 
 use super::Teams;
@@ -63,7 +64,7 @@ impl Teams<'_> {
         for room in rooms.unwrap_or_default() {
             app.room_updated(room)
         }
-        app.set_state_room_selection();
+        app.state.set_active_pane(Some(ActivePane::Rooms));
     }
 
     pub async fn do_list_messages_in_room(&mut self, id: &RoomId) {

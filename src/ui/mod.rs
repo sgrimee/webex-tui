@@ -9,7 +9,7 @@ mod messages;
 mod rooms;
 mod title;
 
-use crate::app::App;
+use crate::app::state::AppState;
 use help::{draw_help, HELP_WIDTH};
 use logs::{draw_logs, LOG_BLOCK_HEIGHT};
 use messages::{
@@ -19,18 +19,18 @@ use rooms::{draw_rooms_table, ROOMS_LIST_WIDTH};
 use title::{draw_title, TITLE_BLOCK_HEIGHT};
 
 // render all blocks
-pub fn render<B>(rect: &mut Frame<B>, app: &mut App)
+pub fn render<B>(rect: &mut Frame<B>, state: &mut AppState)
 where
     B: Backend,
 {
     let size = rect.size();
-    check_size(&size, app);
+    check_size(&size, state);
 
     let mut app_constraints = vec![
         Constraint::Length(TITLE_BLOCK_HEIGHT),
         Constraint::Min(ROOM_MIN_HEIGHT + MSG_INPUT_BLOCK_HEIGHT),
     ];
-    if app.show_log_window() {
+    if state.show_logs {
         app_constraints.push(Constraint::Length(LOG_BLOCK_HEIGHT));
     }
 
@@ -41,7 +41,7 @@ where
         .split(size);
 
     // Title
-    let title = draw_title(app);
+    let title = draw_title(state);
     rect.render_widget(title, app_rows[0]);
 
     // Body: left panel, active room + message input, help
@@ -49,7 +49,7 @@ where
         Constraint::Length(ROOMS_LIST_WIDTH),
         Constraint::Min(ACTIVE_ROOM_MIN_WIDTH),
     ];
-    if app.state.show_help {
+    if state.show_help {
         body_constraints.push(Constraint::Length(HELP_WIDTH));
     }
 
@@ -59,8 +59,8 @@ where
         .split(app_rows[1]);
 
     // Rooms list
-    let rooms_table = draw_rooms_table(app);
-    let room_table_state = app.state.rooms_list.table_state_mut();
+    let rooms_table = draw_rooms_table(state);
+    let room_table_state = state.rooms_list.table_state_mut();
     rect.render_stateful_widget(rooms_table, body_columns[0], room_table_state);
 
     // Room and message edit
@@ -75,8 +75,8 @@ where
 
     // Messages list
     let messages_area = room_rows[0];
-    let (msg_table, nb_rows) = draw_msg_table(app, &messages_area);
-    let msg_table_state = app.state.messages_list.table_state_mut();
+    let (msg_table, nb_rows) = draw_msg_table(state, &messages_area);
+    let msg_table_state = state.messages_list.table_state_mut();
     // reset offset in case we switched rooms
     *msg_table_state.offset_mut() = 0;
     // scroll to bottom
@@ -84,27 +84,27 @@ where
     rect.render_stateful_widget(msg_table, messages_area, msg_table_state);
 
     // Message input
-    let msg_input = draw_msg_input(&app.state);
+    let msg_input = draw_msg_input(state);
     rect.render_widget(msg_input.widget(), room_rows[1]);
 
     // Help
-    if app.state.show_help {
-        let help = draw_help(app.actions());
+    if state.show_help {
+        let help = draw_help(&state.actions);
         rect.render_widget(help, body_columns[2]);
     }
 
     // Logs
-    if app.show_log_window() {
+    if state.show_logs {
         let logs = draw_logs();
         rect.render_widget(logs, app_rows[2]);
     }
 }
 
 // log warnings when constraints are not respected
-fn check_size(rect: &Rect, app: &App) {
+fn check_size(rect: &Rect, state: &AppState) {
     // TODO: log only once if the size does not change
     let mut min_width = ROOMS_LIST_WIDTH + ACTIVE_ROOM_MIN_WIDTH;
-    if app.state.show_help {
+    if state.show_help {
         min_width += HELP_WIDTH
     };
     if rect.width < min_width {
@@ -112,7 +112,7 @@ fn check_size(rect: &Rect, app: &App) {
     }
 
     let mut min_height = TITLE_BLOCK_HEIGHT + ROOM_MIN_HEIGHT + MSG_INPUT_BLOCK_HEIGHT;
-    if app.state.show_logs {
+    if state.show_logs {
         min_height += LOG_BLOCK_HEIGHT
     };
     if rect.height < min_height {

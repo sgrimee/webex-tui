@@ -3,12 +3,12 @@ use ratatui::style::{Color, Style};
 use ratatui::widgets::block::{Block, BorderType};
 use ratatui::widgets::{Borders, Paragraph};
 
-use crate::app::App;
+use crate::app::state::AppState;
 
 pub const TITLE_BLOCK_HEIGHT: u16 = 3;
 
-pub fn draw_title<'a>(app: &App) -> Paragraph<'a> {
-    let title = match app.state.is_loading() {
+pub fn draw_title<'a>(state: &AppState) -> Paragraph<'a> {
+    let title = match state.is_loading() {
         true => "webex-tui (loading)",
         false => "webex-tui",
     };

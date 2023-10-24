@@ -6,13 +6,13 @@ pub mod rooms_pane;
 pub mod state;
 pub mod teams_store;
 
-use self::{actions::Actions, state::AppState, teams_store::RoomId};
+use self::{state::AppState, teams_store::RoomId};
 use crate::app::actions::Action;
+use crate::app::state::ActivePane;
 use crate::inputs::key::Key;
 use crate::teams::app_handler::AppCmdEvent;
 
 use crossterm::event::KeyEvent;
-use enum_iterator::next_cycle;
 use log::*;
 use ratatui_textarea::{Input, TextArea};
 use std::collections::HashSet;
@@ -59,60 +59,47 @@ impl App<'_> {
         if let Some(action) = self.state.actions.find(key) {
             debug!("Run action [{:?}]", action);
             match action {
-                Action::Quit => AppReturn::Exit,
+                Action::Quit => return AppReturn::Exit,
                 Action::EditMessage => {
                     self.state.editing_mode = true;
-                    self.set_state_message_writing();
-                    AppReturn::Continue
+                    self.state.set_active_pane(Some(ActivePane::Compose));
                 }
                 Action::MarkRead => {
                     self.state.mark_active_read();
-                    AppReturn::Continue
                 }
                 Action::NextPane => {
-                    if let Some(new_pane) = next_cycle(&self.state.active_pane) {
-                        self.state.active_pane = new_pane;
-                    };
-                    AppReturn::Continue
+                    self.state.cycle_active_pane();
                 }
                 Action::NextRoomFilter => {
                     self.next_filtering_mode().await;
-                    AppReturn::Continue
                 }
                 Action::PreviousRoomFilter => {
                     self.previous_filtering_mode().await;
-                    AppReturn::Continue
                 }
                 Action::SendMessage => {
                     self.send_message_buffer().await;
-                    AppReturn::Continue
                 }
                 Action::ToggleLogs => {
                     self.state.show_logs = !self.state.show_logs;
-                    AppReturn::Continue
                 }
                 Action::ToggleHelp => {
                     self.state.show_help = !self.state.show_help;
-                    AppReturn::Continue
                 }
                 Action::NextRoom => {
                     self.next_room().await;
-                    AppReturn::Continue
                 }
                 Action::PreviousRoom => {
                     self.previous_room().await;
-                    AppReturn::Continue
                 }
                 _ => {
                     warn!("Unsupported action {} in this context", action);
-                    AppReturn::Continue
                 }
             }
         } else {
             warn!("No action associated with {} in this mode", key);
             // If the key actually corresponds to an action, it needs to be added to the list of active actions too.
-            AppReturn::Continue
         }
+        AppReturn::Continue
     }
     // Handle a key while in text editing mode
     pub async fn process_editing_key(&mut self, key_event: KeyEvent) -> AppReturn {
@@ -121,7 +108,7 @@ impl App<'_> {
             Key::Ctrl('c') => return AppReturn::Exit,
             Key::Esc => {
                 self.state.editing_mode = false;
-                self.set_state_room_selection();
+                self.state.set_active_pane(Some(ActivePane::Rooms))
             }
             Key::AltEnter => self.state.msg_input_textarea.insert_newline(),
             Key::Enter => {
@@ -173,35 +160,10 @@ impl App<'_> {
         };
     }
 
-    pub fn actions(&self) -> &Actions {
-        &self.state.actions
-    }
-
     pub fn set_state_initialized(&mut self) {
-        self.state.actions = vec![Action::Quit, Action::ToggleHelp, Action::ToggleLogs].into();
+        self.state.set_active_pane(None);
         // Some more heavy tasks that we put after init to ensure quick startup
         self.dispatch_to_teams(AppCmdEvent::ListAllRooms());
-    }
-
-    pub fn set_state_room_selection(&mut self) {
-        self.state.actions = vec![
-            Action::ArrowDown,
-            Action::ArrowUp,
-            Action::EditMessage,
-            Action::MarkRead,
-            Action::NextPane,
-            Action::NextRoomsListMode,
-            Action::PreviousRoomsListMode,
-            Action::Quit,
-            Action::SendMessage,
-            Action::ToggleHelp,
-            Action::ToggleLogs,
-        ]
-        .into();
-    }
-
-    pub fn set_state_message_writing(&mut self) {
-        self.state.actions = vec![Action::SendMessage, Action::EndEditMessage].into();
     }
 
     pub async fn set_active_room_to_selection(&mut self) {
@@ -270,9 +232,5 @@ impl App<'_> {
     pub fn room_updated(&mut self, room: Room) {
         self.state.teams_store.update_room(room);
         self.state.update_selection_with_active_room();
-    }
-
-    pub fn show_log_window(&self) -> bool {
-        self.state.show_logs
     }
 }

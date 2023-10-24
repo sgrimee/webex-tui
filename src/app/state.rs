@@ -1,6 +1,7 @@
 // app/state.rs
 
-use enum_iterator::Sequence;
+use enum_iterator::{next_cycle, Sequence};
+use log::*;
 use ratatui_textarea::TextArea;
 use webex::Room;
 
@@ -24,14 +25,15 @@ pub struct AppState<'a> {
     pub msg_input_textarea: TextArea<'a>,
     pub rooms_list: RoomsList,
     pub messages_list: MessagesList,
-    pub active_pane: ActivePane,
+    active_pane: Option<ActivePane>,
 }
 
 #[derive(Clone, Debug, PartialEq, Sequence, Default)]
 pub enum ActivePane {
     #[default]
-    RoomsPane,
-    MessagesPane,
+    Rooms,
+    Messages,
+    Compose,
 }
 
 impl AppState<'_> {
@@ -84,6 +86,58 @@ impl AppState<'_> {
     pub fn is_loading(&self) -> bool {
         self.is_loading
     }
+
+    pub fn active_pane(&self) -> &Option<ActivePane> {
+        &self.active_pane
+    }
+
+    pub fn set_active_pane(&mut self, active_pane: Option<ActivePane>) {
+        self.active_pane = active_pane.clone();
+        self.actions = match active_pane {
+            Some(ActivePane::Compose) => vec![
+                Action::EndEditMessage,
+                Action::NextPane,
+                Action::Quit,
+                Action::SendMessage,
+            ]
+            .into(),
+            Some(ActivePane::Messages) => vec![
+                Action::NextPane,
+                Action::NextMessage,
+                Action::PreviousMessage,
+                Action::Quit,
+                Action::ToggleHelp,
+                Action::ToggleLogs,
+            ]
+            .into(),
+            Some(ActivePane::Rooms) => vec![
+                Action::EditMessage,
+                Action::MarkRead,
+                Action::NextPane,
+                Action::NextRoom,
+                Action::NextRoomFilter,
+                Action::PreviousRoom,
+                Action::PreviousRoomFilter,
+                Action::Quit,
+                Action::SendMessage,
+                Action::ToggleHelp,
+                Action::ToggleLogs,
+            ]
+            .into(),
+            None => { vec![Action::Quit, Action::ToggleHelp, Action::ToggleLogs] }.into(),
+        }
+    }
+
+    pub fn cycle_active_pane(&mut self) {
+        trace!("Previous pane: {:#?}", self.active_pane());
+        match self.active_pane() {
+            None => self.set_active_pane(Some(ActivePane::default())),
+            Some(active_pane) => {
+                self.set_active_pane(Some(next_cycle(active_pane).unwrap_or_default()))
+            }
+        }
+        trace!("New pane: {:#?}", self.active_pane());
+    }
 }
 
 impl Default for AppState<'_> {
@@ -98,7 +152,7 @@ impl Default for AppState<'_> {
             teams_store: TeamsStore::default(),
             messages_list: MessagesList::new(),
             rooms_list: RoomsList::new(),
-            active_pane: ActivePane::default(),
+            active_pane: None,
         }
     }
 }
