@@ -1,3 +1,7 @@
+// banner.rs
+
+//! Application name in ASCII art.
+
 #[allow(dead_code)]
 pub const BANNER: &str = r"
               ___.                             __        .__ 

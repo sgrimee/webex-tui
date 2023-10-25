@@ -1,3 +1,7 @@
+// ui/help.rs
+
+//! Panel with contextual help
+
 use ratatui::layout::Constraint;
 use ratatui::style::{Color, Style};
 use ratatui::text::Span;
@@ -10,6 +14,9 @@ const HELP_KEY_WIDTH: u16 = 14;
 const HELP_ACTION_WIDTH: u16 = 20;
 pub const HELP_WIDTH: u16 = HELP_KEY_WIDTH + HELP_ACTION_WIDTH;
 
+/// Draw the help panel as a `Table` containing available keys and
+/// their associated `Action`
+/// Argument `actions`: list of actions currently available
 pub fn draw_help(actions: &Actions) -> Table {
     let key_style = Style::default().fg(Color::LightCyan);
     let help_style = Style::default().fg(Color::Gray);

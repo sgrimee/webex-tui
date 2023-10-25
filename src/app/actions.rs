@@ -1,10 +1,15 @@
+// app/actions.rs
+
+//! Actions the user can trigger on the main `App`.
+
 use enum_iterator::{all, Sequence};
 use std::collections::HashMap;
 use std::fmt::{self, Display};
 
 use crate::inputs::key::Key;
 
-/// We define all available user actions
+/// All possible user actions.
+/// Not all actions are available in all contexts.
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Sequence)]
 pub enum Action {
     EditMessage,
@@ -24,7 +29,7 @@ pub enum Action {
 }
 
 impl Action {
-    /// List of key associated to action
+    /// Return a slice with the key(s) associated to the action.
     pub fn keys(&self) -> &[Key] {
         match self {
             Action::EditMessage => &[Key::Enter],
@@ -45,7 +50,7 @@ impl Action {
     }
 }
 
-/// User friendly short description of action
+/// User friendly short description of the action
 impl Display for Action {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let str = match self {
@@ -68,6 +73,10 @@ impl Display for Action {
     }
 }
 
+/// Vec of actions.
+/// Can be used to enumerate the actions available in a
+/// given context.
+/// In a context, a key must map to at most one action.
 #[derive(Default, Debug, Clone)]
 pub struct Actions(Vec<Action>);
 
@@ -85,7 +94,7 @@ impl Actions {
 }
 
 impl From<Vec<Action>> for Actions {
-    /// Build contextual action
+    /// Builds contextual actions
     ///
     /// # Panics
     ///

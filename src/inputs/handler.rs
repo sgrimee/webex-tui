@@ -1,4 +1,6 @@
-// events.rs
+// inputs/handler.rs
+
+//! Event handler that wraps crossterm input and tick event.
 
 use log::*;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -13,8 +15,8 @@ pub enum Event {
     Tick,
 }
 
-/// A small event handler that wrap crossterm input and tick event. Each event
-/// type is handled in its own thread and returned to a common `Receiver`
+/// Event handler that wraps crossterm input and tick event.
+/// Each event type is handled in its own thread and returned to a common `Receiver`
 pub struct EventHandler {
     rx: tokio::sync::mpsc::Receiver<Event>,
     // Need to be kept around to prevent disposing the sender side.
@@ -24,7 +26,8 @@ pub struct EventHandler {
 }
 
 impl EventHandler {
-    /// Constructs an new instance of `Events` with the default config.
+    /// Constructs an new instance of `Events` with the default config
+    /// and given `tick_rate`.
     pub fn new(tick_rate: Duration) -> Self {
         let (tx, rx) = tokio::sync::mpsc::channel(100);
         let stop_capture = Arc::new(AtomicBool::new(false));

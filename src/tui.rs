@@ -1,4 +1,5 @@
-/// tui.rs
+// tui.rs
+
 use color_eyre::eyre::Result;
 use crossterm::{
     event::{DisableMouseCapture, EnableMouseCapture},
@@ -15,7 +16,6 @@ use crate::app::App;
 use crate::inputs::handler::EventHandler;
 use crate::ui::render;
 
-// pub type Frame<'a> = ratatui::Frame<'a, ratatui::backend::CrosstermBackend<std::io::Stderr>>;
 pub type CrosstermTerminal = ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stderr>>;
 
 /// Representation of a terminal user interface.
@@ -66,7 +66,7 @@ impl Tui {
         Ok(())
     }
 
-    /// Draw the terminal interface by [`rendering`] the widgets.
+    /// Draws the terminal interface by [`rendering`] the widgets.
     ///
     /// [`rendering`]: render
     pub fn draw(&mut self, app: &mut tokio::sync::MutexGuard<App>) -> Result<()> {

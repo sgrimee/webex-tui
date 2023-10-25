@@ -1,7 +1,11 @@
-// messages_list.rs
+// app/messages_list.rs
+
+//! List of messages, keeping state of the UI scrolling offset and selected item.
 
 // use log::*;
 use ratatui::widgets::TableState;
+
+// TODO: implement this module
 
 #[derive(Default)]
 pub struct MessagesList {

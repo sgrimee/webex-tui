@@ -1,4 +1,6 @@
-pub const ROOMS_LIST_WIDTH: u16 = 32;
+// ui/rooms.rs
+
+//! Panel with a list of rooms
 
 use crate::app::state::{ActivePane, AppState};
 
@@ -8,7 +10,9 @@ use ratatui::text::Span;
 use ratatui::widgets::block::{Block, BorderType};
 use ratatui::widgets::{Borders, Cell, Row, Table};
 
-// Draw the list of rooms as per selected filtering mode
+pub const ROOMS_LIST_WIDTH: u16 = 32;
+
+/// Draws the list of rooms as per selected filtering mode.
 pub fn draw_rooms_table<'a>(state: &AppState) -> Table<'a> {
     // highlight pane if it is active
     let border_style = match state.active_pane() {
@@ -19,10 +23,10 @@ pub fn draw_rooms_table<'a>(state: &AppState) -> Table<'a> {
         .borders(Borders::ALL)
         .border_type(BorderType::Plain)
         .border_style(border_style)
-        .title(format!("Filter: {:?}", state.rooms_list.mode()));
+        .title(format!("Filter: {:?}", state.rooms_list.filter()));
     let items: Vec<_> = state
         .teams_store
-        .rooms_filtered_by(state.rooms_list.mode(), state.active_room_id())
+        .rooms_filtered_by(state.rooms_list.filter(), state.active_room_id())
         .map(|room| {
             let mut style = Style::default();
             if state.teams_store.room_has_unread(&room.id) {

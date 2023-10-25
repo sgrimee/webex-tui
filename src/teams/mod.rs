@@ -1,40 +1,39 @@
-/// The teams module handles IO for Webex, including making
-/// network calls and listening to events.
+// teams/mod.rs
+
+//! Handles IO for Webex, including making network calls
+//! and listening to events.
+
 pub mod app_handler;
 pub mod auth;
 mod client;
 mod webex_handler;
 
 use self::{app_handler::AppCmdEvent, client::get_webex_client};
-use crate::app::teams_store::RoomId;
 use crate::app::App;
 
-// use color_eyre::eyre::Result;
 use log::*;
 use oauth2::AccessToken;
 use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedReceiver;
 
-use webex::{GlobalId, GlobalIdType, Person, Room, Webex, WebexEventStream};
+use webex::{GlobalId, GlobalIdType, Person, Webex, WebexEventStream};
 
+/// ClientCredentials obtained when creating the Webex integration
 #[derive(Clone)]
 pub struct ClientCredentials {
     pub client_id: String,
     pub client_secret: String,
 }
 
+/// `Teams` is meant to run in a separate thread from the `App`.
+/// It makes API calls to Webex.
 pub struct Teams<'a> {
     client: Webex,
     app: Arc<tokio::sync::Mutex<App<'a>>>,
-    // app_cmd_handler: AppCmdHandler<'a>,
 }
 
 impl<'a> Teams<'a> {
-    pub async fn new(
-        // credentials: ClientCredentials,
-        token: AccessToken,
-        app: Arc<tokio::sync::Mutex<App<'a>>>,
-    ) -> Teams<'a> {
+    pub async fn new(token: AccessToken, app: Arc<tokio::sync::Mutex<App<'a>>>) -> Teams<'a> {
         let client = get_webex_client(token).await;
 
         // Retrieve the logged in user
@@ -49,13 +48,14 @@ impl<'a> Teams<'a> {
         {
             debug!("We are: {}", me.display_name);
             let mut app = app.lock().await;
-            app.set_me_user(me);
+            app.cb_set_me_user(me);
         }
 
         Self { client, app }
     }
 
-    // pub async fn handle_events(&mut self, app_to_teams_rx: Receiver<AppCmdEvent>) {
+    /// Spawns a new thread to receive events from Webex
+    /// and send them to the `Teams` thread for handling
     pub async fn handle_events(&mut self, mut app_to_teams_rx: UnboundedReceiver<AppCmdEvent>) {
         // Webex events
         let client = self.client.clone();
@@ -96,23 +96,6 @@ impl<'a> Teams<'a> {
                     self.handle_app_event(app_event).await;
                 }
             }
-        }
-    }
-
-    pub async fn refresh_room_roomid(&mut self, id: &RoomId) {
-        debug!("Getting room with local id: {}", id);
-        let global_id = GlobalId::new(GlobalIdType::Room, id.to_owned()).unwrap();
-        self.refresh_room_globalid(global_id).await
-    }
-
-    pub async fn refresh_room_globalid(&mut self, global_id: GlobalId) {
-        debug!("Getting room with global id: {:?}", global_id);
-        match self.client.get::<Room>(&global_id).await {
-            Ok(room) => {
-                let mut app = self.app.lock().await;
-                app.room_updated(room);
-            }
-            Err(error) => error!("Error retrieving room: {}", error),
         }
     }
 }

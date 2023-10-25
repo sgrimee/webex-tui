@@ -13,16 +13,18 @@ use app::{App, AppReturn};
 use banner::BANNER;
 use config::ClientConfig;
 use inputs::handler::Event;
-
-use color_eyre::eyre::Result;
-use logger::setup_logger;
-use std::sync::Arc;
 use teams::app_handler::AppCmdEvent;
 use teams::auth::get_integration_token;
 use teams::ClientCredentials;
 use teams::Teams;
 use tui::Tui;
 
+use color_eyre::eyre::Result;
+use logger::setup_logger;
+use std::sync::Arc;
+
+/// Retrieve credentials from config file, interactively guiding the user
+/// to create a Webex integration if needed.
 fn get_credentials() -> Result<ClientCredentials> {
     let mut client_config = ClientConfig::new();
     client_config.load_config()?;
@@ -62,7 +64,6 @@ async fn main() -> Result<()> {
         teams.handle_events(app_to_teams_rx).await;
     });
 
-    
     {
         let mut app = app_ui.lock().await;
         app.dispatch_to_teams(AppCmdEvent::Initialize());

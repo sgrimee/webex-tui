@@ -1,8 +1,13 @@
+// ui/mod.rs
+
+//! ratatui user interface
+
 use log::*;
 use ratatui::backend::Backend;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::terminal::Frame;
 
+mod editor;
 mod help;
 mod logs;
 mod messages;
@@ -10,15 +15,14 @@ mod rooms;
 mod title;
 
 use crate::app::state::AppState;
+use editor::{draw_msg_input, MSG_INPUT_BLOCK_HEIGHT};
 use help::{draw_help, HELP_WIDTH};
 use logs::{draw_logs, LOG_BLOCK_HEIGHT};
-use messages::{
-    draw_msg_input, draw_msg_table, ACTIVE_ROOM_MIN_WIDTH, MSG_INPUT_BLOCK_HEIGHT, ROOM_MIN_HEIGHT,
-};
+use messages::{draw_msg_table, ACTIVE_ROOM_MIN_WIDTH, ROOM_MIN_HEIGHT};
 use rooms::{draw_rooms_table, ROOMS_LIST_WIDTH};
 use title::{draw_title, TITLE_BLOCK_HEIGHT};
 
-// render all blocks
+/// Render all blocks.
 pub fn render<B>(rect: &mut Frame<B>, state: &mut AppState)
 where
     B: Backend,
@@ -100,7 +104,7 @@ where
     }
 }
 
-// log warnings when constraints are not respected
+/// Logs warnings when terminal size constraints are not respected.
 fn check_size(rect: &Rect, state: &AppState) {
     // TODO: log only once if the size does not change
     let mut min_width = ROOMS_LIST_WIDTH + ACTIVE_ROOM_MIN_WIDTH;
