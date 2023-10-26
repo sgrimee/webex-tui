@@ -8,7 +8,7 @@ keywords = ["cisco", "webex", "tui", "cli", "terminal"]
 license = "MIT OR Apache-2.0"
 name = "webex-tui"
 repository = "https://github.com/sgrimee/webex-tui"
-version = "0.2.3"
+version = "0.2.4"
 
 [dependencies]
 chrono = { version = "0.4.31" }
@@ -32,5 +32,5 @@ tui-logger = { version = "0.9.5", default-features = false, features = [
 ] }
 webbrowser = "0.8.11"
 # webex = "0.9.0"
-webex = { version = "0.9.0", git = "https://github.com/sgrimee/webex-rust.git", branch = "messages_list" }
+webex = { git = "https://github.com/sgrimee/webex-rust.git", branch = "messages_list" }
 # webex = { path = "../vendor/webex-rust" }

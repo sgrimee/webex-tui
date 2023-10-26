@@ -2462,7 +2462,7 @@ dependencies = [
 [[package]]
 name = "webex"
 version = "0.9.0"
-source = "git+https://github.com/sgrimee/webex-rust.git?branch=messages_list#ea7ee78e5e53d3cfdfdd6dad90f33fcaaaee2d0a"
+source = "git+https://github.com/sgrimee/webex-rust.git?branch=messages_list#1db2ac33f0fd8d4e8beabd7b94dcc5913827ea96"
 dependencies = [
  "async-std",
  "base64 0.21.4",
@@ -2487,7 +2487,7 @@ dependencies = [
 
 [[package]]
 name = "webex-tui"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "chrono",
  "clap",
