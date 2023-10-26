@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 This project tries to follow semantic versioning.
 
+## [0.2.4] - 2023-10-26
+
+### Bug Fixes
+
+- Continue retrieving Teams if one does not have a name. fix #17
+
 ## [0.2.3] - 2023-10-23
 
 ### Bug Fixes
