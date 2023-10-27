@@ -5,7 +5,7 @@
 use enum_iterator::{next_cycle, Sequence};
 use log::*;
 use ratatui_textarea::TextArea;
-use webex::Room;
+use webex::{Message, Room};
 
 use super::actions::{Action, Actions};
 use super::messages_list::MessagesList;
@@ -79,6 +79,18 @@ impl AppState<'_> {
         self.visible_rooms().collect::<Vec<_>>().len()
     }
 
+    /// Returns the number of messages in the active room.
+    pub fn num_messages_active_room(&self) -> usize {
+        match self.active_room_id() {
+            Some(id) => self
+                .teams_store
+                .messages_in_room(&id)
+                .collect::<Vec<&Message>>()
+                .len(),
+            None => 0,
+        }
+    }
+
     /// Returns the `RoomId` of the room selection in the list.
     /// This is used to set the active room.
     pub fn id_of_selected_room(&self) -> Option<RoomId> {
@@ -112,41 +124,54 @@ impl AppState<'_> {
     }
 
     /// Sets the active pane to `active_pane` and updates the list of possible
-    /// according to what can be do in that pane.
+    /// according to what can be do in that pane, as well as message selection.
     pub fn set_active_pane_and_actions(&mut self, active_pane: Option<ActivePane>) {
         self.active_pane = active_pane.clone();
-        self.actions = match active_pane {
-            Some(ActivePane::Compose) => vec![
-                Action::EndEditMessage,
-                Action::NextPane,
-                Action::Quit,
-                Action::SendMessage,
-            ]
-            .into(),
-            Some(ActivePane::Messages) => vec![
-                Action::NextPane,
-                Action::NextMessage,
-                Action::PreviousMessage,
-                Action::Quit,
-                Action::ToggleHelp,
-                Action::ToggleLogs,
-            ]
-            .into(),
-            Some(ActivePane::Rooms) => vec![
-                Action::EditMessage,
-                Action::MarkRead,
-                Action::NextPane,
-                Action::NextRoom,
-                Action::NextRoomFilter,
-                Action::PreviousRoom,
-                Action::PreviousRoomFilter,
-                Action::Quit,
-                Action::SendMessage,
-                Action::ToggleHelp,
-                Action::ToggleLogs,
-            ]
-            .into(),
-            None => { vec![Action::Quit, Action::ToggleHelp, Action::ToggleLogs] }.into(),
+        match active_pane {
+            Some(ActivePane::Compose) => {
+                self.actions = vec![
+                    Action::EndEditMessage,
+                    Action::NextPane,
+                    Action::Quit,
+                    Action::SendMessage,
+                ]
+                .into()
+            }
+            Some(ActivePane::Messages) => {
+                let num_messages = self.num_messages_active_room();
+                self.messages_list.scroll_to_last(num_messages);
+                self.actions = vec![
+                    Action::NextPane,
+                    Action::NextMessage,
+                    Action::PreviousMessage,
+                    Action::Quit,
+                    Action::ToggleHelp,
+                    Action::ToggleLogs,
+                    Action::UnselectMessage,
+                ]
+                .into()
+            }
+            Some(ActivePane::Rooms) => {
+                self.messages_list.table_state_mut().select(None);
+                self.actions = vec![
+                    Action::EditMessage,
+                    Action::MarkRead,
+                    Action::NextPane,
+                    Action::NextRoom,
+                    Action::NextRoomFilter,
+                    Action::PreviousRoom,
+                    Action::PreviousRoomFilter,
+                    Action::Quit,
+                    Action::SendMessage,
+                    Action::ToggleHelp,
+                    Action::ToggleLogs,
+                ]
+                .into()
+            }
+            None => {
+                self.messages_list.table_state_mut().select(None);
+                self.actions = vec![Action::Quit, Action::ToggleHelp, Action::ToggleLogs].into()
+            }
         }
     }
 

@@ -88,11 +88,20 @@ impl App<'_> {
                 Action::ToggleHelp => {
                     self.state.show_help = !self.state.show_help;
                 }
+                Action::NextMessage => {
+                    self.next_message().await;
+                }
                 Action::NextRoom => {
                     self.next_room().await;
                 }
+                Action::PreviousMessage => {
+                    self.previous_message().await;
+                }
                 Action::PreviousRoom => {
                     self.previous_room().await;
+                }
+                Action::UnselectMessage => {
+                    self.state.messages_list.table_state_mut().select(None);
                 }
                 _ => {
                     warn!("Unsupported action {} in this context", action);
@@ -207,5 +216,19 @@ impl App<'_> {
         let num_rooms = self.state.num_of_visible_rooms();
         self.state.rooms_list.select_previous_room(num_rooms);
         self.set_active_room_to_selection().await;
+    }
+
+    /// Select the next message in the list
+    async fn next_message(&mut self) {
+        let num_messages = self.state.num_messages_active_room();
+        self.state.messages_list.select_next_message(num_messages);
+    }
+
+    /// Select the previous message in the list
+    async fn previous_message(&mut self) {
+        let num_messages = self.state.num_messages_active_room();
+        self.state
+            .messages_list
+            .select_previous_message(num_messages);
     }
 }

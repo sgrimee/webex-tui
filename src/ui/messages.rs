@@ -127,7 +127,7 @@ pub fn draw_msg_table<'a>(state: &AppState, rect: &Rect) -> (Table<'a>, usize) {
 
     let mut _content_length = 0;
     if let Some(room) = state.active_room() {
-        title = room.title.clone();
+        title = room.title.clone().unwrap_or(String::from("Untitled room"));
         rows = state
             .teams_store
             .messages_in_room(&room.id)
@@ -157,13 +157,7 @@ pub fn draw_msg_table<'a>(state: &AppState, rect: &Rect) -> (Table<'a>, usize) {
             .block(block)
             .widths(&[Constraint::Percentage(100)])
             .column_spacing(1)
-            .highlight_style(
-                Style::default()
-                    .bg(Color::Yellow)
-                    .fg(Color::Black)
-                    .add_modifier(Modifier::BOLD),
-            ),
+            .highlight_style(Style::default().add_modifier(Modifier::REVERSED)),
         nb_rows,
     )
 }
-

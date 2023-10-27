@@ -9,7 +9,8 @@ use webex::{Message, Person, Room};
 
 use super::rooms_list::RoomsListFilter;
 
-pub(crate) type RoomId = String;
+pub type RoomId = String;
+pub type MessageId = String;
 
 /// `TeamsStore` maintains a local cache of room information,
 /// messages in some of those rooms, and other state information

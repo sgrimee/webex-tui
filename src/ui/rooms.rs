@@ -32,7 +32,10 @@ pub fn draw_rooms_table<'a>(state: &AppState) -> Table<'a> {
             if state.teams_store.room_has_unread(&room.id) {
                 style = style.fg(Color::LightBlue).add_modifier(Modifier::BOLD);
             }
-            Row::new(vec![Cell::from(Span::styled(room.title.to_owned(), style))])
+            Row::new(vec![Cell::from(Span::styled(
+                room.title.clone().unwrap_or_default(),
+                style,
+            ))])
         })
         .collect();
     Table::new(items)

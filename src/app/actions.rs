@@ -26,6 +26,7 @@ pub enum Action {
     SendMessage,
     ToggleHelp,
     ToggleLogs,
+    UnselectMessage,
 }
 
 impl Action {
@@ -46,6 +47,7 @@ impl Action {
             Action::SendMessage => &[],
             Action::ToggleHelp => &[Key::Char('h')],
             Action::ToggleLogs => &[Key::Char('l')],
+            Action::UnselectMessage => &[Key::Esc],
         }
     }
 }
@@ -68,6 +70,7 @@ impl Display for Action {
             Action::SendMessage => "Send message",
             Action::ToggleHelp => "Toggle help",
             Action::ToggleLogs => "Toggle logs",
+            Action::UnselectMessage => "Unselect message",
         };
         write!(f, "{}", str)
     }

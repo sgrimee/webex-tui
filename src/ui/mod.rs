@@ -79,12 +79,8 @@ where
 
     // Messages list
     let messages_area = room_rows[0];
-    let (msg_table, nb_rows) = draw_msg_table(state, &messages_area);
+    let (msg_table, _) = draw_msg_table(state, &messages_area);
     let msg_table_state = state.messages_list.table_state_mut();
-    // reset offset in case we switched rooms
-    *msg_table_state.offset_mut() = 0;
-    // scroll to bottom
-    msg_table_state.select(Some(nb_rows));
     rect.render_stateful_widget(msg_table, messages_area, msg_table_state);
 
     // Message input
