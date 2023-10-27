@@ -7,7 +7,7 @@ use ratatui::{
     text::Span,
     widgets::{Block, Borders},
 };
-use ratatui_textarea::TextArea;
+use tui_textarea::TextArea;
 
 use crate::app::state::{ActivePane, AppState};
 

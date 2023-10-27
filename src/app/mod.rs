@@ -17,7 +17,7 @@ use crate::teams::app_handler::AppCmdEvent;
 
 use crossterm::event::KeyEvent;
 use log::*;
-use ratatui_textarea::{Input, TextArea};
+use tui_textarea::{Input, TextArea};
 
 /// Return status indicating whether the app should exit or not.
 #[derive(Debug, PartialEq, Eq)]

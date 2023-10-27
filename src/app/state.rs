@@ -4,7 +4,7 @@
 
 use enum_iterator::{next_cycle, Sequence};
 use log::*;
-use ratatui_textarea::TextArea;
+use tui_textarea::TextArea;
 use webex::{Message, Room};
 
 use super::actions::{Action, Actions};

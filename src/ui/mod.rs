@@ -3,7 +3,6 @@
 //! ratatui user interface
 
 use log::*;
-use ratatui::backend::Backend;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::terminal::Frame;
 
@@ -23,10 +22,7 @@ use rooms::{draw_rooms_table, ROOMS_LIST_WIDTH};
 use title::{draw_title, TITLE_BLOCK_HEIGHT};
 
 /// Render all blocks.
-pub fn render<B>(rect: &mut Frame<B>, state: &mut AppState)
-where
-    B: Backend,
-{
+pub fn render(rect: &mut Frame, state: &mut AppState) {
     let size = rect.size();
     check_size(&size, state);
 
