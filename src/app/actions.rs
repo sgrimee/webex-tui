@@ -12,7 +12,8 @@ use crate::inputs::key::Key;
 /// Not all actions are available in all contexts.
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Sequence)]
 pub enum Action {
-    EditMessage,
+    DeleteMessage,
+    ComposeNewMessage,
     EndEditMessage,
     MarkRead,
     NextMessage,
@@ -33,7 +34,8 @@ impl Action {
     /// Return a slice with the key(s) associated to the action.
     pub fn keys(&self) -> &[Key] {
         match self {
-            Action::EditMessage => &[Key::Enter],
+            Action::DeleteMessage => &[Key::Char('d')],
+            Action::ComposeNewMessage => &[Key::Enter],
             Action::EndEditMessage => &[Key::Esc],
             Action::MarkRead => &[Key::Char('r')],
             Action::NextMessage => &[Key::Down],
@@ -56,7 +58,8 @@ impl Action {
 impl Display for Action {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let str = match self {
-            Action::EditMessage => "Edit message",
+            Action::DeleteMessage => "Delete message",
+            Action::ComposeNewMessage => "Edit message",
             Action::EndEditMessage => "End editing message",
             Action::MarkRead => "Mark read (locally)",
             Action::NextMessage => "Next message",
@@ -156,7 +159,8 @@ mod tests {
 
     #[test]
     fn should_create_actions_from_vec() {
-        let _actions: Actions = vec![Action::Quit, Action::EditMessage, Action::SendMessage].into();
+        let _actions: Actions =
+            vec![Action::Quit, Action::ComposeNewMessage, Action::SendMessage].into();
     }
 
     #[test]

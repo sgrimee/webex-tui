@@ -5,15 +5,16 @@
 //! Callbacks to the `App` are made via mutex.
 
 use crate::app::state::ActivePane;
-use crate::app::teams_store::RoomId;
+use crate::app::teams_store::{MessageId, RoomId};
 
 use super::Teams;
 use log::{debug, error, info};
-use webex::{GlobalId, GlobalIdType, MessageOut, Room};
+use webex::{GlobalId, GlobalIdType, Message, MessageOut, Room};
 
 /// Commands the main `App` can send to the `Teams` thread.
 #[derive(Debug)]
 pub enum AppCmdEvent {
+    DeleteMessage(MessageId),
     Initialize(),
     ListAllRooms(),
     ListMessagesInRoom(RoomId),
@@ -29,6 +30,7 @@ impl Teams<'_> {
             self.app.lock().await.state.is_loading = true;
         }
         match app_cmd_event {
+            AppCmdEvent::DeleteMessage(msg_id) => self.delete_message(&msg_id).await,
             AppCmdEvent::Initialize() => self.do_initialize().await,
             AppCmdEvent::ListAllRooms() => self.do_list_all_rooms().await,
             AppCmdEvent::ListMessagesInRoom(room_id) => {
@@ -50,6 +52,15 @@ impl Teams<'_> {
         let mut app = self.app.lock().await;
         app.cb_teams_initialized();
         info!("👍 Webex initialization successful");
+    }
+
+    /// Deletes the message with given id
+    async fn delete_message(&self, id: &MessageId) {
+        let global_id = GlobalId::new(GlobalIdType::Message, id.to_owned()).unwrap();
+        match self.client.delete::<Message>(&global_id).await {
+            Err(err) => error!("Could not delete message: {}", err),
+            _ => debug!("Deleted message with id: {:?}", global_id),
+        }
     }
 
     /// Sends `msg_to_send` and calls back `cb_message_sent` on app when done.

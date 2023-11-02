@@ -61,8 +61,12 @@ impl App<'_> {
         if let Some(action) = self.state.actions.find(key) {
             debug!("Run action [{:?}]", action);
             match action {
-                Action::Quit => return AppReturn::Exit,
-                Action::EditMessage => {
+                Action::DeleteMessage => {
+                    if let Err(e) = self.delete_selected_message().await {
+                        warn!("Could not delete message: {}", e);
+                    };
+                }
+                Action::ComposeNewMessage => {
                     self.state.editing_mode = true;
                     self.state
                         .set_active_pane_and_actions(Some(ActivePane::Compose));
@@ -79,6 +83,7 @@ impl App<'_> {
                 Action::PreviousRoomFilter => {
                     self.previous_filtering_mode().await;
                 }
+                Action::Quit => return AppReturn::Exit,
                 Action::SendMessage => {
                     self.send_message_buffer().await;
                 }
@@ -163,9 +168,42 @@ impl App<'_> {
         }
     }
 
+    /// Deletes the selected message, if there is one and it was authored by self.
+    /// Otherwise does nothing.
+    async fn delete_selected_message(&mut self) -> Result<(), &'static str> {
+        // Check if there is a selected room
+        let room_id = match self.state.id_of_selected_room() {
+            Some(id) => id,
+            None => return Err("No room selected"),
+        };
+    
+        // Get the messages in the selected room
+        let messages = self.state.teams_store.messages_in_room_slice(&room_id);
+    
+        // Get the id of the selected message if the message is from the current user
+        let msg_id_option = self
+            .state
+            .messages_list
+            .selected_message(messages)
+            .and_then(|msg| match self.state.teams_store.is_me(&msg.person_id) {
+                false => None,
+                true => msg.id.clone(),
+            });
+    
+        // If a message id was found, dispatch a delete event and remove the message from the store
+        match msg_id_option {
+            Some(msg_id) => {
+                self.dispatch_to_teams(AppCmdEvent::DeleteMessage(msg_id.clone()));
+                self.state.teams_store.delete_message(&msg_id, &room_id);
+                Ok(())
+            },
+            None => Err("No message selected or the selected message was not from the current user"),
+        }
+    }
+
     /// Retrieves the latest messages in the room, only if it is empty
     async fn get_messages_if_room_empty(&mut self, id: &RoomId) {
-        if self.state.teams_store.messages_in_room(id).next().is_none() {
+        if self.state.teams_store.messages_in_room_slice(id).is_empty() {
             self.dispatch_to_teams(AppCmdEvent::ListMessagesInRoom(id.clone()));
         }
     }

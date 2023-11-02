@@ -105,10 +105,20 @@ impl TeamsStore {
         })
     }
 
-    /// Returns an iterator to all pre-loaded messages in the room.
+    /// Returns a slice with all pre-loaded messages in the room.
     /// Currently by order of reception, not supporing conversations.
-    pub fn messages_in_room<'a>(&'a self, id: &RoomId) -> impl Iterator<Item = &'a Message> {
-        self.msg_by_room_id.get(id).into_iter().flatten()
+    pub fn messages_in_room_slice(&self, id: &RoomId) -> &[Message] {
+        match self.msg_by_room_id.get(id) {
+            Some(messages) => messages,
+            None => &[],
+        }
+    }
+
+    /// Deletes message with `msg_id` in `room_id` if it exists.
+    pub fn delete_message(&mut self, msg_id: &MessageId, room_id: &RoomId) {
+        if let Some(messages) = self.msg_by_room_id.get_mut(room_id) {
+            messages.retain(|msg| msg.id.as_ref() != Some(msg_id))
+        }
     }
 
     /// Sets the user of the app, used to filter its own messages.

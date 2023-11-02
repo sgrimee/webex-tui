@@ -5,7 +5,7 @@
 use enum_iterator::{next_cycle, Sequence};
 use log::*;
 use tui_textarea::TextArea;
-use webex::{Message, Room};
+use webex::Room;
 
 use super::actions::{Action, Actions};
 use super::messages_list::MessagesList;
@@ -82,11 +82,7 @@ impl AppState<'_> {
     /// Returns the number of messages in the active room.
     pub fn num_messages_active_room(&self) -> usize {
         match self.active_room_id() {
-            Some(id) => self
-                .teams_store
-                .messages_in_room(&id)
-                .collect::<Vec<&Message>>()
-                .len(),
+            Some(id) => self.teams_store.messages_in_room_slice(&id).len(),
             None => 0,
         }
     }
@@ -141,6 +137,8 @@ impl AppState<'_> {
                 let num_messages = self.num_messages_active_room();
                 self.messages_list.scroll_to_last(num_messages);
                 self.actions = vec![
+                    Action::ComposeNewMessage,
+                    Action::DeleteMessage,
                     Action::NextPane,
                     Action::NextMessage,
                     Action::PreviousMessage,
@@ -154,7 +152,7 @@ impl AppState<'_> {
             Some(ActivePane::Rooms) => {
                 self.messages_list.table_state_mut().select(None);
                 self.actions = vec![
-                    Action::EditMessage,
+                    Action::ComposeNewMessage,
                     Action::MarkRead,
                     Action::NextPane,
                     Action::NextRoom,

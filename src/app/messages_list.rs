@@ -2,18 +2,9 @@
 
 //! List of messages, keeping state of the UI scrolling offset and selected item.
 
-#![allow(unused_imports)]
-#![allow(dead_code)]
-
-use core::num;
-
 use log::*;
 use ratatui::widgets::TableState;
 use webex::Message;
-
-use super::teams_store::{MessageId, TeamsStore};
-
-// TODO: implement this module
 
 #[derive(Default)]
 pub struct MessagesList {
@@ -27,15 +18,14 @@ impl MessagesList {
         MessagesList::default()
     }
 
-    /// Returns the id of the selected message if there is one.
-    pub fn id_of_selected(&self, messages: &[&Message]) -> Option<MessageId> {
-        let id = self
+    /// Returns the message corresponding to the selection, if there is one.
+    pub fn selected_message<'a>(&'a self, messages: &'a [Message]) -> Option<&Message> {
+        let msg = self
             .table_state
             .selected()
-            .and_then(|selected| messages.get(selected))
-            .and_then(|message| message.id.clone());
-        trace!("Id of selected message: {:?}", id);
-        id
+            .and_then(|selected| messages.get(selected));
+        trace!("Selected message: {:?}", msg);
+        msg
     }
 
     /// Selects the next message in the list and updates the table_state.

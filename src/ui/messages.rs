@@ -130,7 +130,8 @@ pub fn draw_msg_table<'a>(state: &AppState, rect: &Rect) -> (Table<'a>, usize) {
         title = room.title.clone().unwrap_or(String::from("Untitled room"));
         rows = state
             .teams_store
-            .messages_in_room(&room.id)
+            .messages_in_room_slice(&room.id)
+            .iter()
             .map(|msg| {
                 let (row, height) = row_for_message(msg.clone(), rect.width - 2);
                 _content_length += height;
