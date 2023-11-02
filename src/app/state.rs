@@ -175,13 +175,19 @@ impl AppState<'_> {
         }
     }
 
-    /// Selects the next active pane, cycling through all panes.
+    /// Cycles between the room selection and message selection panes.
+    /// The message compose pane is skipped.
     pub fn cycle_active_pane(&mut self) {
         trace!("Previous pane: {:#?}", self.active_pane());
         match self.active_pane() {
             None => self.set_active_pane_and_actions(Some(ActivePane::default())),
             Some(active_pane) => {
-                self.set_active_pane_and_actions(Some(next_cycle(active_pane).unwrap_or_default()))
+                let mut next_pane = next_cycle(active_pane).unwrap_or_default();
+                // Skip the message compose pane
+                if next_pane == ActivePane::Compose {
+                    next_pane = next_cycle(&next_pane).unwrap_or_default();
+                };
+                self.set_active_pane_and_actions(Some(next_pane))
             }
         }
         trace!("New pane: {:#?}", self.active_pane());
