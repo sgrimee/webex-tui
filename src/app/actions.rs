@@ -58,9 +58,9 @@ impl Action {
 impl Display for Action {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let str = match self {
-            Action::DeleteMessage => "Delete message",
-            Action::ComposeNewMessage => "Edit message",
-            Action::EndEditMessage => "End editing message",
+            Action::DeleteMessage => "Delete selected",
+            Action::ComposeNewMessage => "New message",
+            Action::EndEditMessage => "End editing",
             Action::MarkRead => "Mark read (locally)",
             Action::NextMessage => "Next message",
             Action::NextPane => "Next pane",

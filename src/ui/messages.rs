@@ -120,8 +120,8 @@ fn row_for_message<'a>(msg: Message, width: u16) -> (Row<'a>, usize) {
 }
 
 /// Draws a table containing the formatted messages for the active room.
-/// Also returns the number or messages(rows) in the table.
-pub fn draw_msg_table<'a>(state: &AppState, rect: &Rect) -> (Table<'a>, usize) {
+/// Also returns the number or messages(rows) in the table and the number of text lines.
+pub fn draw_msg_table<'a>(state: &AppState, rect: &Rect) -> (Table<'a>, usize, usize) {
     let mut title = "No selected room".to_string();
     let mut rows = Vec::<Row>::new();
 
@@ -160,5 +160,6 @@ pub fn draw_msg_table<'a>(state: &AppState, rect: &Rect) -> (Table<'a>, usize) {
             .column_spacing(1)
             .highlight_style(Style::default().add_modifier(Modifier::REVERSED)),
         nb_rows,
+        nb_lines,
     )
 }

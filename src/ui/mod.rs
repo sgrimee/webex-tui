@@ -76,22 +76,24 @@ pub fn render(rect: &mut Frame, state: &mut AppState) {
 
     // Messages list
     let messages_area = room_rows[0];
-    let (msg_table, nb_messages) = draw_msg_table(state, &messages_area);
+    let (msg_table, nb_messages, nb_lines) = draw_msg_table(state, &messages_area);
     state.messages_list.set_nb_messages(nb_messages);
-    // state.messages_list.set_nb_lines(nb_lines);
+    state.messages_list.set_nb_lines(nb_lines);
     rect.render_stateful_widget(
         msg_table,
         messages_area,
         state.messages_list.table_state_mut(),
     );
-    // rect.render_stateful_widget(
-    //     Scrollbar::default()
-    //         .orientation(ScrollbarOrientation::VerticalRight)
-    //         .begin_symbol(Some("↑"))
-    //         .end_symbol(Some("↓")),
-    //     messages_area,
-    //     state.messages_list.scroll_state_mut(),
-    // );
+    // Display scrollbar
+    state.messages_list.scroll_to_selection();
+    rect.render_stateful_widget(
+        Scrollbar::default()
+            .orientation(ScrollbarOrientation::VerticalRight)
+            .begin_symbol(Some("↑"))
+            .end_symbol(Some("↓")),
+        messages_area,
+        state.messages_list.scroll_state_mut(),
+    );
 
     // Message input
     let msg_input = draw_msg_input(state);

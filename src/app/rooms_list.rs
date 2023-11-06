@@ -82,6 +82,10 @@ impl RoomsList {
         id
     }
 
+    pub fn has_selection(&self) -> bool {
+        self.table_state.selected().is_some()
+    }
+
     /// Selects the next room in the list and updates the table_state.
     /// Does not update the active room.
     pub fn select_next_room(&mut self, num_rooms: usize) {

@@ -33,4 +33,5 @@ tui-logger = { git = "https://github.com/gin66/tui-logger.git", rev = "b9460de32
 webbrowser = "0.8.11"
 # webex = "0.9.0"
 webex = { git = "https://github.com/sgrimee/webex-rust.git", branch = "messages_list" }
+itertools = "0.11.0"
 # webex = { path = "../vendor/webex-rust" }

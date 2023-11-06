@@ -12,7 +12,7 @@ use webex::{Message, Person, Room};
 impl App<'_> {
     /// Deselects all active panes and initialise the retrieval of all rooms
     pub fn cb_teams_initialized(&mut self) {
-        self.state.set_active_pane_and_actions(None);
+        self.state.set_active_pane(None);
         // Some more heavy tasks that we put after init to ensure quick startup
         self.dispatch_to_teams(AppCmdEvent::ListAllRooms());
     }

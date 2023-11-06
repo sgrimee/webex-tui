@@ -3,6 +3,7 @@
 //! State of the application
 
 use enum_iterator::{next_cycle, Sequence};
+use itertools::concat;
 use log::*;
 use tui_textarea::TextArea;
 use webex::Room;
@@ -119,74 +120,97 @@ impl AppState<'_> {
         &self.active_pane
     }
 
-    /// Sets the active pane to `active_pane` and updates the list of possible
-    /// according to what can be do in that pane, as well as message selection.
-    pub fn set_active_pane_and_actions(&mut self, active_pane: Option<ActivePane>) {
-        self.active_pane = active_pane.clone();
-        match active_pane {
+    /// Sets the active pane to `active_pane` and updates the list of possible actions
+    /// according to what can be do in that pane.
+    /// It also removes any message selection when switching to non Messages panes.
+    pub fn set_active_pane(&mut self, active_pane: Option<ActivePane>) {
+        debug!("Activating pane: {:?}", active_pane);
+        // Deselect messages when switching to non Messages panes
+        match self.active_pane {
+            Some(ActivePane::Messages) | Some(ActivePane::Compose) => (),
+            _ => self.messages_list.deselect(),
+        }
+        self.update_actions(active_pane.clone());
+        self.active_pane = active_pane;
+    }
+
+    /// Updates the list of possible actions according to what can be done in the pane
+    pub fn update_actions(&mut self, active_pane: Option<ActivePane>) {
+        let actions = match &active_pane {
             Some(ActivePane::Compose) => {
-                self.actions = vec![
+                vec![
                     Action::EndEditMessage,
+                    Action::SendMessage,
                     Action::NextPane,
                     Action::Quit,
-                    Action::SendMessage,
                 ]
-                .into()
             }
             Some(ActivePane::Messages) => {
-                self.actions = vec![
-                    Action::ComposeNewMessage,
-                    Action::DeleteMessage,
+                let mut actions: Vec<Action> = Vec::new();
+                if self.active_room_id().is_some() {
+                    actions.push(Action::ComposeNewMessage);
+                }
+                if self.num_messages_active_room() > 0 {
+                    actions.extend(vec![Action::NextMessage, Action::PreviousMessage]);
+                }
+                if self.messages_list.has_selection() {
+                    actions.push(Action::UnselectMessage);
+                    actions.push(Action::DeleteMessage);
+                }
+                actions.extend(vec![
                     Action::NextPane,
-                    Action::NextMessage,
-                    Action::PreviousMessage,
-                    Action::Quit,
                     Action::ToggleHelp,
                     Action::ToggleLogs,
-                    Action::UnselectMessage,
-                ]
-                .into()
+                    Action::Quit,
+                ]);
+                actions
             }
             Some(ActivePane::Rooms) => {
-                self.messages_list.deselect();
-                self.actions = vec![
-                    Action::ComposeNewMessage,
-                    Action::MarkRead,
-                    Action::NextPane,
+                let common_actions = vec![
                     Action::NextRoom,
-                    Action::NextRoomFilter,
                     Action::PreviousRoom,
+                    Action::NextRoomFilter,
                     Action::PreviousRoomFilter,
-                    Action::Quit,
-                    Action::SendMessage,
+                    Action::NextPane,
                     Action::ToggleHelp,
                     Action::ToggleLogs,
-                ]
-                .into()
+                    Action::Quit,
+                ];
+                let selection_actions = vec![
+                    Action::ComposeNewMessage,
+                    Action::MarkRead,
+                    Action::SendMessage,
+                ];
+                match self.rooms_list.has_selection() {
+                    true => concat([selection_actions, common_actions]),
+                    false => common_actions,
+                }
             }
             None => {
-                self.messages_list.deselect();
-                self.actions = vec![Action::Quit, Action::ToggleHelp, Action::ToggleLogs].into()
+                vec![Action::ToggleHelp, Action::ToggleLogs, Action::Quit]
             }
-        }
+        };
+        self.actions = actions.into();
     }
 
     /// Cycles between the room selection and message selection panes.
     /// The message compose pane is skipped.
     pub fn cycle_active_pane(&mut self) {
-        trace!("Previous pane: {:#?}", self.active_pane());
         match self.active_pane() {
-            None => self.set_active_pane_and_actions(Some(ActivePane::default())),
+            None => self.set_active_pane(Some(ActivePane::default())),
             Some(active_pane) => {
                 let mut next_pane = next_cycle(active_pane).unwrap_or_default();
                 // Skip the message compose pane
                 if next_pane == ActivePane::Compose {
                     next_pane = next_cycle(&next_pane).unwrap_or_default();
                 };
-                self.set_active_pane_and_actions(Some(next_pane))
+                self.set_active_pane(Some(next_pane))
             }
         }
-        trace!("New pane: {:#?}", self.active_pane());
+    }
+
+    pub(crate) fn update_on_tick(&mut self) {
+        self.update_actions(self.active_pane.clone());
     }
 }
 

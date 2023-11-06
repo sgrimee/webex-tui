@@ -97,8 +97,7 @@ impl Teams<'_> {
         for room in rooms.unwrap_or_default() {
             app.cb_room_updated(room)
         }
-        app.state
-            .set_active_pane_and_actions(Some(ActivePane::Rooms));
+        app.state.set_active_pane(Some(ActivePane::Rooms));
     }
 
     async fn do_list_messages_in_room(&mut self, id: &RoomId) {

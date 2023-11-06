@@ -68,8 +68,7 @@ impl App<'_> {
                 }
                 Action::ComposeNewMessage => {
                     self.state.editing_mode = true;
-                    self.state
-                        .set_active_pane_and_actions(Some(ActivePane::Compose));
+                    self.state.set_active_pane(Some(ActivePane::Compose));
                 }
                 Action::MarkRead => {
                     self.state.mark_active_read();
@@ -126,8 +125,7 @@ impl App<'_> {
             Key::Ctrl('c') => return AppReturn::Exit,
             Key::Esc => {
                 self.state.editing_mode = false;
-                self.state
-                    .set_active_pane_and_actions(Some(ActivePane::Rooms))
+                self.state.set_active_pane(Some(ActivePane::Rooms))
             }
             Key::AltEnter => self.state.msg_input_textarea.insert_newline(),
             Key::Enter => {
@@ -140,6 +138,7 @@ impl App<'_> {
 
     /// We could update the app or dispatch event on tick
     pub async fn update_on_tick(&mut self) -> AppReturn {
+        self.state.update_on_tick();
         AppReturn::Continue
     }
 

@@ -2559,6 +2559,7 @@ dependencies = [
  "dirs",
  "enum-iterator",
  "gethostname",
+ "itertools",
  "log",
  "oauth2",
  "open",
