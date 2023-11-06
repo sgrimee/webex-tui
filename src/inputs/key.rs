@@ -1,3 +1,7 @@
+// inputs/key.rs
+
+//! Mapping of teminal `KeyEvent`'s to a simpler `Key` implementation.
+
 use std::fmt::{self, Display, Formatter};
 
 use crossterm::event;
@@ -89,7 +93,7 @@ impl Display for Key {
     }
 }
 
-// convert backend KeyEvent to this crats's Key
+/// Convert a backend KeyEvent to this crate's Key
 impl From<event::KeyEvent> for Key {
     fn from(key_event: event::KeyEvent) -> Self {
         match key_event {

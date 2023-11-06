@@ -13,18 +13,18 @@ use app::{App, AppReturn};
 use banner::BANNER;
 use config::ClientConfig;
 use inputs::handler::Event;
-use inputs::key::Key;
-
-use color_eyre::eyre::Result;
-use log::*;
-use logger::setup_logger;
-use std::sync::Arc;
 use teams::app_handler::AppCmdEvent;
 use teams::auth::get_integration_token;
 use teams::ClientCredentials;
 use teams::Teams;
 use tui::Tui;
 
+use color_eyre::eyre::Result;
+use logger::setup_logger;
+use std::sync::Arc;
+
+/// Retrieve credentials from config file, interactively guiding the user
+/// to create a Webex integration if needed.
 fn get_credentials() -> Result<ClientCredentials> {
     let mut client_config = ClientConfig::new();
     client_config.load_config()?;
@@ -63,32 +63,34 @@ async fn main() -> Result<()> {
         let mut teams = Teams::new(token, app).await;
         teams.handle_events(app_to_teams_rx).await;
     });
+
     {
         let mut app = app_ui.lock().await;
         app.dispatch_to_teams(AppCmdEvent::Initialize());
     }
 
     loop {
-        let mut app = app_ui.lock().await;
-
         // Move logs to main buffer so they are written to file even if widget not shown
         tui_logger::move_events();
 
         // Render
-        tui.draw(&mut app)?;
+        {
+            let mut app = app_ui.lock().await;
+            tui.draw(&mut app)?;
+        }
 
         // Handle terminal inputs
-        let result = match tui.events.next().await {
-            Event::Input(key_event) if app.is_editing() => {
-                trace!("Keyevent: {:#?}", key_event);
-                app.process_editing_key(key_event).await
+        let event = tui.events.next().await;
+        {
+            let mut app = app_ui.lock().await;
+            let result = match event {
+                Event::Input(key_event) => app.process_key_event(key_event).await,
+                Event::Tick => app.update_on_tick().await,
+            };
+            if result == AppReturn::Exit {
+                tui.events.close();
+                break;
             }
-            Event::Input(key_event) => app.do_action(Key::from(key_event)).await,
-            Event::Tick => app.update_on_tick().await,
-        };
-        if result == AppReturn::Exit {
-            tui.events.close();
-            break;
         }
     }
 

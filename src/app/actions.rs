@@ -1,64 +1,88 @@
+// app/actions.rs
+
+//! Actions the user can trigger on the main `App`.
+
 use enum_iterator::{all, Sequence};
 use std::collections::HashMap;
 use std::fmt::{self, Display};
 
 use crate::inputs::key::Key;
 
-/// We define all available user actions
+/// All possible user actions.
+/// Not all actions are available in all contexts.
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Sequence)]
 pub enum Action {
-    ArrowDown,
-    ArrowUp,
-    EditMessage,
+    DeleteMessage,
+    ComposeNewMessage,
     EndEditMessage,
     MarkRead,
-    NextRoomsListMode,
-    PreviousRoomsListMode,
+    NextMessage,
+    NextPane,
+    NextRoom,
+    NextRoomFilter,
+    PreviousMessage,
+    PreviousRoom,
+    PreviousRoomFilter,
     Quit,
     SendMessage,
     ToggleHelp,
     ToggleLogs,
+    UnselectMessage,
 }
 
 impl Action {
-    /// List of key associated to action
+    /// Return a slice with the key(s) associated to the action.
     pub fn keys(&self) -> &[Key] {
         match self {
-            Action::ArrowDown => &[Key::Down],
-            Action::ArrowUp => &[Key::Up],
-            Action::EditMessage => &[Key::Enter],
+            Action::DeleteMessage => &[Key::Char('d')],
+            Action::ComposeNewMessage => &[Key::Enter],
             Action::EndEditMessage => &[Key::Esc],
             Action::MarkRead => &[Key::Char('r')],
-            Action::NextRoomsListMode => &[Key::Right],
-            Action::PreviousRoomsListMode => &[Key::Left],
+            Action::NextMessage => &[Key::Down],
+            Action::NextPane => &[Key::Tab],
+            Action::NextRoom => &[Key::Down],
+            Action::NextRoomFilter => &[Key::Right],
+            Action::PreviousMessage => &[Key::Up],
+            Action::PreviousRoom => &[Key::Up],
+            Action::PreviousRoomFilter => &[Key::Left],
             Action::Quit => &[Key::Ctrl('c'), Key::Char('q')],
             Action::SendMessage => &[],
             Action::ToggleHelp => &[Key::Char('h')],
             Action::ToggleLogs => &[Key::Char('l')],
+            Action::UnselectMessage => &[Key::Esc],
         }
     }
 }
 
-/// User friendly short description of action
+/// User friendly short description of the action
 impl Display for Action {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let str = match self {
-            Action::ArrowDown => "Next room",
-            Action::ArrowUp => "Previous room",
-            Action::EditMessage => "Edit message",
-            Action::EndEditMessage => "End editing message",
+            Action::DeleteMessage => "Delete selected",
+            Action::ComposeNewMessage => "New message",
+            Action::EndEditMessage => "End editing",
             Action::MarkRead => "Mark read (locally)",
-            Action::NextRoomsListMode => "Next room filter",
-            Action::PreviousRoomsListMode => "Previous room filter",
+            Action::NextMessage => "Next message",
+            Action::NextPane => "Next pane",
+            Action::NextRoom => "Next room",
+            Action::NextRoomFilter => "Next room filter",
+            Action::PreviousMessage => "Previous message",
+            Action::PreviousRoom => "Previous room",
+            Action::PreviousRoomFilter => "Previous room filter",
             Action::Quit => "Quit",
             Action::SendMessage => "Send message",
             Action::ToggleHelp => "Toggle help",
             Action::ToggleLogs => "Toggle logs",
+            Action::UnselectMessage => "Unselect message",
         };
         write!(f, "{}", str)
     }
 }
 
+/// Vec of actions.
+/// Can be used to enumerate the actions available in a
+/// given context.
+/// In a context, a key must map to at most one action.
 #[derive(Default, Debug, Clone)]
 pub struct Actions(Vec<Action>);
 
@@ -76,7 +100,7 @@ impl Actions {
 }
 
 impl From<Vec<Action>> for Actions {
-    /// Build contextual action
+    /// Builds contextual actions
     ///
     /// # Panics
     ///
@@ -135,7 +159,8 @@ mod tests {
 
     #[test]
     fn should_create_actions_from_vec() {
-        let _actions: Actions = vec![Action::Quit, Action::EditMessage, Action::SendMessage].into();
+        let _actions: Actions =
+            vec![Action::Quit, Action::ComposeNewMessage, Action::SendMessage].into();
     }
 
     #[test]

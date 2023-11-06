@@ -1,4 +1,6 @@
-// rooms_list.rs
+// app/rooms_list.rs
+
+//! List of rooms, with UI scrolling and selection state and display filters.
 
 use enum_iterator::{next_cycle, previous_cycle, Sequence};
 use log::*;
@@ -7,17 +9,24 @@ use webex::Room;
 
 use super::teams_store::{RoomId, TeamsStore};
 
-#[derive(Clone, Debug, PartialEq, Sequence)]
+/// Filters used to present a subset of all available rooms.
+#[derive(Clone, Debug, PartialEq, Default, Sequence)]
 pub enum RoomsListFilter {
+    /// All available rooms
     All,
+    /// Only direct messages
     Direct,
+    /// Only rooms with recent activity
+    #[default]
     Recent,
+    /// Only spaces
     Spaces,
+    /// Only rooms with unread messages
     Unread,
 }
 
 pub struct RoomsList {
-    mode: RoomsListFilter,
+    filter: RoomsListFilter,
     table_state: TableState,
     pub active_room_id: Option<RoomId>,
 }
@@ -25,21 +34,21 @@ pub struct RoomsList {
 impl RoomsList {
     pub fn new() -> Self {
         Self {
-            mode: RoomsListFilter::Recent,
+            filter: RoomsListFilter::default(),
             table_state: TableState::default(),
             active_room_id: None,
         }
     }
 
-    /// Switch the rooms list table to the next filtering mode
-    /// Does not update the active room
+    /// Switches the rooms list table to the next filtering mode.
+    /// Does not update the active room.
     pub fn next_mode(&mut self, store: &TeamsStore) {
-        if let Some(new_mode) = next_cycle(&self.mode) {
+        if let Some(new_mode) = next_cycle(&self.filter) {
             debug!("Rooms list mode set to {:?}", new_mode);
-            self.mode = new_mode;
+            self.filter = new_mode;
             // Reset selection when we change modes
             let num_rooms = store
-                .rooms_filtered_by(self.mode(), self.active_room_id.clone())
+                .rooms_filtered_by(self.filter(), self.active_room_id.clone())
                 .collect::<Vec<_>>()
                 .len();
             let selected = if num_rooms == 0 { None } else { Some(0) };
@@ -47,15 +56,15 @@ impl RoomsList {
         }
     }
 
-    /// Switch the rooms list table to the previous filtering mode
-    /// Does not update the active room
+    /// Switches the rooms list table to the previous filtering mode.
+    /// Does not update the active room.
     pub fn previous_mode(&mut self, store: &TeamsStore) {
-        if let Some(new_mode) = previous_cycle(&self.mode) {
+        if let Some(new_mode) = previous_cycle(&self.filter) {
             debug!("Rooms list mode set to {:?}", new_mode);
-            self.mode = new_mode;
+            self.filter = new_mode;
             // Reset selection when we change modes
             let num_rooms = store
-                .rooms_filtered_by(self.mode(), self.active_room_id.clone())
+                .rooms_filtered_by(self.filter(), self.active_room_id.clone())
                 .collect::<Vec<_>>()
                 .len();
             let selected = if num_rooms == 0 { None } else { Some(0) };
@@ -63,7 +72,7 @@ impl RoomsList {
         }
     }
 
-    // Return the id of the selected room if there is one
+    /// Returns the id of the selected room if there is one.
     pub fn id_of_selected(&self, rooms: &[&Room]) -> Option<RoomId> {
         let id = match self.table_state.selected() {
             Some(selected) => rooms.get(selected).map(|room| room.id.to_owned()),
@@ -73,8 +82,12 @@ impl RoomsList {
         id
     }
 
-    /// Selects the next room in the list and updates the table_state
-    /// Does not update the active room
+    pub fn has_selection(&self) -> bool {
+        self.table_state.selected().is_some()
+    }
+
+    /// Selects the next room in the list and updates the table_state.
+    /// Does not update the active room.
     pub fn select_next_room(&mut self, num_rooms: usize) {
         match self.table_state.selected() {
             Some(_) if num_rooms == 0 => {
@@ -127,7 +140,7 @@ impl RoomsList {
         &mut self.table_state
     }
 
-    pub fn mode(&self) -> RoomsListFilter {
-        self.mode.clone()
+    pub fn filter(&self) -> RoomsListFilter {
+        self.filter.clone()
     }
 }

@@ -1,4 +1,8 @@
-// inspired by https://github.com/Nabushika/webexterm
+// teams/auth.rs
+
+//! Handles OAuth authentication to the user's `Webex` integration.
+//!
+//! Inspired by https://github.com/Nabushika/webexterm
 
 use super::ClientCredentials;
 use color_eyre::eyre::{eyre, Result};
@@ -14,6 +18,8 @@ use std::net::TcpListener;
 use std::net::TcpStream;
 use webbrowser;
 
+/// Create and authorize a client with the given `ClientCredentials`.
+/// A browser is opened for user authentication.
 pub async fn get_integration_token(credentials: ClientCredentials) -> Result<AccessToken> {
     let client = create_basic_client(credentials)?;
 
@@ -45,6 +51,7 @@ the BROWSER environment variable, or open the following url manually (on this co
     return Ok(token_res.access_token().clone());
 }
 
+/// Returns a client with given `ClientCredentials`.
 fn create_basic_client(credentials: ClientCredentials) -> Result<BasicClient> {
     let client = BasicClient::new(
         ClientId::new(credentials.client_id),
@@ -61,6 +68,7 @@ fn create_basic_client(credentials: ClientCredentials) -> Result<BasicClient> {
     Ok(client)
 }
 
+/// Returns the `Url` the user must visit, and the `CsrfToken` for callback validation.
 fn get_authorize_url(client: &BasicClient) -> Result<(Url, CsrfToken)> {
     let (auth_url, csrf_state) = client
         .authorize_url(CsrfToken::new_random)
@@ -75,12 +83,15 @@ fn open_web_browser(auth_url: &Url) -> Result<()> {
     Ok(())
 }
 
+/// Listen on local port for OAuth callback and return the TCP stream
 async fn await_authorization_callback() -> Result<TcpStream> {
     let listener = TcpListener::bind("127.0.0.1:8080")?;
     let stream = listener.incoming().flatten().next().unwrap();
     Ok(stream)
 }
 
+/// Parse a TCP stream for OAuth callback content, return the `AuthorizationCode` and `CsrfToken`
+/// Panics if the stream is not correctly formatted.
 fn parse_authorization_response(stream: &mut TcpStream) -> Result<(AuthorizationCode, CsrfToken)> {
     let mut reader = BufReader::new(stream);
 
@@ -115,6 +126,7 @@ fn parse_authorization_response(stream: &mut TcpStream) -> Result<(Authorization
     Ok((code, state))
 }
 
+/// Send an HTTP response on the TCP stream indicating success.
 fn send_success_response(stream: &mut TcpStream) -> Result<()> {
     let message = "Webex authentication complete. You can close this and enjoy webex-tui.";
     let response = format!(

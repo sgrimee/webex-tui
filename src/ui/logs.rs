@@ -1,3 +1,7 @@
+// ui/logs.rs
+
+//! Panel showing log messages
+
 use ratatui::style::{Color, Style};
 use ratatui::widgets::block::Block;
 use ratatui::widgets::Borders;
@@ -5,6 +9,7 @@ use tui_logger::TuiLoggerWidget;
 
 pub const LOG_BLOCK_HEIGHT: u16 = 15;
 
+// Draw the logs panel
 pub fn draw_logs<'a>() -> TuiLoggerWidget<'a> {
     TuiLoggerWidget::default()
         .style_error(Style::default().fg(Color::Red))

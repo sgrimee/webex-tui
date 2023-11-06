@@ -1,3 +1,5 @@
+// config.rs
+
 // credits: iRigellute/spotify-tui
 
 use color_eyre::eyre::{eyre, Error, Result};
@@ -12,7 +14,7 @@ const DEFAULT_PORT: u16 = 8080;
 const FILE_NAME: &str = "client.yml";
 const CONFIG_DIR: &str = ".config";
 const APP_CONFIG_DIR: &str = "webex-tui";
-const TOKEN_CACHE_FILE: &str = ".webex_token_cache.json";
+// const TOKEN_CACHE_FILE: &str = ".webex_token_cache.json";
 
 #[derive(Default, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ClientConfig {
@@ -22,9 +24,9 @@ pub struct ClientConfig {
     pub port: Option<u16>,
 }
 
-pub struct ConfigPaths {
+struct ConfigPaths {
     pub config_file_path: PathBuf,
-    pub token_cache_path: PathBuf,
+    // pub token_cache_path: PathBuf,
 }
 
 impl ClientConfig {
@@ -36,15 +38,8 @@ impl ClientConfig {
         }
     }
 
-    // pub fn get_redirect_uri(&self) -> String {
-    //     format!("http://localhost:{}", self.get_port())
-    // }
-
-    // pub fn get_port(&self) -> u16 {
-    //     self.port.unwrap_or(DEFAULT_PORT)
-    // }
-
-    pub fn get_or_build_paths(&self) -> Result<ConfigPaths> {
+    /// Returns the path(s) to config files, creating them if needed.
+    fn get_or_build_paths(&self) -> Result<ConfigPaths> {
         match dirs::home_dir() {
             Some(home) => {
                 let path = Path::new(&home);
@@ -60,11 +55,11 @@ impl ClientConfig {
                 }
 
                 let config_file_path = &app_config_dir.join(FILE_NAME);
-                let token_cache_path = &app_config_dir.join(TOKEN_CACHE_FILE);
+                // let token_cache_path = &app_config_dir.join(TOKEN_CACHE_FILE);
 
                 let paths = ConfigPaths {
                     config_file_path: config_file_path.to_path_buf(),
-                    token_cache_path: token_cache_path.to_path_buf(),
+                    // token_cache_path: token_cache_path.to_path_buf(),
                 };
 
                 Ok(paths)
@@ -73,6 +68,9 @@ impl ClientConfig {
         }
     }
 
+    /// Reads the configuration from the config file if it exists.
+    /// If it doesn't, prompt the user to enter the integration credentials
+    /// and save them to the configuration file.
     pub fn load_config(&mut self) -> Result<()> {
         let paths = self.get_or_build_paths()?;
         if paths.config_file_path.exists() {
@@ -120,10 +118,6 @@ impl ClientConfig {
             let client_secret =
                 ClientConfig::get_client_key_from_input("Client Secret", EXPECTED_CS_LEN)?;
 
-            // let mut port = String::new();
-            // println!("\nEnter port of redirect uri (default {}): ", DEFAULT_PORT);
-            // stdin().read_line(&mut port)?;
-            // let port = port.trim().parse::<u16>().unwrap_or(DEFAULT_PORT);
             let port = DEFAULT_PORT;
 
             let config_yml = ClientConfig {
@@ -145,6 +139,8 @@ impl ClientConfig {
         }
     }
 
+    /// Gets a string typed by the user on the terminal and performs
+    /// basic validation.
     fn get_client_key_from_input(
         type_label: &'static str,
         expected_length: usize,
@@ -173,6 +169,8 @@ impl ClientConfig {
         }
     }
 
+    /// Performs basic validation on a key, ensuring it is an hexadecimal string
+    /// of given `expected_length`.
     fn validate_client_key(key: &str, expected_length: usize) -> Result<()> {
         if key.len() != expected_length {
             Err(Error::from(std::io::Error::new(

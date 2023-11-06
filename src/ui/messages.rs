@@ -1,11 +1,13 @@
+// ui/messages.rs
+
+//! A panel displaying the messages in a `Room` as a table.
+
 pub const ACTIVE_ROOM_MIN_WIDTH: u16 = 30;
-pub const MSG_INPUT_BLOCK_HEIGHT: u16 = 5;
 pub const ROOM_MIN_HEIGHT: u16 = 8;
 const MESSAGES_RIGHT_MARGIN: u16 = 1;
 const MESSAGES_INDENT: &str = "  ";
 
-use crate::app::state::AppState;
-use crate::app::App;
+use crate::app::state::{ActivePane, AppState};
 use ratatui::prelude::Rect;
 use webex::Message;
 
@@ -15,13 +17,12 @@ use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::block::{Block, BorderType};
 use ratatui::widgets::{Borders, Cell, Row, Table};
-use ratatui_textarea::TextArea;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use textwrap::fill;
 
-// Assign a color/style to each message sender, spreading over the palette
-// while ensuring each user always gets the same style for consistency
+/// Assigns a color/style to each message sender, spreading over the palette
+/// while ensuring each user always gets the same style for consistency.
 fn style_for_user(id: &Option<String>) -> Style {
     let colors = [
         Color::Red,
@@ -48,7 +49,7 @@ fn style_for_user(id: &Option<String>) -> Style {
     }
 }
 
-// Hash a string to a number in [0, upper[
+/// Hash a string to a number in [0, upper[
 fn hash_string_to_number(s: &str, upper: u64) -> u64 {
     let mut hasher = DefaultHasher::new();
     s.hash(&mut hasher);
@@ -56,8 +57,8 @@ fn hash_string_to_number(s: &str, upper: u64) -> u64 {
     hash % upper
 }
 
-// Returns a human friendly view of the timestamp
-// panics if the timestamp cannot be parsed
+/// Returns a human friendly view of the timestamp.
+/// Panics if the timestamp cannot be parsed.
 fn human_timestamp(datetime_str: &str) -> String {
     let datetime = DateTime::parse_from_rfc3339(datetime_str).unwrap();
 
@@ -74,7 +75,7 @@ fn human_timestamp(datetime_str: &str) -> String {
     local_datetime.format(format).to_string()
 }
 
-// Return a row with the formatted message and the number of lines
+/// Returns a row with the formatted message and the number of lines.
 fn row_for_message<'a>(msg: Message, width: u16) -> (Row<'a>, usize) {
     // One line for the author and timestamp
     let mut title_line = Line::default();
@@ -118,31 +119,38 @@ fn row_for_message<'a>(msg: Message, width: u16) -> (Row<'a>, usize) {
     (row, height)
 }
 
-// Draw a table containing the formatted messages for the active room
-// Also returns the number or rows in the table
-pub fn draw_msg_table<'a>(app: &App, rect: &Rect) -> (Table<'a>, usize) {
+/// Draws a table containing the formatted messages for the active room.
+/// Also returns the number or messages(rows) in the table and the number of text lines.
+pub fn draw_msg_table<'a>(state: &AppState, rect: &Rect) -> (Table<'a>, usize, usize) {
     let mut title = "No selected room".to_string();
     let mut rows = Vec::<Row>::new();
 
-    let mut _content_length = 0;
-    if let Some(room) = app.state.active_room() {
-        title = room.title.clone();
-        rows = app
-            .state
+    let mut nb_lines = 0;
+    if let Some(room) = state.active_room() {
+        title = room.title.clone().unwrap_or(String::from("Untitled room"));
+        rows = state
             .teams_store
-            .messages_in_room(&room.id)
+            .messages_in_room_slice(&room.id)
+            .iter()
             .map(|msg| {
                 let (row, height) = row_for_message(msg.clone(), rect.width - 2);
-                _content_length += height;
+                nb_lines += height;
                 row
             })
             .collect();
     };
     let nb_rows = rows.len();
 
+    // Highlight pane if active
+    let border_style = match state.active_pane() {
+        Some(ActivePane::Messages) => Style::default().fg(Color::Cyan),
+        _ => Style::default(),
+    };
+
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Plain)
+        .border_style(border_style)
         .title(title);
 
     (
@@ -150,39 +158,8 @@ pub fn draw_msg_table<'a>(app: &App, rect: &Rect) -> (Table<'a>, usize) {
             .block(block)
             .widths(&[Constraint::Percentage(100)])
             .column_spacing(1)
-            .highlight_style(
-                Style::default()
-                    .bg(Color::Yellow)
-                    .fg(Color::Black)
-                    .add_modifier(Modifier::BOLD),
-            ),
+            .highlight_style(Style::default().add_modifier(Modifier::REVERSED)),
         nb_rows,
+        nb_lines,
     )
-}
-
-// Draw a text editor where the user can type a message
-pub fn draw_msg_input<'a>(state: &'a AppState<'a>) -> TextArea<'a> {
-    let (title, borders_style) = if state.editing_mode {
-        (
-            Span::styled(
-                "Type your message, Enter to send, Alt+Enter for new line, Esc to exit.",
-                Style::default().fg(Color::Yellow),
-            ),
-            Style::default().fg(Color::Yellow),
-        )
-    } else {
-        (
-            Span::styled("Press Enter with a selected room to type", Style::default()),
-            Style::default(),
-        )
-    };
-    let mut textarea = state.msg_input_textarea.clone();
-    textarea.set_block(
-        Block::default()
-            .borders(Borders::ALL)
-            .border_style(borders_style)
-            .title(title),
-    );
-    textarea.set_cursor_line_style(Style::default());
-    textarea
 }
