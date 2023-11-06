@@ -4,11 +4,34 @@ All notable changes to this project will be documented in this file.
 
 This project tries to follow semantic versioning.
 
+## [0.3.0] - 2023-11-06
+
+### Bug Fixes
+
+- Logic in message selection
+
+### Features
+
+- Messsage selection WIP
+- Skip Compose pane on Tab
+- Delete a message
+- Message selection improvements
+
 ## [0.2.4] - 2023-10-26
 
 ### Bug Fixes
 
 - Continue retrieving Teams if one does not have a name. fix #17
+
+### Features
+
+- Tab selection of active pane
+
+### Refactor
+
+- Next/prev message keys input
+- Clean up ActivePane
+- Inline updates and some refactoring
 
 ## [0.2.3] - 2023-10-23
 
