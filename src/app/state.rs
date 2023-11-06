@@ -134,8 +134,6 @@ impl AppState<'_> {
                 .into()
             }
             Some(ActivePane::Messages) => {
-                let num_messages = self.num_messages_active_room();
-                self.messages_list.scroll_to_last(num_messages);
                 self.actions = vec![
                     Action::ComposeNewMessage,
                     Action::DeleteMessage,
@@ -150,7 +148,7 @@ impl AppState<'_> {
                 .into()
             }
             Some(ActivePane::Rooms) => {
-                self.messages_list.table_state_mut().select(None);
+                self.messages_list.deselect();
                 self.actions = vec![
                     Action::ComposeNewMessage,
                     Action::MarkRead,
@@ -167,7 +165,7 @@ impl AppState<'_> {
                 .into()
             }
             None => {
-                self.messages_list.table_state_mut().select(None);
+                self.messages_list.deselect();
                 self.actions = vec![Action::Quit, Action::ToggleHelp, Action::ToggleLogs].into()
             }
         }

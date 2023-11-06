@@ -94,19 +94,19 @@ impl App<'_> {
                     self.state.show_help = !self.state.show_help;
                 }
                 Action::NextMessage => {
-                    self.next_message().await;
+                    self.state.messages_list.select_next_message();
                 }
                 Action::NextRoom => {
                     self.next_room().await;
                 }
                 Action::PreviousMessage => {
-                    self.previous_message().await;
+                    self.state.messages_list.select_previous_message();
                 }
                 Action::PreviousRoom => {
                     self.previous_room().await;
                 }
                 Action::UnselectMessage => {
-                    self.state.messages_list.table_state_mut().select(None);
+                    self.state.messages_list.deselect();
                 }
                 _ => {
                     warn!("Unsupported action {} in this context", action);
@@ -176,10 +176,10 @@ impl App<'_> {
             Some(id) => id,
             None => return Err("No room selected"),
         };
-    
+
         // Get the messages in the selected room
         let messages = self.state.teams_store.messages_in_room_slice(&room_id);
-    
+
         // Get the id of the selected message if the message is from the current user
         let msg_id_option = self
             .state
@@ -189,15 +189,17 @@ impl App<'_> {
                 false => None,
                 true => msg.id.clone(),
             });
-    
+
         // If a message id was found, dispatch a delete event and remove the message from the store
         match msg_id_option {
             Some(msg_id) => {
                 self.dispatch_to_teams(AppCmdEvent::DeleteMessage(msg_id.clone()));
                 self.state.teams_store.delete_message(&msg_id, &room_id);
                 Ok(())
-            },
-            None => Err("No message selected or the selected message was not from the current user"),
+            }
+            None => {
+                Err("No message selected or the selected message was not from the current user")
+            }
         }
     }
 
@@ -226,6 +228,12 @@ impl App<'_> {
         if let Some(id) = id_option {
             self.get_messages_if_room_empty(&id).await;
         }
+        // Update the number of messages in the active room
+        self.state
+            .messages_list
+            .set_nb_messages(self.state.num_messages_active_room());
+        // Deselect the message selection
+        self.state.messages_list.deselect();
     }
 
     /// Change the rooms list filter to the previous one
@@ -254,19 +262,5 @@ impl App<'_> {
         let num_rooms = self.state.num_of_visible_rooms();
         self.state.rooms_list.select_previous_room(num_rooms);
         self.set_active_room_to_selection().await;
-    }
-
-    /// Select the next message in the list
-    async fn next_message(&mut self) {
-        let num_messages = self.state.num_messages_active_room();
-        self.state.messages_list.select_next_message(num_messages);
-    }
-
-    /// Select the previous message in the list
-    async fn previous_message(&mut self) {
-        let num_messages = self.state.num_messages_active_room();
-        self.state
-            .messages_list
-            .select_previous_message(num_messages);
     }
 }

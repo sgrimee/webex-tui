@@ -120,12 +120,12 @@ fn row_for_message<'a>(msg: Message, width: u16) -> (Row<'a>, usize) {
 }
 
 /// Draws a table containing the formatted messages for the active room.
-/// Also returns the number or rows in the table.
+/// Also returns the number or messages(rows) in the table.
 pub fn draw_msg_table<'a>(state: &AppState, rect: &Rect) -> (Table<'a>, usize) {
     let mut title = "No selected room".to_string();
     let mut rows = Vec::<Row>::new();
 
-    let mut _content_length = 0;
+    let mut nb_lines = 0;
     if let Some(room) = state.active_room() {
         title = room.title.clone().unwrap_or(String::from("Untitled room"));
         rows = state
@@ -134,7 +134,7 @@ pub fn draw_msg_table<'a>(state: &AppState, rect: &Rect) -> (Table<'a>, usize) {
             .iter()
             .map(|msg| {
                 let (row, height) = row_for_message(msg.clone(), rect.width - 2);
-                _content_length += height;
+                nb_lines += height;
                 row
             })
             .collect();
