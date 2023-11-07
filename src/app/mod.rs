@@ -220,7 +220,7 @@ impl App<'_> {
     /// Sets the active room to that highlighted by the list selection
     async fn set_active_room_to_selection(&mut self) {
         let id_option = self.state.id_of_selected_room();
-        self.state.set_active_room_id(&id_option);
+        self.state.rooms_list.set_active_room_id(id_option.clone());
         // Changing active room may have affected the selection
         // e.g. with Unread filter which includes active room
         self.state.update_selection_with_active_room();
@@ -237,14 +237,14 @@ impl App<'_> {
 
     /// Change the rooms list filter to the previous one
     async fn previous_filtering_mode(&mut self) {
-        self.state.set_active_room_id(&None);
+        self.state.rooms_list.set_active_room_id(None);
         self.state.rooms_list.previous_mode(&self.state.teams_store);
         self.set_active_room_to_selection().await;
     }
 
     /// Change the rooms list filter to the next one
     async fn next_filtering_mode(&mut self) {
-        self.state.set_active_room_id(&None);
+        self.state.rooms_list.set_active_room_id(None);
         self.state.rooms_list.next_mode(&self.state.teams_store);
         self.set_active_room_to_selection().await;
     }

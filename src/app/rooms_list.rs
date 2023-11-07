@@ -25,21 +25,14 @@ pub enum RoomsListFilter {
     Unread,
 }
 
+#[derive(Default)]
 pub struct RoomsList {
     filter: RoomsListFilter,
     table_state: TableState,
-    pub active_room_id: Option<RoomId>,
+    active_room_id: Option<RoomId>,
 }
 
 impl RoomsList {
-    pub fn new() -> Self {
-        Self {
-            filter: RoomsListFilter::default(),
-            table_state: TableState::default(),
-            active_room_id: None,
-        }
-    }
-
     /// Switches the rooms list table to the next filtering mode.
     /// Does not update the active room.
     pub fn next_mode(&mut self, store: &TeamsStore) {
@@ -142,5 +135,13 @@ impl RoomsList {
 
     pub fn filter(&self) -> RoomsListFilter {
         self.filter.clone()
+    }
+
+    pub fn active_room_id(&self) -> Option<&String> {
+        self.active_room_id.as_ref()
+    }
+
+    pub fn set_active_room_id(&mut self, active_room_id: Option<RoomId>) {
+        self.active_room_id = active_room_id;
     }
 }
