@@ -113,14 +113,12 @@ impl MessagesList {
     }
 
     /// Position the scrollbar according to the TableState selection.
+    /// PANICS if self.has_selection() is true while self.table_state.selected() is usize::MAX
     pub fn scroll_to_selection(&mut self) {
-        if self.nb_messages == 0 {
-            return;
-        }
         if self.has_selection() {
             if let Some(selected) = self.table_state.selected() {
                 assert_ne!(selected, usize::MAX); // because has_selection() is true
-                if let Some(position) = (selected / self.nb_messages).checked_mul(self.nb_lines) {
+                if let Some(position) = position_for(selected, self.nb_messages, self.nb_lines) {
                     self.scroll_state = self.scroll_state.position(position);
                 }
             }
@@ -145,6 +143,7 @@ impl MessagesList {
     }
 
     pub fn set_nb_lines(&mut self, nb_lines: usize) {
+        *self.scroll_state_mut() = self.scroll_state.content_length(nb_lines);
         self.nb_lines = nb_lines;
     }
 
@@ -153,9 +152,27 @@ impl MessagesList {
     }
 }
 
+// generate tests for position_for only, using rstest
+/// Calculates the scrollbar position for the given selection, number of messages and number of
+/// lines.
+/// Returns None if nb_messages is 0 or if the result is too big for usize.
+/// PANICS:
+///    - if selected >= nb_messages
+///    - if nb_lines < nb_messages
+fn position_for(selected: usize, nb_messages: usize, nb_lines: usize) -> Option<usize> {
+    if nb_messages == 0 {
+        return None;
+    }
+    assert!(selected < nb_messages);
+    assert!(nb_lines >= nb_messages);
+    let pos_f = selected as f64 / nb_messages as f64 * nb_lines as f64;
+    Some(pos_f as usize)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
 
     #[test]
     fn test_select_next_message() {
@@ -224,5 +241,27 @@ mod tests {
         list.deselect();
         assert_eq!(list.table_state.selected(), Some(usize::MAX));
         assert!(!list.has_selection());
+    }
+
+    #[cfg(test)]
+    #[rstest(
+        selected,
+        nb_messages,
+        nb_lines,
+        expected,
+        case(0, 0, 10, None),
+        case(0, 1, 10, Some(0)),
+        case(0, 2, 20, Some(0)),
+        case(1, 2, 20, Some(10)),
+        case(9, 10, 100, Some(90)),
+        case(9, 10, 10, Some(9))
+    )]
+    fn test_position_for(
+        selected: usize,
+        nb_messages: usize,
+        nb_lines: usize,
+        expected: Option<usize>,
+    ) {
+        assert_eq!(position_for(selected, nb_messages, nb_lines), expected);
     }
 }

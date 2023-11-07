@@ -78,13 +78,13 @@ pub fn render(rect: &mut Frame, state: &mut AppState) {
     let messages_area = room_rows[0];
     let (msg_table, nb_messages, nb_lines) = draw_msg_table(state, &messages_area);
     state.messages_list.set_nb_messages(nb_messages);
-    state.messages_list.set_nb_lines(nb_lines);
     rect.render_stateful_widget(
         msg_table,
         messages_area,
         state.messages_list.table_state_mut(),
     );
     // Display scrollbar
+    state.messages_list.set_nb_lines(nb_lines);
     state.messages_list.scroll_to_selection();
     rect.render_stateful_widget(
         Scrollbar::default()

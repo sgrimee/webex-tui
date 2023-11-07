@@ -18,20 +18,22 @@ crossterm = "0.27"
 dirs = "5.0.1"
 enum-iterator = "1.4.1"
 gethostname = "0.4.3"
+itertools = "0.11.0"
 log = "0.4.19"
 oauth2 = "4.4.1"
 open = "5.0.0"
 ratatui = "0.24.0"
-# ratatui-textarea = { version = "0.3.2", features = ["ratatui"] }
-tui-textarea = "0.3.0"
 serde = { version = "1.0.180", features = ["derive"] }
 serde_yaml = "0.9.25"
 textwrap = "0.16.0"
 tokio = { version = "1.29.1", features = ["rt", "macros"] }
 # tui-logger = "0.9.6"
 tui-logger = { git = "https://github.com/gin66/tui-logger.git", rev = "b9460de320b25a9862d54d151519487f414579d3" }
+tui-textarea = "0.3.0"
 webbrowser = "0.8.11"
 # webex = "0.9.0"
-webex = { git = "https://github.com/sgrimee/webex-rust.git", branch = "messages_list" }
-itertools = "0.11.0"
 # webex = { path = "../vendor/webex-rust" }
+webex = { git = "https://github.com/sgrimee/webex-rust.git", branch = "messages_list" }
+
+[dev-dependencies]
+rstest = "0.18.2"
