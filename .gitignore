@@ -18,3 +18,4 @@ data/
 out.txt
 .direnv
 .envrc
+settings.json

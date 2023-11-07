@@ -49,7 +49,7 @@ impl App<'_> {
     /// the corresponding action otherwise
     pub async fn process_key_event(&mut self, key_event: KeyEvent) -> AppReturn {
         if self.state.editing_mode {
-            trace!("Keyevent: {:#?}", key_event);
+            trace!("Keyevent: {:?}", key_event);
             self.process_editing_key(key_event).await
         } else {
             self.do_action(Key::from(key_event)).await

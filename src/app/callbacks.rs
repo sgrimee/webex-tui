@@ -25,7 +25,7 @@ impl App<'_> {
 
     /// Callback when a message was sent. Does nothing.
     pub fn cb_message_sent(&mut self) {
-        trace!("Message was sent.");
+        debug!("Message was sent.");
     }
 
     /// Stores a single received message

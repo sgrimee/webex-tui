@@ -71,7 +71,7 @@ impl RoomsList {
             Some(selected) => rooms.get(selected).map(|room| room.id.to_owned()),
             None => None,
         };
-        trace!("Id of selected room: {:?}", id);
+        debug!("Id of selected room: {:?}", id);
         id
     }
 

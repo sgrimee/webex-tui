@@ -33,7 +33,7 @@ impl TeamsStore {
             let messages = self.msg_by_room_id.entry(room_id.clone()).or_default();
             messages.push(msg.clone());
         } else {
-            warn!("Message with no room_id: {:#?}", msg);
+            error!("Message with no room_id: {:#?}", msg);
         }
     }
 
@@ -49,13 +49,13 @@ impl TeamsStore {
 
     /// Mark a room as unread.
     pub fn mark_unread(&mut self, id: &RoomId) {
-        trace!("Marking room {} unread", id);
+        debug!("Marking room {} unread", id);
         self.unread_rooms.insert(id.clone());
     }
 
     /// Mark a room as read.
     pub fn mark_read(&mut self, id: &RoomId) {
-        trace!("Marking room {} read", id);
+        debug!("Marking room {} read", id);
         self.unread_rooms.remove(id);
     }
 
