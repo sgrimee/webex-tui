@@ -4,7 +4,7 @@
 
 pub const ACTIVE_ROOM_MIN_WIDTH: u16 = 30;
 pub const ROOM_MIN_HEIGHT: u16 = 8;
-const MESSAGES_RIGHT_MARGIN: u16 = 1;
+const MESSAGES_RIGHT_MARGIN: u16 = 2;
 const MESSAGES_INDENT: &str = "  ";
 
 use crate::app::state::{ActivePane, AppState};
