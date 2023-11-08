@@ -5,10 +5,10 @@
 use enum_iterator::{next_cycle, Sequence};
 use itertools::concat;
 use log::*;
-use tui_textarea::TextArea;
 use webex::Room;
 
 use super::actions::{Action, Actions};
+use super::message_editor::MessageEditor;
 use super::messages_list::MessagesList;
 use super::rooms_list::RoomsList;
 use super::teams_store::{RoomId, TeamsStore};
@@ -22,7 +22,6 @@ use super::teams_store::{RoomId, TeamsStore};
 pub struct AppState<'a> {
     // App
     pub actions: Actions,
-    pub editing_mode: bool,
     pub is_loading: bool,
 
     // Webex
@@ -31,9 +30,9 @@ pub struct AppState<'a> {
     // UI
     pub show_logs: bool,
     pub show_help: bool,
-    pub msg_input_textarea: TextArea<'a>,
     pub rooms_list: RoomsList,
     pub messages_list: MessagesList,
+    pub message_editor: MessageEditor<'a>,
     active_pane: Option<ActivePane>,
 }
 
@@ -211,12 +210,11 @@ impl Default for AppState<'_> {
     fn default() -> Self {
         AppState {
             actions: vec![Action::Quit, Action::ToggleHelp, Action::ToggleLogs].into(),
-            editing_mode: false,
             is_loading: false,
-            msg_input_textarea: TextArea::default(),
             show_logs: false,
             show_help: true,
             teams_store: TeamsStore::default(),
+            message_editor: MessageEditor::default(),
             messages_list: MessagesList::new(),
             rooms_list: RoomsList::default(),
             active_pane: None,

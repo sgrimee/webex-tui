@@ -4,6 +4,7 @@
 
 pub mod actions;
 pub mod callbacks;
+pub mod message_editor;
 pub mod messages_list;
 pub mod rooms_list;
 pub mod state;
@@ -17,7 +18,7 @@ use crate::teams::app_handler::AppCmdEvent;
 
 use crossterm::event::KeyEvent;
 use log::*;
-use tui_textarea::{Input, TextArea};
+use tui_textarea::Input;
 
 /// Return status indicating whether the app should exit or not.
 #[derive(Debug, PartialEq, Eq)]
@@ -48,7 +49,7 @@ impl App<'_> {
     /// Process a key event to the text editor if active, or to execute
     /// the corresponding action otherwise
     pub async fn process_key_event(&mut self, key_event: KeyEvent) -> AppReturn {
-        if self.state.editing_mode {
+        if self.state.message_editor.is_editing() {
             trace!("Keyevent: {:?}", key_event);
             self.process_editing_key(key_event).await
         } else {
@@ -67,7 +68,7 @@ impl App<'_> {
                     };
                 }
                 Action::ComposeNewMessage => {
-                    self.state.editing_mode = true;
+                    self.state.message_editor.set_is_editing(true);
                     self.state.set_active_pane(Some(ActivePane::Compose));
                 }
                 Action::MarkRead => {
@@ -124,14 +125,14 @@ impl App<'_> {
         match key {
             Key::Ctrl('c') => return AppReturn::Exit,
             Key::Esc => {
-                self.state.editing_mode = false;
+                self.state.message_editor.set_is_editing(false);
                 self.state.set_active_pane(Some(ActivePane::Rooms))
             }
-            Key::AltEnter => self.state.msg_input_textarea.insert_newline(),
+            Key::AltEnter => self.state.message_editor.insert_newline(),
             Key::Enter => {
                 self.send_message_buffer().await;
             }
-            _ => _ = self.state.msg_input_textarea.input(Input::from(key_event)),
+            _ => _ = self.state.message_editor.input(Input::from(key_event)),
         }
         AppReturn::Continue
     }
@@ -145,14 +146,14 @@ impl App<'_> {
     /// Send a message with the text contained in the editor
     /// to the active person or room.
     async fn send_message_buffer(&mut self) {
-        if self.state.msg_input_textarea.is_empty() {
+        if self.state.message_editor.is_empty() {
             warn!("An empty message cannot be sent.");
             return;
         };
         match self.state.active_room() {
             Some(room) => {
                 let id = room.id.clone();
-                let lines = self.state.msg_input_textarea.lines();
+                let lines = self.state.message_editor.lines().to_vec();
                 let msg_to_send = webex::types::MessageOut {
                     room_id: Some(id.clone()),
                     text: Some(lines.join("\n")),
@@ -160,7 +161,7 @@ impl App<'_> {
                 };
                 debug!("Sending message to room {:?}", room.title);
                 self.dispatch_to_teams(AppCmdEvent::SendMessage(msg_to_send));
-                self.state.msg_input_textarea = TextArea::default();
+                self.state.message_editor.clear();
                 self.state.teams_store.mark_read(&id);
             }
             None => warn!("Cannot send message, no room selected."),

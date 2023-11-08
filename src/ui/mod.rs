@@ -7,17 +7,17 @@ use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::terminal::Frame;
 use ratatui::widgets::{Scrollbar, ScrollbarOrientation};
 
-mod editor;
 mod help;
 mod logs;
+mod message_editor;
 mod messages;
 mod rooms;
 mod title;
 
 use crate::app::state::AppState;
-use editor::{draw_msg_input, MSG_INPUT_BLOCK_HEIGHT};
 use help::{draw_help, HELP_WIDTH};
 use logs::{draw_logs, LOG_BLOCK_HEIGHT};
+use message_editor::{draw_message_editor, MSG_INPUT_BLOCK_HEIGHT};
 use messages::{draw_msg_table, ACTIVE_ROOM_MIN_WIDTH, ROOM_MIN_HEIGHT};
 use rooms::{draw_rooms_table, ROOMS_LIST_WIDTH};
 use title::{draw_title, TITLE_BLOCK_HEIGHT};
@@ -95,10 +95,6 @@ pub fn render(rect: &mut Frame, state: &mut AppState) {
         state.messages_list.scroll_state_mut(),
     );
 
-    // Message input
-    let msg_input = draw_msg_input(state);
-    rect.render_widget(msg_input.widget(), room_rows[1]);
-
     // Help
     if state.show_help {
         let help = draw_help(&state.actions);
@@ -110,6 +106,10 @@ pub fn render(rect: &mut Frame, state: &mut AppState) {
         let logs = draw_logs();
         rect.render_widget(logs, app_rows[2]);
     }
+
+    // Message input
+    let editor = draw_message_editor(state);
+    rect.render_widget(editor.widget(), room_rows[1]);
 }
 
 /// Logs warnings when terminal size constraints are not respected.

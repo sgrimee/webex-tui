@@ -1,4 +1,4 @@
-// ui/editor.rs
+// ui/message_editor.rs
 
 //! Panel with a text editor used to type messages.
 
@@ -14,9 +14,9 @@ use crate::app::state::{ActivePane, AppState};
 pub const MSG_INPUT_BLOCK_HEIGHT: u16 = 5;
 
 // Draws a text editor where the user can type a message.
-pub fn draw_msg_input<'a>(state: &'a AppState<'a>) -> TextArea<'a> {
+pub fn draw_message_editor<'a>(state: &'a AppState<'a>) -> TextArea<'a> {
     // Update title when in editing mode
-    let title = if state.editing_mode {
+    let title = if state.message_editor.is_editing() {
         Span::styled(
             "Type your message, Enter to send, Alt+Enter for new line, Esc to exit.",
             Style::default().fg(Color::Yellow),
@@ -31,7 +31,7 @@ pub fn draw_msg_input<'a>(state: &'a AppState<'a>) -> TextArea<'a> {
         _ => Style::default(),
     };
 
-    let mut textarea = state.msg_input_textarea.clone();
+    let mut textarea = state.message_editor.textarea().clone();
     textarea.set_block(
         Block::default()
             .borders(Borders::ALL)
