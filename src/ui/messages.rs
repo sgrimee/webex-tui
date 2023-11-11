@@ -2,10 +2,13 @@
 
 //! A panel displaying the messages in a `Room` as a table.
 
+const CONTENT_INDENT_REPLY: &str = "  |   ";
+const CONTENT_INDENT: &str = "  ";
+const CONTENT_RIGHT_MARGIN: u16 = 2;
+const TITLE_INDENT_REPLY: &str = "  | ";
+const TITLE_INDENT: &str = "";
 pub const ACTIVE_ROOM_MIN_WIDTH: u16 = 30;
 pub const ROOM_MIN_HEIGHT: u16 = 8;
-const MESSAGES_RIGHT_MARGIN: u16 = 1;
-const MESSAGES_INDENT: &str = "  ";
 
 use crate::app::state::{ActivePane, AppState};
 use ratatui::prelude::Rect;
@@ -77,8 +80,15 @@ fn human_timestamp(datetime_str: &str) -> String {
 
 /// Returns a row with the formatted message and the number of lines.
 fn row_for_message<'a>(msg: Message, width: u16) -> (Row<'a>, usize) {
+    // Offset messages that are part of a conversation
+    let (title_indent, content_indent) = match msg.parent_id {
+        None => (TITLE_INDENT, CONTENT_INDENT),
+        Some(_) => (TITLE_INDENT_REPLY, CONTENT_INDENT_REPLY),
+    };
+
     // One line for the author and timestamp
     let mut title_line = Line::default();
+    title_line.spans.push(title_indent.into());
     if let Some(sender_email) = msg.person_email {
         title_line
             .spans
@@ -97,9 +107,9 @@ fn row_for_message<'a>(msg: Message, width: u16) -> (Row<'a>, usize) {
         .push(Span::styled(stamp, Style::new().gray()));
 
     // Message content
-    let options = textwrap::Options::new((width - MESSAGES_RIGHT_MARGIN) as usize)
-        .initial_indent(MESSAGES_INDENT)
-        .subsequent_indent(MESSAGES_INDENT);
+    let options = textwrap::Options::new((width - CONTENT_RIGHT_MARGIN) as usize)
+        .initial_indent(content_indent)
+        .subsequent_indent(content_indent);
     let mut content = String::new();
     if msg.markdown.is_some() {
         // Detect markdown, but do not render it yet
@@ -109,9 +119,11 @@ fn row_for_message<'a>(msg: Message, width: u16) -> (Row<'a>, usize) {
         content = raw_text;
     }
 
-    let mut text = Text::from(title_line);
+    let mut text = Text::default();
+    // One empty line, with a conversation marker if applicable
+    text.extend(Text::from(format!("{content_indent}\n")));
+    text.extend(Text::from(title_line));
     text.extend(Text::from(fill(&content, options)));
-    text.extend(Text::from("\n"));
 
     let height = text.height();
     let cell = Cell::from(text);
@@ -130,7 +142,7 @@ pub fn draw_msg_table<'a>(state: &AppState, rect: &Rect) -> (Table<'a>, usize, u
         title = room.title.clone().unwrap_or(String::from("Untitled room"));
         rows = state
             .teams_store
-            .messages_in_room_slice(&room.id)
+            .messages_in_room(&room.id)
             .iter()
             .map(|msg| {
                 let (row, height) = row_for_message(msg.clone(), rect.width - 2);
@@ -149,7 +161,7 @@ pub fn draw_msg_table<'a>(state: &AppState, rect: &Rect) -> (Table<'a>, usize, u
 
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_type(BorderType::Plain)
+        .border_type(BorderType::Rounded)
         .border_style(border_style)
         .title(title);
 

@@ -29,7 +29,7 @@ impl Teams<'_> {
                 }
             }
             _ => {
-                debug!("Unhandled webex event type: {:#?}", event.activity_type());
+                trace!("Unhandled webex event type: {:?}", event.activity_type());
             }
         }
     }

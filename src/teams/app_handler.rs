@@ -8,7 +8,7 @@ use crate::app::state::ActivePane;
 use crate::app::teams_store::{MessageId, RoomId};
 
 use super::Teams;
-use log::{debug, error, info};
+use log::*;
 use webex::{GlobalId, GlobalIdType, Message, MessageOut, Room};
 
 /// Commands the main `App` can send to the `Teams` thread.
@@ -48,10 +48,10 @@ impl Teams<'_> {
     /// Calls back `cb_teams_initialized` on `app`.
     /// This is useful to inform the main thread that the `teams` thread is ready.
     async fn do_initialize(&mut self) {
-        info!("🚀 Initializing to Webex");
+        debug!("🚀 Initializing to Webex");
         let mut app = self.app.lock().await;
         app.cb_teams_initialized();
-        info!("👍 Webex initialization successful");
+        debug!("👍 Webex initialization successful");
     }
 
     /// Deletes the message with given id
@@ -65,7 +65,6 @@ impl Teams<'_> {
 
     /// Sends `msg_to_send` and calls back `cb_message_sent` on app when done.
     async fn do_send_message(&mut self, msg_to_send: &MessageOut) {
-        debug!("Going to send message");
         self.client
             .send_message(msg_to_send)
             .await

@@ -4,20 +4,23 @@
 
 pub mod actions;
 pub mod callbacks;
+pub mod message_editor;
 pub mod messages_list;
 pub mod rooms_list;
 pub mod state;
 pub mod teams_store;
 
+use self::message_editor::Respondee;
 use self::{state::AppState, teams_store::RoomId};
 use crate::app::actions::Action;
 use crate::app::state::ActivePane;
 use crate::inputs::key::Key;
 use crate::teams::app_handler::AppCmdEvent;
 
+use color_eyre::{eyre::eyre, Result};
 use crossterm::event::KeyEvent;
 use log::*;
-use tui_textarea::{Input, TextArea};
+use tui_textarea::Input;
 
 /// Return status indicating whether the app should exit or not.
 #[derive(Debug, PartialEq, Eq)]
@@ -48,43 +51,50 @@ impl App<'_> {
     /// Process a key event to the text editor if active, or to execute
     /// the corresponding action otherwise
     pub async fn process_key_event(&mut self, key_event: KeyEvent) -> AppReturn {
-        if self.state.editing_mode {
-            trace!("Keyevent: {:#?}", key_event);
-            self.process_editing_key(key_event).await
+        if self.state.message_editor.is_editing() {
+            trace!("Keyevent: {:?}", key_event);
+            self.process_editing_key(key_event)
         } else {
-            self.do_action(Key::from(key_event)).await
+            self.do_action(Key::from(key_event))
         }
     }
 
     /// Handle a user action (non-editing mode)
-    async fn do_action(&mut self, key: crate::inputs::key::Key) -> AppReturn {
+    fn do_action(&mut self, key: crate::inputs::key::Key) -> AppReturn {
         if let Some(action) = self.state.actions.find(key) {
             debug!("Run action [{:?}]", action);
             match action {
                 Action::DeleteMessage => {
-                    if let Err(e) = self.delete_selected_message().await {
-                        warn!("Could not delete message: {}", e);
+                    if let Err(e) = self.delete_selected_message() {
+                        error!("Could not delete message: {}", e);
                     };
                 }
                 Action::ComposeNewMessage => {
-                    self.state.editing_mode = true;
+                    self.state.message_editor.set_is_editing(true);
+                    self.state.message_editor.set_respondee(None);
                     self.state.set_active_pane(Some(ActivePane::Compose));
                 }
                 Action::MarkRead => {
                     self.state.mark_active_read();
+                    self.next_room();
                 }
                 Action::NextPane => {
                     self.state.cycle_active_pane();
                 }
                 Action::NextRoomFilter => {
-                    self.next_filtering_mode().await;
+                    self.next_filtering_mode();
                 }
                 Action::PreviousRoomFilter => {
-                    self.previous_filtering_mode().await;
+                    self.previous_filtering_mode();
                 }
                 Action::Quit => return AppReturn::Exit,
+                Action::RespondMessage => {
+                    if let Err(e) = self.respond_to_selected_message() {
+                        error!("Could not respond to message: {}", e);
+                    };
+                }
                 Action::SendMessage => {
-                    self.send_message_buffer().await;
+                    self.send_message_buffer();
                 }
                 Action::ToggleLogs => {
                     self.state.show_logs = !self.state.show_logs;
@@ -96,13 +106,13 @@ impl App<'_> {
                     self.state.messages_list.select_next_message();
                 }
                 Action::NextRoom => {
-                    self.next_room().await;
+                    self.next_room();
                 }
                 Action::PreviousMessage => {
                     self.state.messages_list.select_previous_message();
                 }
                 Action::PreviousRoom => {
-                    self.previous_room().await;
+                    self.previous_room();
                 }
                 Action::UnselectMessage => {
                     self.state.messages_list.deselect();
@@ -119,19 +129,19 @@ impl App<'_> {
     }
 
     // Handle a key while in text editing mode
-    async fn process_editing_key(&mut self, key_event: KeyEvent) -> AppReturn {
+    fn process_editing_key(&mut self, key_event: KeyEvent) -> AppReturn {
         let key: Key = key_event.into();
         match key {
             Key::Ctrl('c') => return AppReturn::Exit,
             Key::Esc => {
-                self.state.editing_mode = false;
-                self.state.set_active_pane(Some(ActivePane::Rooms))
+                self.state.message_editor.set_is_editing(false);
+                self.state.set_active_pane(Some(ActivePane::Messages))
             }
-            Key::AltEnter => self.state.msg_input_textarea.insert_newline(),
+            Key::AltEnter => self.state.message_editor.insert_newline(),
             Key::Enter => {
-                self.send_message_buffer().await;
+                self.send_message_buffer();
             }
-            _ => _ = self.state.msg_input_textarea.input(Input::from(key_event)),
+            _ => _ = self.state.message_editor.input(Input::from(key_event)),
         }
         AppReturn::Continue
     }
@@ -144,23 +154,28 @@ impl App<'_> {
 
     /// Send a message with the text contained in the editor
     /// to the active person or room.
-    async fn send_message_buffer(&mut self) {
-        if self.state.msg_input_textarea.is_empty() {
+    fn send_message_buffer(&mut self) {
+        if self.state.message_editor.is_empty() {
             warn!("An empty message cannot be sent.");
             return;
         };
         match self.state.active_room() {
             Some(room) => {
                 let id = room.id.clone();
-                let lines = self.state.msg_input_textarea.lines();
+                let lines = self.state.message_editor.lines().to_vec();
                 let msg_to_send = webex::types::MessageOut {
                     room_id: Some(id.clone()),
+                    parent_id: self
+                        .state
+                        .message_editor
+                        .respondee()
+                        .map(|r| r.parent_msg_id.clone()),
                     text: Some(lines.join("\n")),
                     ..Default::default()
                 };
                 debug!("Sending message to room {:?}", room.title);
                 self.dispatch_to_teams(AppCmdEvent::SendMessage(msg_to_send));
-                self.state.msg_input_textarea = TextArea::default();
+                self.state.message_editor.clear();
                 self.state.teams_store.mark_read(&id);
             }
             None => warn!("Cannot send message, no room selected."),
@@ -169,42 +184,73 @@ impl App<'_> {
 
     /// Deletes the selected message, if there is one and it was authored by self.
     /// Otherwise does nothing.
-    async fn delete_selected_message(&mut self) -> Result<(), &'static str> {
-        // Check if there is a selected room
-        let room_id = match self.state.id_of_selected_room() {
-            Some(id) => id,
-            None => return Err("No room selected"),
-        };
-
-        // Get the messages in the selected room
-        let messages = self.state.teams_store.messages_in_room_slice(&room_id);
-
-        // Get the id of the selected message if the message is from the current user
-        let msg_id_option = self
+    fn delete_selected_message(&mut self) -> Result<()> {
+        let room_id = self
+            .state
+            .id_of_selected_room()
+            .ok_or(eyre!("No room selected"))?;
+        let messages = self.state.teams_store.messages_in_room(&room_id);
+        let msg = self
             .state
             .messages_list
-            .selected_message(messages)
-            .and_then(|msg| match self.state.teams_store.is_me(&msg.person_id) {
-                false => None,
-                true => msg.id.clone(),
-            });
+            .selected_message(&messages)
+            .ok_or(eyre!("Cannot get selected message"))?;
 
-        // If a message id was found, dispatch a delete event and remove the message from the store
-        match msg_id_option {
-            Some(msg_id) => {
-                self.dispatch_to_teams(AppCmdEvent::DeleteMessage(msg_id.clone()));
-                self.state.teams_store.delete_message(&msg_id, &room_id);
-                Ok(())
-            }
-            None => {
-                Err("No message selected or the selected message was not from the current user")
-            }
+        // Ensure we attempt to delete only our own messages
+        if !self.state.teams_store.is_me(&msg.person_id) {
+            return Err(eyre!("Cannot delete message, it was not authored by self"));
         }
+
+        let msg_id = msg
+            .id
+            .clone()
+            .ok_or(eyre!("Selected message does not have an id"))?;
+
+        // Dispatch a delete event and remove the message from the store
+        self.state.messages_list.select_previous_message();
+        self.dispatch_to_teams(AppCmdEvent::DeleteMessage(msg_id.clone()));
+        self.state.teams_store.delete_message(&msg_id, &room_id)?;
+        Ok(())
+    }
+
+    /// Prepares and activates the message editor to respond to the selected message
+    fn respond_to_selected_message(&mut self) -> Result<()> {
+        let room_id = self
+            .state
+            .id_of_selected_room()
+            .ok_or(eyre!("No room selected"))?;
+        let messages = self.state.teams_store.messages_in_room(&room_id);
+        let message = self
+            .state
+            .messages_list
+            .selected_message(&messages)
+            .ok_or(eyre!("Cannot get selected message"))?;
+
+        // If the selected message is already a response, we use its parent_id.
+        // Otherwise we use its id.
+        let parent_id = match message.parent_id.clone() {
+            Some(id) => id,
+            None => message
+                .id
+                .clone()
+                .ok_or(eyre!("Selected message does not have an id"))?,
+        };
+
+        let respondee = Respondee {
+            parent_msg_id: parent_id,
+            author: message
+                .person_email
+                .clone()
+                .ok_or(eyre!("Selected message does not have an author email"))?,
+        };
+        self.state.message_editor.set_respondee(Some(respondee));
+        self.state.message_editor.set_is_editing(true);
+        Ok(())
     }
 
     /// Retrieves the latest messages in the room, only if it is empty
-    async fn get_messages_if_room_empty(&mut self, id: &RoomId) {
-        if self.state.teams_store.messages_in_room_slice(id).is_empty() {
+    fn get_messages_if_room_empty(&mut self, id: &RoomId) {
+        if self.state.teams_store.messages_in_room(id).is_empty() {
             self.dispatch_to_teams(AppCmdEvent::ListMessagesInRoom(id.clone()));
         }
     }
@@ -218,14 +264,14 @@ impl App<'_> {
     }
 
     /// Sets the active room to that highlighted by the list selection
-    async fn set_active_room_to_selection(&mut self) {
+    fn set_active_room_to_selection(&mut self) {
         let id_option = self.state.id_of_selected_room();
-        self.state.set_active_room_id(&id_option);
+        self.state.rooms_list.set_active_room_id(id_option.clone());
         // Changing active room may have affected the selection
         // e.g. with Unread filter which includes active room
         self.state.update_selection_with_active_room();
         if let Some(id) = id_option {
-            self.get_messages_if_room_empty(&id).await;
+            self.get_messages_if_room_empty(&id);
         }
         // Update the number of messages in the active room
         self.state
@@ -236,30 +282,30 @@ impl App<'_> {
     }
 
     /// Change the rooms list filter to the previous one
-    async fn previous_filtering_mode(&mut self) {
-        self.state.set_active_room_id(&None);
+    fn previous_filtering_mode(&mut self) {
+        self.state.rooms_list.set_active_room_id(None);
         self.state.rooms_list.previous_mode(&self.state.teams_store);
-        self.set_active_room_to_selection().await;
+        self.set_active_room_to_selection();
     }
 
     /// Change the rooms list filter to the next one
-    async fn next_filtering_mode(&mut self) {
-        self.state.set_active_room_id(&None);
+    fn next_filtering_mode(&mut self) {
+        self.state.rooms_list.set_active_room_id(None);
         self.state.rooms_list.next_mode(&self.state.teams_store);
-        self.set_active_room_to_selection().await;
+        self.set_active_room_to_selection();
     }
 
     /// Select the next room in the list
-    async fn next_room(&mut self) {
+    fn next_room(&mut self) {
         let num_rooms = self.state.num_of_visible_rooms();
         self.state.rooms_list.select_next_room(num_rooms);
-        self.set_active_room_to_selection().await;
+        self.set_active_room_to_selection();
     }
 
     /// Select the previous room in the list
-    async fn previous_room(&mut self) {
+    fn previous_room(&mut self) {
         let num_rooms = self.state.num_of_visible_rooms();
         self.state.rooms_list.select_previous_room(num_rooms);
-        self.set_active_room_to_selection().await;
+        self.set_active_room_to_selection();
     }
 }

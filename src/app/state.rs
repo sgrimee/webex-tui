@@ -5,10 +5,10 @@
 use enum_iterator::{next_cycle, Sequence};
 use itertools::concat;
 use log::*;
-use tui_textarea::TextArea;
 use webex::Room;
 
 use super::actions::{Action, Actions};
+use super::message_editor::MessageEditor;
 use super::messages_list::MessagesList;
 use super::rooms_list::RoomsList;
 use super::teams_store::{RoomId, TeamsStore};
@@ -22,7 +22,6 @@ use super::teams_store::{RoomId, TeamsStore};
 pub struct AppState<'a> {
     // App
     pub actions: Actions,
-    pub editing_mode: bool,
     pub is_loading: bool,
 
     // Webex
@@ -31,9 +30,9 @@ pub struct AppState<'a> {
     // UI
     pub show_logs: bool,
     pub show_help: bool,
-    pub msg_input_textarea: TextArea<'a>,
     pub rooms_list: RoomsList,
     pub messages_list: MessagesList,
+    pub message_editor: MessageEditor<'a>,
     active_pane: Option<ActivePane>,
 }
 
@@ -51,28 +50,18 @@ pub enum ActivePane {
 }
 
 impl AppState<'_> {
-    /// Return the `RoomId` of the active room, if any.
-    pub fn active_room_id(&self) -> Option<RoomId> {
-        self.rooms_list.active_room_id.clone()
-    }
-
-    /// Sets the active room to `id`
-    pub fn set_active_room_id(&mut self, id: &Option<RoomId>) {
-        self.rooms_list.active_room_id = id.clone();
-    }
-
     /// Returns the active `Room` if any.
     /// This is the room displayed in the messages view and
     /// where messages are sent to.
     pub fn active_room(&self) -> Option<&Room> {
-        self.active_room_id()
-            .and_then(|id| self.teams_store.room_with_id(&id))
+        self.rooms_list
+            .active_room_id()
+            .and_then(|id| self.teams_store.room_with_id(id))
     }
 
     /// Returns an iterator over all visible rooms with the current filter.
     pub fn visible_rooms(&self) -> impl Iterator<Item = &Room> {
-        self.teams_store
-            .rooms_filtered_by(self.rooms_list.filter(), self.active_room_id())
+        self.teams_store.rooms_filtered_by(self.rooms_list.filter())
     }
 
     /// Returns the number of visible rooms with the current filter.
@@ -82,8 +71,8 @@ impl AppState<'_> {
 
     /// Returns the number of messages in the active room.
     pub fn num_messages_active_room(&self) -> usize {
-        match self.active_room_id() {
-            Some(id) => self.teams_store.messages_in_room_slice(&id).len(),
+        match self.rooms_list.active_room_id() {
+            Some(id) => self.teams_store.nb_messages_in_room(id),
             None => 0,
         }
     }
@@ -98,8 +87,8 @@ impl AppState<'_> {
     /// Reset the list selection to the active room.
     /// This is useful after the number or order of items in the list changes.
     pub fn update_selection_with_active_room(&mut self) {
-        if let Some(id) = self.active_room_id() {
-            let pos_option = self.visible_rooms().position(|room| room.id == id);
+        if let Some(id) = self.rooms_list.active_room_id() {
+            let pos_option = self.visible_rooms().position(|room| &room.id == id);
             if let Some(position) = pos_option {
                 self.rooms_list.table_state_mut().select(Some(position))
             }
@@ -147,13 +136,14 @@ impl AppState<'_> {
             }
             Some(ActivePane::Messages) => {
                 let mut actions: Vec<Action> = Vec::new();
-                if self.active_room_id().is_some() {
+                if self.rooms_list.active_room_id().is_some() {
                     actions.push(Action::ComposeNewMessage);
                 }
                 if self.num_messages_active_room() > 0 {
                     actions.extend(vec![Action::NextMessage, Action::PreviousMessage]);
                 }
                 if self.messages_list.has_selection() {
+                    actions.push(Action::RespondMessage);
                     actions.push(Action::UnselectMessage);
                     actions.push(Action::DeleteMessage);
                 }
@@ -218,14 +208,13 @@ impl Default for AppState<'_> {
     fn default() -> Self {
         AppState {
             actions: vec![Action::Quit, Action::ToggleHelp, Action::ToggleLogs].into(),
-            editing_mode: false,
             is_loading: false,
-            msg_input_textarea: TextArea::default(),
             show_logs: false,
             show_help: true,
             teams_store: TeamsStore::default(),
+            message_editor: MessageEditor::default(),
             messages_list: MessagesList::new(),
-            rooms_list: RoomsList::new(),
+            rooms_list: RoomsList::default(),
             active_pane: None,
         }
     }

@@ -21,12 +21,12 @@ pub fn draw_rooms_table<'a>(state: &AppState) -> Table<'a> {
     };
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_type(BorderType::Plain)
+        .border_type(BorderType::Rounded)
         .border_style(border_style)
         .title(format!("Filter: {:?}", state.rooms_list.filter()));
     let items: Vec<_> = state
         .teams_store
-        .rooms_filtered_by(state.rooms_list.filter(), state.active_room_id())
+        .rooms_filtered_by(state.rooms_list.filter())
         .map(|room| {
             let mut style = Style::default();
             if state.teams_store.room_has_unread(&room.id) {
@@ -41,7 +41,6 @@ pub fn draw_rooms_table<'a>(state: &AppState) -> Table<'a> {
     Table::new(items)
         .block(block)
         .widths(&[Constraint::Length(ROOMS_LIST_WIDTH)])
-        .column_spacing(1)
         .highlight_style(
             Style::default()
                 .bg(Color::Yellow)

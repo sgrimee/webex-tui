@@ -25,7 +25,7 @@ impl App<'_> {
 
     /// Callback when a message was sent. Does nothing.
     pub fn cb_message_sent(&mut self) {
-        trace!("Message was sent.");
+        debug!("Message was sent.");
     }
 
     /// Stores a single received message
@@ -46,7 +46,9 @@ impl App<'_> {
                     self.state.teams_store.mark_unread(id);
                 }
             }
-            self.state.teams_store.add_message(msg);
+            if let Err(err) = self.state.teams_store.add_message(msg) {
+                error!("Error adding received message to store: {}", err);
+            }
         }
         // update room details, including title, adding room if needed
         for room_id in room_ids {
