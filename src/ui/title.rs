@@ -24,6 +24,6 @@ pub fn draw_title<'a>(state: &AppState) -> Paragraph<'a> {
             Block::default()
                 .borders(Borders::ALL)
                 .style(Style::default().fg(Color::White))
-                .border_type(BorderType::Plain),
+                .border_type(BorderType::Rounded),
         )
 }

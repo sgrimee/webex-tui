@@ -61,10 +61,7 @@ impl AppState<'_> {
 
     /// Returns an iterator over all visible rooms with the current filter.
     pub fn visible_rooms(&self) -> impl Iterator<Item = &Room> {
-        self.teams_store.rooms_filtered_by(
-            self.rooms_list.filter(),
-            self.rooms_list.active_room_id().cloned(),
-        )
+        self.teams_store.rooms_filtered_by(self.rooms_list.filter())
     }
 
     /// Returns the number of visible rooms with the current filter.
@@ -75,7 +72,7 @@ impl AppState<'_> {
     /// Returns the number of messages in the active room.
     pub fn num_messages_active_room(&self) -> usize {
         match self.rooms_list.active_room_id() {
-            Some(id) => self.teams_store.messages_in_room_slice(id).len(),
+            Some(id) => self.teams_store.nb_messages_in_room(id),
             None => 0,
         }
     }
@@ -146,6 +143,7 @@ impl AppState<'_> {
                     actions.extend(vec![Action::NextMessage, Action::PreviousMessage]);
                 }
                 if self.messages_list.has_selection() {
+                    actions.push(Action::RespondMessage);
                     actions.push(Action::UnselectMessage);
                     actions.push(Action::DeleteMessage);
                 }

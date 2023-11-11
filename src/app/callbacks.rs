@@ -46,7 +46,9 @@ impl App<'_> {
                     self.state.teams_store.mark_unread(id);
                 }
             }
-            self.state.teams_store.add_message(msg);
+            if let Err(err) = self.state.teams_store.add_message(msg) {
+                error!("Error adding received message to store: {}", err);
+            }
         }
         // update room details, including title, adding room if needed
         for room_id in room_ids {

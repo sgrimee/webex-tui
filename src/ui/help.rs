@@ -43,7 +43,7 @@ pub fn draw_help(actions: &Actions) -> Table {
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .border_type(BorderType::Plain)
+                .border_type(BorderType::Rounded)
                 .title("Help"),
         )
         .widths(&[

@@ -29,11 +29,9 @@ impl MessagesList {
         if !self.has_selection {
             return None;
         }
-        let msg = self
-            .table_state
+        self.table_state
             .selected()
-            .and_then(|selected| messages.get(selected));
-        msg
+            .and_then(|selected| messages.get(selected))
     }
 
     /// Selects the next message in the list and updates the table_state.
@@ -163,7 +161,9 @@ fn position_for(selected: usize, nb_messages: usize, nb_lines: usize) -> Option<
     if nb_messages == 0 {
         return None;
     }
-    assert!(selected < nb_messages);
+    if selected >= nb_messages {
+        return Some(nb_messages);
+    }
     assert!(nb_lines >= nb_messages);
     let pos_f = selected as f64 / nb_messages as f64 * nb_lines as f64;
     Some(pos_f as usize)

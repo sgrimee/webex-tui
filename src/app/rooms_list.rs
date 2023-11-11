@@ -41,7 +41,7 @@ impl RoomsList {
             self.filter = new_mode;
             // Reset selection when we change modes
             let num_rooms = store
-                .rooms_filtered_by(self.filter(), self.active_room_id.clone())
+                .rooms_filtered_by(self.filter())
                 .collect::<Vec<_>>()
                 .len();
             let selected = if num_rooms == 0 { None } else { Some(0) };
@@ -57,7 +57,7 @@ impl RoomsList {
             self.filter = new_mode;
             // Reset selection when we change modes
             let num_rooms = store
-                .rooms_filtered_by(self.filter(), self.active_room_id.clone())
+                .rooms_filtered_by(self.filter())
                 .collect::<Vec<_>>()
                 .len();
             let selected = if num_rooms == 0 { None } else { Some(0) };

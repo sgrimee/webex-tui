@@ -4,11 +4,20 @@
 
 use tui_textarea::{Input, TextArea};
 
+use super::teams_store::MessageId;
+
+#[derive(Clone, Debug)]
+pub struct Respondee {
+    pub parent_msg_id: MessageId,
+    pub author: String,
+}
+
 #[derive(Default)]
 pub struct MessageEditor<'a> {
     textarea: TextArea<'a>,
     // whether the editor is in text editing mode
     is_editing: bool,
+    respondee: Option<Respondee>,
 }
 
 impl<'a> MessageEditor<'a> {
@@ -42,5 +51,13 @@ impl<'a> MessageEditor<'a> {
 
     pub(crate) fn clear(&mut self) {
         self.textarea = TextArea::default();
+    }
+
+    pub fn set_respondee(&mut self, respondee: Option<Respondee>) {
+        self.respondee = respondee;
+    }
+
+    pub fn respondee(&self) -> Option<&Respondee> {
+        self.respondee.as_ref()
     }
 }
