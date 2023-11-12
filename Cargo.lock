@@ -2341,8 +2341,9 @@ checksum = "3528ecfd12c466c6f163363caf2d02a71161dd5e1cc6ae7b34207ea2d42d81ed"
 
 [[package]]
 name = "tui-logger"
-version = "0.9.6"
-source = "git+https://github.com/gin66/tui-logger.git?rev=b9460de320b25a9862d54d151519487f414579d3#b9460de320b25a9862d54d151519487f414579d3"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8534ddd1aab94e4f52ce82dfc886cc55ca1fdf0c843e5a0b8dfee37673254e88"
 dependencies = [
  "chrono",
  "fxhash",
