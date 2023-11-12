@@ -10,7 +10,6 @@ pub mod rooms_list;
 pub mod state;
 pub mod teams_store;
 
-use self::message_editor::Respondee;
 use self::{state::AppState, teams_store::RoomId};
 use crate::app::actions::Action;
 use crate::app::state::ActivePane;
@@ -51,7 +50,7 @@ impl App<'_> {
     /// Process a key event to the text editor if active, or to execute
     /// the corresponding action otherwise
     pub async fn process_key_event(&mut self, key_event: KeyEvent) -> AppReturn {
-        if self.state.message_editor.is_editing() {
+        if self.state.message_editor.is_composing() {
             trace!("Keyevent: {:?}", key_event);
             self.process_editing_key(key_event)
         } else {
@@ -70,14 +69,16 @@ impl App<'_> {
                     };
                 }
                 Action::ComposeNewMessage => {
-                    self.state.message_editor.set_is_editing(true);
-                    self.state.message_editor.set_respondee(None);
+                    self.state.message_editor.reset();
+                    self.state.message_editor.set_is_composing(true);
                     self.state.set_active_pane(Some(ActivePane::Compose));
                 }
                 Action::EditSelectedMessage => {
                     if let Err(e) = self.edit_selected_message() {
                         error!("Could not respond to message: {}", e);
                     };
+                    self.state.message_editor.set_is_composing(true);
+                    self.state.set_active_pane(Some(ActivePane::Compose));
                 }
                 Action::MarkRead => {
                     self.state.mark_active_read();
@@ -97,9 +98,13 @@ impl App<'_> {
                     if let Err(e) = self.respond_to_selected_message() {
                         error!("Could not respond to message: {}", e);
                     };
+                    self.state.message_editor.set_is_composing(true);
+                    self.state.set_active_pane(Some(ActivePane::Compose));
                 }
                 Action::SendMessage => {
-                    self.send_message_buffer();
+                    if let Err(e) = self.send_message_buffer() {
+                        error!("Could not send message: {}", e);
+                    };
                 }
                 Action::ToggleLogs => {
                     self.state.show_logs = !self.state.show_logs;
@@ -139,12 +144,14 @@ impl App<'_> {
         match key {
             Key::Ctrl('c') => return AppReturn::Exit,
             Key::Esc => {
-                self.state.message_editor.set_is_editing(false);
+                self.state.message_editor.set_is_composing(false);
                 self.state.set_active_pane(Some(ActivePane::Messages))
             }
             Key::AltEnter => self.state.message_editor.insert_newline(),
             Key::Enter => {
-                self.send_message_buffer();
+                if let Err(e) = self.send_message_buffer() {
+                    error!("Could not send message: {}", e);
+                };
             }
             _ => _ = self.state.message_editor.input(Input::from(key_event)),
         }
@@ -159,32 +166,34 @@ impl App<'_> {
 
     /// Send a message with the text contained in the editor
     /// to the active person or room.
-    fn send_message_buffer(&mut self) {
+    fn send_message_buffer(&mut self) -> Result<()> {
         if self.state.message_editor.is_empty() {
-            warn!("An empty message cannot be sent.");
-            return;
+            return Err(eyre!("An empty message cannot be sent."));
         };
         match self.state.active_room() {
             Some(room) => {
                 let id = room.id.clone();
                 let lines = self.state.message_editor.lines().to_vec();
-                let msg_to_send = webex::types::MessageOut {
-                    room_id: Some(id.clone()),
-                    parent_id: self
-                        .state
-                        .message_editor
-                        .respondee()
-                        .map(|r| r.parent_msg_id.clone()),
-                    text: Some(lines.join("\n")),
-                    ..Default::default()
+                let msg_to_send = match self.state.message_editor.response_to() {
+                    Some(orig_msg) => {
+                        let mut reply = orig_msg.reply();
+                        reply.text = Some(lines.join("\n"));
+                        reply
+                    }
+                    None => webex::types::MessageOut {
+                        room_id: Some(id.clone()),
+                        text: Some(lines.join("\n")),
+                        ..Default::default()
+                    },
                 };
                 debug!("Sending message to room {:?}", room.title);
                 self.dispatch_to_teams(AppCmdEvent::SendMessage(msg_to_send));
                 self.state.message_editor.reset();
                 self.state.teams_store.mark_read(&id);
             }
-            None => warn!("Cannot send message, no room selected."),
+            None => return Err(eyre!("Cannot send message, no room selected.")),
         }
+        Ok(())
     }
 
     /// Deletes the selected message, if there is one and it was authored by self.
@@ -210,29 +219,12 @@ impl App<'_> {
         Ok(())
     }
 
-    /// Prepares and activates the message editor to respond to the selected message
+    /// Prepares the message editor to respond to the selected message
     fn respond_to_selected_message(&mut self) -> Result<()> {
         let message = self.state.selected_message()?;
-
-        // If the selected message is already a response, we use its parent_id.
-        // Otherwise we use its id.
-        let parent_id = match message.parent_id.clone() {
-            Some(id) => id,
-            None => message
-                .id
-                .clone()
-                .ok_or(eyre!("Selected message does not have an id"))?,
-        };
-
-        let respondee = Respondee {
-            parent_msg_id: parent_id,
-            author: message
-                .person_email
-                .clone()
-                .ok_or(eyre!("Selected message does not have an author email"))?,
-        };
-        self.state.message_editor.set_respondee(Some(respondee));
-        self.state.message_editor.set_is_editing(true);
+        self.state
+            .message_editor
+            .set_response_to(Some(message.clone()));
         Ok(())
     }
 
@@ -243,16 +235,14 @@ impl App<'_> {
         if !self.state.is_me(&message.person_id) {
             return Err(eyre!("Cannot edit message, it was not authored by self"));
         }
+
+        // set the message editor text to the message text
         let text = message.text.clone().unwrap_or_default();
         self.state.message_editor.reset_with_text(text);
-        self.state.message_editor.set_is_editing(true);
-        if let Some(parent_id) = message.parent_id.clone() {
-            let respondee = Respondee {
-                parent_msg_id: parent_id,
-                author: "original author".to_string(),
-            };
-            self.state.message_editor.set_respondee(Some(respondee));
-        };
+        // keep a copy of the message we are editing
+        self.state
+            .message_editor
+            .set_editing_of(Some(message.clone()));
         Ok(())
     }
 
