@@ -2,10 +2,11 @@
 
 //! State of the application
 
+use color_eyre::{eyre::eyre, Result};
 use enum_iterator::{next_cycle, Sequence};
 use itertools::concat;
 use log::*;
-use webex::Room;
+use webex::{Message, Person, Room};
 
 use super::actions::{Action, Actions};
 use super::message_editor::MessageEditor;
@@ -26,6 +27,7 @@ pub struct AppState<'a> {
 
     // Webex
     pub teams_store: TeamsStore,
+    pub me: Option<webex::Person>,
 
     // UI
     pub show_logs: bool,
@@ -128,7 +130,7 @@ impl AppState<'_> {
         let actions = match &active_pane {
             Some(ActivePane::Compose) => {
                 vec![
-                    Action::EndEditMessage,
+                    Action::EndComposeMessage,
                     Action::SendMessage,
                     Action::NextPane,
                     Action::Quit,
@@ -145,7 +147,10 @@ impl AppState<'_> {
                 if self.messages_list.has_selection() {
                     actions.push(Action::RespondMessage);
                     actions.push(Action::UnselectMessage);
-                    actions.push(Action::DeleteMessage);
+                    if self.selected_message_is_from_me().unwrap_or_default() {
+                        actions.push(Action::EditSelectedMessage);
+                        actions.push(Action::DeleteMessage);
+                    }
                 }
                 actions.extend(vec![
                     Action::NextPane,
@@ -202,6 +207,38 @@ impl AppState<'_> {
     pub(crate) fn update_on_tick(&mut self) {
         self.update_actions(self.active_pane.clone());
     }
+
+    /// Returns the selected message, if there is one
+    pub fn selected_message(&self) -> Result<&Message> {
+        let room_id = self
+            .id_of_selected_room()
+            .ok_or(eyre!("No room selected"))?;
+        let index = self
+            .messages_list
+            .selected_index()
+            .ok_or(eyre!("No message selected in room {}", room_id))?;
+        self.teams_store.nth_message_in_room(index, &room_id)
+    }
+
+    /// Sets the user of the app, used to filter its own messages.
+    pub fn set_me(&mut self, me: Person) {
+        self.me = Some(me);
+    }
+
+    /// Returns true if me is not None, person_id is not None and person_id equals me.
+    /// Returns false if they are different or either is None.
+    pub fn is_me(&self, person_id: &Option<String>) -> bool {
+        match (&self.me, person_id) {
+            (Some(me), Some(id)) => me.id.eq(id),
+            _ => false,
+        }
+    }
+
+    /// Returns true if the selected message is from me.
+    pub fn selected_message_is_from_me(&self) -> Result<bool> {
+        let message = self.selected_message()?;
+        Ok(self.is_me(&message.person_id))
+    }
 }
 
 impl Default for AppState<'_> {
@@ -209,12 +246,14 @@ impl Default for AppState<'_> {
         AppState {
             actions: vec![Action::Quit, Action::ToggleHelp, Action::ToggleLogs].into(),
             is_loading: false,
+
+            teams_store: TeamsStore::default(),
+            me: None,
             show_logs: false,
             show_help: true,
-            teams_store: TeamsStore::default(),
-            message_editor: MessageEditor::default(),
-            messages_list: MessagesList::new(),
             rooms_list: RoomsList::default(),
+            messages_list: MessagesList::new(),
+            message_editor: MessageEditor::default(),
             active_pane: None,
         }
     }

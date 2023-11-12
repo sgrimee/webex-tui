@@ -3,7 +3,6 @@
 //! List of messages, keeping state of the UI scrolling offset and selected item.
 
 use ratatui::widgets::{ScrollbarState, TableState};
-use webex::Message;
 
 #[derive(Default)]
 pub struct MessagesList {
@@ -25,13 +24,11 @@ impl MessagesList {
 
     /// Returns the message corresponding to the selection, if there is one.
     /// If the selection is out of bounds, returns None.
-    pub fn selected_message<'a>(&'a self, messages: &'a [Message]) -> Option<&Message> {
+    pub fn selected_index(&self) -> Option<usize> {
         if !self.has_selection {
             return None;
         }
-        self.table_state
-            .selected()
-            .and_then(|selected| messages.get(selected))
+        self.table_state.selected()
     }
 
     /// Selects the next message in the list and updates the table_state.

@@ -14,7 +14,8 @@ use crate::inputs::key::Key;
 pub enum Action {
     DeleteMessage,
     ComposeNewMessage,
-    EndEditMessage,
+    EditSelectedMessage,
+    EndComposeMessage,
     MarkRead,
     NextMessage,
     NextPane,
@@ -37,7 +38,8 @@ impl Action {
         match self {
             Action::DeleteMessage => &[Key::Char('d')],
             Action::ComposeNewMessage => &[Key::Enter],
-            Action::EndEditMessage => &[Key::Esc],
+            Action::EditSelectedMessage => &[Key::Char('e')],
+            Action::EndComposeMessage => &[Key::Esc],
             Action::MarkRead => &[Key::Char('r')],
             Action::NextMessage => &[Key::Down],
             Action::NextPane => &[Key::Tab],
@@ -62,7 +64,8 @@ impl Display for Action {
         let str = match self {
             Action::DeleteMessage => "Delete selected",
             Action::ComposeNewMessage => "New message",
-            Action::EndEditMessage => "End editing",
+            Action::EditSelectedMessage => "Edit selected",
+            Action::EndComposeMessage => "End editing",
             Action::MarkRead => "Mark read (locally)",
             Action::NextMessage => "Next message",
             Action::NextPane => "Next pane",

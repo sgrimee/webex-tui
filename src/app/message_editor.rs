@@ -15,9 +15,12 @@ pub struct Respondee {
 #[derive(Default)]
 pub struct MessageEditor<'a> {
     textarea: TextArea<'a>,
-    // whether the editor is in text editing mode
+    /// Whether the editor captures key events.
     is_editing: bool,
+    /// Thread to which the message is replying.
     respondee: Option<Respondee>,
+    /// Existing message being corrected.
+    message_id: Option<MessageId>,
 }
 
 impl<'a> MessageEditor<'a> {
@@ -49,8 +52,19 @@ impl<'a> MessageEditor<'a> {
         self.textarea.is_empty()
     }
 
-    pub(crate) fn clear(&mut self) {
+    pub(crate) fn reset(&mut self) {
         self.textarea = TextArea::default();
+        self.respondee = None;
+        self.message_id = None;
+    }
+
+    /// Sets the message editor content to the given text.
+    pub(crate) fn reset_with_text(&mut self, text: String) {
+        // Textarea does not support newlines in the text.
+        let lines = text.split('\n').map(|s| s.to_string()).collect::<Vec<_>>();
+        self.textarea = TextArea::new(lines);
+        self.respondee = None;
+        self.message_id = None;
     }
 
     pub fn set_respondee(&mut self, respondee: Option<Respondee>) {

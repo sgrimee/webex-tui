@@ -71,7 +71,6 @@ impl RoomsList {
             Some(selected) => rooms.get(selected).map(|room| room.id.to_owned()),
             None => None,
         };
-        debug!("Id of selected room: {:?}", id);
         id
     }
 

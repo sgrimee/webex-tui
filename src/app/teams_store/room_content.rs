@@ -15,13 +15,16 @@ pub struct RoomContent {
 }
 
 impl RoomContent {
-    /// Returns all messages in the room, ordered by creation time and
-    /// grouping threads together.
-    pub fn messages(&self) -> Vec<Message> {
-        self.threads
-            .iter()
-            .flat_map(|thread| thread.messages().to_vec())
-            .collect::<Vec<Message>>()
+    /// Returns an iterator to all messages in the room in the order they should be displayed:
+    /// ordered by creation time and with threads grouped together.
+    pub fn messages(&self) -> impl Iterator<Item = &Message> {
+        self.threads.iter().flat_map(|thread| thread.messages())
+    }
+
+    pub fn nth_message(&self, index: usize) -> Result<&Message> {
+        self.messages()
+            .nth(index)
+            .ok_or(eyre!("Message {} not found in room", index))
     }
 
     /// Adds a message to the room content, respecting the thread order.
@@ -68,6 +71,10 @@ impl RoomContent {
     pub fn len(&self) -> usize {
         self.threads.iter().map(|thread| thread.len()).sum()
     }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 #[cfg(test)]
@@ -101,14 +108,10 @@ mod tests {
 
         // Check that they are sorted
         let messages = room_content.messages();
-        assert_eq!(messages.len(), 4);
-        let expected_ids = vec![
-            Some("message1".to_string()),
-            Some("child_of_1".to_string()),
-            Some("message2".to_string()),
-            Some("message3".to_string()),
-        ];
-        let actual_ids: Vec<_> = messages.into_iter().map(|message| message.id).collect();
+        let expected_ids = vec!["message1", "child_of_1", "message2", "message3"];
+        let actual_ids: Vec<_> = messages
+            .map(|message| message.id.as_ref().unwrap())
+            .collect();
         assert_eq!(expected_ids, actual_ids);
     }
 }

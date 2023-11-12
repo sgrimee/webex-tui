@@ -65,8 +65,8 @@ impl MsgThread {
         self.messages.first().and_then(|msg| msg.created.as_deref())
     }
 
-    pub fn messages(&self) -> &[Message] {
-        &self.messages
+    pub fn messages(&self) -> impl Iterator<Item = &Message> {
+        self.messages.iter()
     }
 
     pub fn id(&self) -> Option<&String> {
@@ -116,10 +116,10 @@ mod tests {
         conversation.add(&message2)?;
         conversation.add(&message1)?;
         conversation.add(&message3)?;
-        let messages = conversation.messages();
-        assert_eq!(messages[0].id, Some("1".to_string()));
-        assert_eq!(messages[1].id, Some("2".to_string()));
-        assert_eq!(messages[2].id, Some("3".to_string()));
+        let mut messages = conversation.messages();
+        assert_eq!(messages.next().unwrap().id, Some("1".to_string()));
+        assert_eq!(messages.next().unwrap().id, Some("2".to_string()));
+        assert_eq!(messages.next().unwrap().id, Some("3".to_string()));
         Ok(())
     }
 

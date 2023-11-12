@@ -48,7 +48,7 @@ impl<'a> Teams<'a> {
         {
             debug!("We are: {}", me.display_name);
             let mut app = app.lock().await;
-            app.cb_set_me_user(me);
+            app.cb_set_me(me);
         }
 
         Self { client, app }

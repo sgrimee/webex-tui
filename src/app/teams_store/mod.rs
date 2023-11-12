@@ -6,7 +6,7 @@ use chrono::{DateTime, Duration, Utc};
 use color_eyre::{eyre::eyre, Result};
 use log::*;
 use std::collections::{HashMap, HashSet};
-use webex::{Message, Person, Room};
+use webex::{Message, Room};
 
 pub mod msg_thread;
 pub mod room_content;
@@ -28,7 +28,6 @@ pub type MessageId = String;
 pub struct TeamsStore {
     rooms_by_id: HashMap<RoomId, Room>,
     room_content_by_room_id: HashMap<RoomId, RoomContent>,
-    me: Option<Person>,
     unread_rooms: HashSet<RoomId>,
 }
 
@@ -106,12 +105,19 @@ impl TeamsStore {
         })
     }
 
-    /// Returns a slice with all pre-loaded messages in the room.
-    /// Currently by order of reception, not supporing conversations.
-    pub fn messages_in_room(&self, id: &RoomId) -> Vec<Message> {
+    /// Returns an iterator with all pre-loaded messages in the room, in display order.
+    pub fn messages_in_room<'a>(&'a self, id: &RoomId) -> Box<dyn Iterator<Item = &Message> + 'a> {
         match self.room_content_by_room_id.get(id) {
-            Some(content) => content.messages(),
-            None => Vec::<Message>::new(),
+            Some(content) => Box::new(content.messages()),
+            None => Box::new(::std::iter::empty()),
+        }
+    }
+
+    /// Returns whether there are any messages in the room.
+    pub fn room_is_empty(&self, id: &RoomId) -> bool {
+        match self.room_content_by_room_id.get(id) {
+            Some(content) => content.is_empty(),
+            None => true,
         }
     }
 
@@ -132,18 +138,11 @@ impl TeamsStore {
         Ok(())
     }
 
-    /// Sets the user of the app, used to filter its own messages.
-    pub fn set_me_user(&mut self, me: Person) {
-        self.me = Some(me);
-    }
-
-    /// Returns true if me is not None, person_id is not None and person_id equals me.
-    /// Returns false if they are different or either is None.
-    pub fn is_me(&self, person_id: &Option<String>) -> bool {
-        match (&self.me, person_id) {
-            (Some(me), Some(id)) => me.id.eq(id),
-            _ => false,
-        }
+    pub(crate) fn nth_message_in_room(&self, index: usize, room_id: &str) -> Result<&Message> {
+        self.room_content_by_room_id
+            .get(room_id)
+            .ok_or(eyre!("Room {} not found", index))?
+            .nth_message(index)
     }
 }
 
@@ -200,7 +199,7 @@ mod tests {
             "child_of_1".to_string(),
             "message2".to_string(),
         ];
-        for (i, msg) in store.messages_in_room(&room_id).iter().enumerate() {
+        for (i, msg) in store.messages_in_room(&room_id).enumerate() {
             assert_eq!(&expected[i], msg.id.as_ref().unwrap());
         }
     }

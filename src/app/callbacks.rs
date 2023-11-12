@@ -19,8 +19,8 @@ impl App<'_> {
 
     /// Saves `me` as the user of the client
     /// This is used to identify when a message was originated by that user.
-    pub fn cb_set_me_user(&mut self, me: Person) {
-        self.state.teams_store.set_me_user(me);
+    pub fn cb_set_me(&mut self, person: Person) {
+        self.state.set_me(person);
     }
 
     /// Callback when a message was sent. Does nothing.
@@ -42,7 +42,7 @@ impl App<'_> {
         for msg in messages.iter().rev() {
             if let Some(id) = &msg.room_id {
                 room_ids.insert(id);
-                if mark_unread && !self.state.teams_store.is_me(&msg.person_id) {
+                if mark_unread && !self.state.is_me(&msg.person_id) {
                     self.state.teams_store.mark_unread(id);
                 }
             }

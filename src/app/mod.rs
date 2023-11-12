@@ -74,6 +74,11 @@ impl App<'_> {
                     self.state.message_editor.set_respondee(None);
                     self.state.set_active_pane(Some(ActivePane::Compose));
                 }
+                Action::EditSelectedMessage => {
+                    if let Err(e) = self.edit_selected_message() {
+                        error!("Could not respond to message: {}", e);
+                    };
+                }
                 Action::MarkRead => {
                     self.state.mark_active_read();
                     self.next_room();
@@ -175,7 +180,7 @@ impl App<'_> {
                 };
                 debug!("Sending message to room {:?}", room.title);
                 self.dispatch_to_teams(AppCmdEvent::SendMessage(msg_to_send));
-                self.state.message_editor.clear();
+                self.state.message_editor.reset();
                 self.state.teams_store.mark_read(&id);
             }
             None => warn!("Cannot send message, no room selected."),
@@ -185,23 +190,15 @@ impl App<'_> {
     /// Deletes the selected message, if there is one and it was authored by self.
     /// Otherwise does nothing.
     fn delete_selected_message(&mut self) -> Result<()> {
-        let room_id = self
-            .state
-            .id_of_selected_room()
-            .ok_or(eyre!("No room selected"))?;
-        let messages = self.state.teams_store.messages_in_room(&room_id);
-        let msg = self
-            .state
-            .messages_list
-            .selected_message(&messages)
-            .ok_or(eyre!("Cannot get selected message"))?;
+        let message = self.state.selected_message()?;
+        let room_id = self.state.id_of_selected_room().unwrap();
 
         // Ensure we attempt to delete only our own messages
-        if !self.state.teams_store.is_me(&msg.person_id) {
+        if !self.state.is_me(&message.person_id) {
             return Err(eyre!("Cannot delete message, it was not authored by self"));
         }
 
-        let msg_id = msg
+        let msg_id = message
             .id
             .clone()
             .ok_or(eyre!("Selected message does not have an id"))?;
@@ -215,16 +212,7 @@ impl App<'_> {
 
     /// Prepares and activates the message editor to respond to the selected message
     fn respond_to_selected_message(&mut self) -> Result<()> {
-        let room_id = self
-            .state
-            .id_of_selected_room()
-            .ok_or(eyre!("No room selected"))?;
-        let messages = self.state.teams_store.messages_in_room(&room_id);
-        let message = self
-            .state
-            .messages_list
-            .selected_message(&messages)
-            .ok_or(eyre!("Cannot get selected message"))?;
+        let message = self.state.selected_message()?;
 
         // If the selected message is already a response, we use its parent_id.
         // Otherwise we use its id.
@@ -248,9 +236,29 @@ impl App<'_> {
         Ok(())
     }
 
+    /// Prepeares the message editor with the contents of the selected message
+    fn edit_selected_message(&mut self) -> Result<()> {
+        let message = self.state.selected_message()?.clone();
+        // return an error if the message is not from self
+        if !self.state.is_me(&message.person_id) {
+            return Err(eyre!("Cannot edit message, it was not authored by self"));
+        }
+        let text = message.text.clone().unwrap_or_default();
+        self.state.message_editor.reset_with_text(text);
+        self.state.message_editor.set_is_editing(true);
+        if let Some(parent_id) = message.parent_id.clone() {
+            let respondee = Respondee {
+                parent_msg_id: parent_id,
+                author: "original author".to_string(),
+            };
+            self.state.message_editor.set_respondee(Some(respondee));
+        };
+        Ok(())
+    }
+
     /// Retrieves the latest messages in the room, only if it is empty
     fn get_messages_if_room_empty(&mut self, id: &RoomId) {
-        if self.state.teams_store.messages_in_room(id).is_empty() {
+        if self.state.teams_store.room_is_empty(id) {
             self.dispatch_to_teams(AppCmdEvent::ListMessagesInRoom(id.clone()));
         }
     }
