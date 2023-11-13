@@ -9,7 +9,7 @@ use crate::app::teams_store::{MessageId, RoomId};
 
 use super::Teams;
 use log::*;
-use webex::{GlobalId, GlobalIdType, Message, MessageOut, Room};
+use webex::{GlobalId, GlobalIdType, Message, MessageListParams, MessageOut, Room};
 
 /// Commands the main `App` can send to the `Teams` thread.
 #[derive(Debug)]
@@ -102,7 +102,8 @@ impl Teams<'_> {
     async fn do_list_messages_in_room(&mut self, id: &RoomId) {
         debug!("Getting messages in room {}", id);
         let gid = GlobalId::new(GlobalIdType::Room, id.to_owned()).unwrap();
-        match self.client.list_messages_in_room(&gid).await {
+        let params = MessageListParams::new(gid.id());
+        match self.client.list_with_params(params).await {
             Ok(messages) => {
                 let mut app = self.app.lock().await;
                 // add messages but do not mark the room as unread

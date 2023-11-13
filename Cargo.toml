@@ -32,8 +32,8 @@ tui-logger = "0.10.0"
 tui-textarea = "0.3.0"
 webbrowser = "0.8.11"
 # webex = "0.9.0"
-# webex = { path = "../vendor/webex-rust" }
-webex = { git = "https://github.com/sgrimee/webex-rust.git", branch = "messages_list" }
+webex = { path = "../vendor/webex-rust" }
+# webex = { git = "https://github.com/sgrimee/webex-rust.git", branch = "messages_list" }
 
 [dev-dependencies]
 rstest = "0.18.2"
