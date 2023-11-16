@@ -11,8 +11,7 @@ use webex::{Message, Person, Room};
 use super::actions::{Action, Actions};
 use super::message_editor::MessageEditor;
 use super::messages_list::MessagesList;
-use super::rooms_list::{RoomsList};
-use super::teams_store::room_list_order::RoomsListOrder;
+use super::rooms_list::RoomsList;
 use super::teams_store::{RoomId, TeamsStore};
 
 /// State of the application, including
@@ -59,22 +58,19 @@ impl AppState<'_> {
     pub fn active_room(&self) -> Option<&Room> {
         self.rooms_list
             .active_room_id()
-            .and_then(|id| self.teams_store.rooms.room_with_id(id))
+            .and_then(|id| self.teams_store.rooms_info.room_with_id(id))
     }
 
     /// Returns an iterator over all visible rooms with the current filter.
     pub fn visible_rooms(&self) -> impl Iterator<Item = &Room> {
-        self.teams_store.rooms
-            .rooms_filtered_by(self.rooms_list.filter(), self.rooms_list.order())
+        self.teams_store
+            .rooms_info
+            .rooms_filtered_by(self.rooms_list.filter())
     }
 
     /// Returns the number of visible rooms with the current filter.
     pub fn num_of_visible_rooms(&self) -> usize {
-        // No need to sort if we just need the length
-        self.teams_store.rooms
-            .rooms_filtered_by(self.rooms_list.filter(), &RoomsListOrder::Unsorted)
-            .collect::<Vec<_>>()
-            .len()
+        self.visible_rooms().collect::<Vec<_>>().len()
     }
 
     /// Returns the number of messages in the active room.
@@ -108,7 +104,7 @@ impl AppState<'_> {
     /// or multiple invocations of the same client.
     pub fn mark_active_read(&mut self) {
         if let Some(id) = self.id_of_selected_room() {
-            self.teams_store.rooms.mark_read(&id);
+            self.teams_store.rooms_info.mark_read(&id);
         }
     }
 

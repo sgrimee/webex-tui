@@ -10,7 +10,7 @@ use webex::Message;
 pub mod msg_thread;
 pub mod room_content;
 pub mod room_list_filter;
-pub mod room_list_order;
+// pub mod room_list_order;
 pub mod rooms;
 
 use self::room_content::RoomContent;
@@ -27,22 +27,22 @@ pub type MessageId = String;
 /// This is usually acceptable for a daily session.
 #[derive(Default, Debug)]
 pub struct TeamsStore {
-    pub rooms: Rooms,
-    room_content_by_room_id: HashMap<RoomId, RoomContent>,
+    pub rooms_info: Rooms,
+    rooms_content: HashMap<RoomId, RoomContent>,
 }
 
 impl TeamsStore {
     /// Adds a message to the store, respecting the thread order.
     pub fn add_message(&mut self, msg: &Message) -> Result<()> {
         let room_id = msg.room_id.clone().ok_or(eyre!("message has no room id"))?;
-        let content = self.room_content_by_room_id.entry(room_id).or_default();
+        let content = self.rooms_content.entry(room_id).or_default();
         content.add(msg)?;
         Ok(())
     }
 
     /// Returns an iterator with all pre-loaded messages in the room, in display order.
     pub fn messages_in_room<'a>(&'a self, id: &RoomId) -> Box<dyn Iterator<Item = &Message> + 'a> {
-        match self.room_content_by_room_id.get(id) {
+        match self.rooms_content.get(id) {
             Some(content) => Box::new(content.messages()),
             None => Box::new(::std::iter::empty()),
         }
@@ -50,7 +50,7 @@ impl TeamsStore {
 
     /// Returns whether there are any messages in the room.
     pub fn room_is_empty(&self, id: &RoomId) -> bool {
-        match self.room_content_by_room_id.get(id) {
+        match self.rooms_content.get(id) {
             Some(content) => content.is_empty(),
             None => true,
         }
@@ -59,7 +59,7 @@ impl TeamsStore {
     /// Returns the number of messages in the room.
     /// More efficient than `messages_in_room` if only the count is needed.
     pub fn nb_messages_in_room(&self, id: &RoomId) -> usize {
-        match self.room_content_by_room_id.get(id) {
+        match self.rooms_content.get(id) {
             Some(content) => content.len(),
             None => 0,
         }
@@ -67,14 +67,14 @@ impl TeamsStore {
 
     /// Deletes message with `msg_id` in `room_id` if it exists.
     pub fn delete_message(&mut self, msg_id: &MessageId, room_id: &RoomId) -> Result<()> {
-        if let Some(content) = self.room_content_by_room_id.get_mut(room_id) {
+        if let Some(content) = self.rooms_content.get_mut(room_id) {
             content.delete_message(msg_id)?;
         }
         Ok(())
     }
 
     pub(crate) fn nth_message_in_room(&self, index: usize, room_id: &str) -> Result<&Message> {
-        self.room_content_by_room_id
+        self.rooms_content
             .get(room_id)
             .ok_or(eyre!("Room {} not found", index))?
             .nth_message(index)
@@ -101,7 +101,7 @@ mod tests {
         let room_id = "some_new_room_id";
         let message1 = make_message("message1", room_id, None);
         store.add_message(&message1).unwrap();
-        assert_eq!(store.room_content_by_room_id[room_id].len(), 1);
+        assert_eq!(store.rooms_content[room_id].len(), 1);
     }
 
     #[test]
@@ -113,7 +113,7 @@ mod tests {
         store.add_message(&message1).unwrap();
         // add the message again, it should get added
         store.add_message(&message1).unwrap();
-        assert_eq!(store.room_content_by_room_id[room_id].len(), 2);
+        assert_eq!(store.rooms_content[room_id].len(), 2);
     }
 
     #[test]

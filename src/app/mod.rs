@@ -189,7 +189,7 @@ impl App<'_> {
                 debug!("Sending message to room {:?}", room.title);
                 self.dispatch_to_teams(AppCmdEvent::SendMessage(msg_to_send));
                 self.state.message_editor.reset();
-                self.state.teams_store.rooms.mark_read(&id);
+                self.state.teams_store.rooms_info.mark_read(&id);
             }
             None => return Err(eyre!("Cannot send message, no room selected.")),
         }

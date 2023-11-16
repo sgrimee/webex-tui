@@ -7,14 +7,11 @@ use log::*;
 use ratatui::widgets::TableState;
 use webex::Room;
 
-use super::teams_store::{
-    room_list_filter::RoomsListFilter, room_list_order::RoomsListOrder, RoomId, TeamsStore,
-};
+use super::teams_store::{room_list_filter::RoomsListFilter, RoomId, TeamsStore};
 
 #[derive(Default)]
 pub struct RoomsList {
     filter: RoomsListFilter,
-    order: RoomsListOrder,
     table_state: TableState,
     active_room_id: Option<RoomId>,
 }
@@ -28,8 +25,8 @@ impl RoomsList {
             self.filter = new_mode;
             // Reset selection when we change filter
             let num_rooms = store
-                .rooms
-                .rooms_filtered_by(self.filter(), &RoomsListOrder::Unsorted)
+                .rooms_info
+                .rooms_filtered_by(self.filter())
                 .collect::<Vec<_>>()
                 .len();
             let selected = if num_rooms == 0 { None } else { Some(0) };
@@ -45,8 +42,8 @@ impl RoomsList {
             self.filter = new_mode;
             // Reset selection when we change filter
             let num_rooms = store
-                .rooms
-                .rooms_filtered_by(self.filter(), &RoomsListOrder::Unsorted)
+                .rooms_info
+                .rooms_filtered_by(self.filter())
                 .collect::<Vec<_>>()
                 .len();
             let selected = if num_rooms == 0 { None } else { Some(0) };
@@ -133,7 +130,4 @@ impl RoomsList {
         self.active_room_id = active_room_id;
     }
 
-    pub fn order(&self) -> &RoomsListOrder {
-        &self.order
-    }
 }
