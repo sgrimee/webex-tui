@@ -189,7 +189,7 @@ impl App<'_> {
                 debug!("Sending message to room {:?}", room.title);
                 self.dispatch_to_teams(AppCmdEvent::SendMessage(msg_to_send));
                 self.state.message_editor.reset();
-                self.state.teams_store.mark_read(&id);
+                self.state.teams_store.rooms.mark_read(&id);
             }
             None => return Err(eyre!("Cannot send message, no room selected.")),
         }
@@ -282,14 +282,16 @@ impl App<'_> {
     /// Change the rooms list filter to the previous one
     fn previous_filtering_mode(&mut self) {
         self.state.rooms_list.set_active_room_id(None);
-        self.state.rooms_list.previous_mode(&self.state.teams_store);
+        self.state
+            .rooms_list
+            .previous_filter(&self.state.teams_store);
         self.set_active_room_to_selection();
     }
 
     /// Change the rooms list filter to the next one
     fn next_filtering_mode(&mut self) {
         self.state.rooms_list.set_active_room_id(None);
-        self.state.rooms_list.next_mode(&self.state.teams_store);
+        self.state.rooms_list.next_filter(&self.state.teams_store);
         self.set_active_room_to_selection();
     }
 

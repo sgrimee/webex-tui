@@ -43,7 +43,7 @@ impl App<'_> {
             if let Some(id) = &msg.room_id {
                 room_ids.insert(id);
                 if mark_unread && !self.state.is_me(&msg.person_id) {
-                    self.state.teams_store.mark_unread(id);
+                    self.state.teams_store.rooms.mark_unread(id);
                 }
             }
             if let Err(err) = self.state.teams_store.add_message(msg) {
@@ -60,7 +60,7 @@ impl App<'_> {
     /// Saves the room info in the store and adjusts the position
     /// of the selector in the list.
     pub fn cb_room_updated(&mut self, room: Room) {
-        self.state.teams_store.update_room(room);
+        self.state.teams_store.rooms.update_room(room);
         self.state.update_selection_with_active_room();
     }
 }

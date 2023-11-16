@@ -18,6 +18,7 @@ use crate::ui::render;
 
 pub type CrosstermTerminal = ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stderr>>;
 
+const BACKEND_TICK_TIME_MS: u64 = 500;
 /// Representation of a terminal user interface.
 ///
 /// It is responsible for setting up the terminal,
@@ -36,11 +37,11 @@ impl Tui {
     }
 
     /// Constructs a new instance of [`Tui`] with Crossterm backend and
-    /// 250 ms tick time
+    /// BACKEND_TICK_TIME_MS tick time
     pub fn default() -> Result<Self> {
         let backend = CrosstermBackend::new(io::stderr());
         let terminal = Terminal::new(backend)?;
-        let events = EventHandler::new(Duration::from_millis(250));
+        let events = EventHandler::new(Duration::from_millis(BACKEND_TICK_TIME_MS));
         Ok(Tui::new(terminal, events))
     }
 

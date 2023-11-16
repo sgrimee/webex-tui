@@ -26,10 +26,11 @@ pub fn draw_rooms_table<'a>(state: &AppState) -> Table<'a> {
         .title(format!("Filter: {:?}", state.rooms_list.filter()));
     let items: Vec<_> = state
         .teams_store
-        .rooms_filtered_by(state.rooms_list.filter())
+        .rooms
+        .rooms_filtered_by(state.rooms_list.filter(), state.rooms_list.order())
         .map(|room| {
             let mut style = Style::default();
-            if state.teams_store.room_has_unread(&room.id) {
+            if state.teams_store.rooms.room_has_unread(&room.id) {
                 style = style.fg(Color::LightBlue).add_modifier(Modifier::BOLD);
             }
             Row::new(vec![Cell::from(Span::styled(

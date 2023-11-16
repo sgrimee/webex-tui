@@ -2,32 +2,19 @@
 
 //! List of rooms, with UI scrolling and selection state and display filters.
 
-use enum_iterator::{next_cycle, previous_cycle, Sequence};
+use enum_iterator::{next_cycle, previous_cycle};
 use log::*;
 use ratatui::widgets::TableState;
 use webex::Room;
 
-use super::teams_store::{RoomId, TeamsStore};
-
-/// Filters used to present a subset of all available rooms.
-#[derive(Clone, Debug, PartialEq, Default, Sequence)]
-pub enum RoomsListFilter {
-    /// All available rooms
-    All,
-    /// Only direct messages
-    Direct,
-    /// Only rooms with recent activity
-    #[default]
-    Recent,
-    /// Only spaces
-    Spaces,
-    /// Only rooms with unread messages
-    Unread,
-}
+use super::teams_store::{
+    room_list_filter::RoomsListFilter, room_list_order::RoomsListOrder, RoomId, TeamsStore,
+};
 
 #[derive(Default)]
 pub struct RoomsList {
     filter: RoomsListFilter,
+    order: RoomsListOrder,
     table_state: TableState,
     active_room_id: Option<RoomId>,
 }
@@ -35,13 +22,14 @@ pub struct RoomsList {
 impl RoomsList {
     /// Switches the rooms list table to the next filtering mode.
     /// Does not update the active room.
-    pub fn next_mode(&mut self, store: &TeamsStore) {
+    pub fn next_filter(&mut self, store: &TeamsStore) {
         if let Some(new_mode) = next_cycle(&self.filter) {
-            debug!("Rooms list mode set to {:?}", new_mode);
+            debug!("Rooms list filter set to {:?}", new_mode);
             self.filter = new_mode;
-            // Reset selection when we change modes
+            // Reset selection when we change filter
             let num_rooms = store
-                .rooms_filtered_by(self.filter())
+                .rooms
+                .rooms_filtered_by(self.filter(), &RoomsListOrder::Unsorted)
                 .collect::<Vec<_>>()
                 .len();
             let selected = if num_rooms == 0 { None } else { Some(0) };
@@ -51,13 +39,14 @@ impl RoomsList {
 
     /// Switches the rooms list table to the previous filtering mode.
     /// Does not update the active room.
-    pub fn previous_mode(&mut self, store: &TeamsStore) {
+    pub fn previous_filter(&mut self, store: &TeamsStore) {
         if let Some(new_mode) = previous_cycle(&self.filter) {
             debug!("Rooms list mode set to {:?}", new_mode);
             self.filter = new_mode;
-            // Reset selection when we change modes
+            // Reset selection when we change filter
             let num_rooms = store
-                .rooms_filtered_by(self.filter())
+                .rooms
+                .rooms_filtered_by(self.filter(), &RoomsListOrder::Unsorted)
                 .collect::<Vec<_>>()
                 .len();
             let selected = if num_rooms == 0 { None } else { Some(0) };
@@ -132,8 +121,8 @@ impl RoomsList {
         &mut self.table_state
     }
 
-    pub fn filter(&self) -> RoomsListFilter {
-        self.filter.clone()
+    pub fn filter(&self) -> &RoomsListFilter {
+        &self.filter
     }
 
     pub fn active_room_id(&self) -> Option<&String> {
@@ -142,5 +131,9 @@ impl RoomsList {
 
     pub fn set_active_room_id(&mut self, active_room_id: Option<RoomId>) {
         self.active_room_id = active_room_id;
+    }
+
+    pub fn order(&self) -> &RoomsListOrder {
+        &self.order
     }
 }
