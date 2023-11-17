@@ -15,13 +15,16 @@ pub struct RoomContent {
 }
 
 impl RoomContent {
-    /// Returns all messages in the room, ordered by creation time and
-    /// grouping threads together.
-    pub fn messages(&self) -> Vec<Message> {
-        self.threads
-            .iter()
-            .flat_map(|thread| thread.messages().to_vec())
-            .collect::<Vec<Message>>()
+    /// Returns an iterator to all messages in the room in the order they should be displayed:
+    /// ordered by creation time and with threads grouped together.
+    pub fn messages(&self) -> impl Iterator<Item = &Message> {
+        self.threads.iter().flat_map(|thread| thread.messages())
+    }
+
+    pub fn nth_message(&self, index: usize) -> Result<&Message> {
+        self.messages()
+            .nth(index)
+            .ok_or(eyre!("Message {} not found in room", index))
     }
 
     /// Adds a message to the room content, respecting the thread order.
@@ -32,21 +35,29 @@ impl RoomContent {
         if msg.created.is_none() {
             return Err(eyre!("The message does not have a created date"));
         }
+
+        // If a message exists with that id in any of the threads, update it
+        for thread in self.threads.iter_mut() {
+            if thread.update_if_exists(msg)? {
+                return Ok(())
+            }
+        }
+
+        // Try to find an existing thread with that id, or create a new one
         let thread_id = msg.parent_id.clone().or(msg.id.clone());
-        // Try to find an existing thread with that id
         let index = self
             .threads
             .iter()
             .position(|thread| thread.id() == thread_id.as_ref());
         match index {
             Some(i) => {
-                self.threads[i].add(msg)?;
+                self.threads[i].update_or_add(msg)?;
             }
             None => {
                 // No thread with that id, create a new one and place it in chronological order
                 // based on the creation time of the first message in the thread.
                 let mut thread = MsgThread::default();
-                thread.add(msg)?;
+                thread.update_or_add(msg)?;
                 let pos = self.threads.partition_point(|t| {
                     t.creation_time_of_first_message() < thread.creation_time_of_first_message()
                 });
@@ -67,6 +78,10 @@ impl RoomContent {
 
     pub fn len(&self) -> usize {
         self.threads.iter().map(|thread| thread.len()).sum()
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 }
 
@@ -101,14 +116,24 @@ mod tests {
 
         // Check that they are sorted
         let messages = room_content.messages();
-        assert_eq!(messages.len(), 4);
-        let expected_ids = vec![
-            Some("message1".to_string()),
-            Some("child_of_1".to_string()),
-            Some("message2".to_string()),
-            Some("message3".to_string()),
-        ];
-        let actual_ids: Vec<_> = messages.into_iter().map(|message| message.id).collect();
-        assert_eq!(expected_ids, actual_ids);
+        let expected_ids = vec!["message1", "child_of_1", "message2", "message3"];
+        let actual_ids: Vec<_> = messages
+            .map(|message| message.id.as_ref().unwrap())
+            .collect();
+        assert_eq!(actual_ids, expected_ids);
+    }
+
+    #[test]
+    fn update_msg_in_thread_wo_parent_id_should_not_create_new_thread() {
+        let mut room_content = RoomContent::default();
+        let parent = make_message("parent", None);
+        let child = make_message("child", Some("parent"));
+        room_content.add(&parent).unwrap();
+        room_content.add(&child).unwrap();
+        assert_eq!(room_content.threads.len(), 1);
+        // update received for child does not have the parent_id set
+        let child_update = make_message("child", None);
+        room_content.add(&child_update).unwrap();
+        assert_eq!(room_content.threads.len(), 1);
     }
 }

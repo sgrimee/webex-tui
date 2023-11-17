@@ -143,7 +143,6 @@ pub fn draw_msg_table<'a>(state: &AppState, rect: &Rect) -> (Table<'a>, usize, u
         rows = state
             .teams_store
             .messages_in_room(&room.id)
-            .iter()
             .map(|msg| {
                 let (row, height) = row_for_message(msg.clone(), rect.width - 2);
                 nb_lines += height;

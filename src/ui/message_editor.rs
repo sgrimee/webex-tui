@@ -20,21 +20,46 @@ pub fn draw_message_editor<'a>(state: &'a AppState<'a>) -> TextArea<'a> {
         " Enter: send, Ctrl-Enter: new line, Esc: cancel.",
         Style::default().fg(Color::Gray),
     );
-    let title = if state.message_editor.is_editing() {
-        match state.message_editor.respondee() {
-            Some(respondee) => vec![
+    let title = if state.message_editor.is_composing() {
+        if let Some(orig_msg) = state.message_editor.response_to() {
+            // Responding to a message
+            vec![
                 Span::styled(
-                    format!("Responding to {0}'s message.", respondee.author),
+                    format!(
+                        "Responding to {0}'s message.",
+                        orig_msg
+                            .person_email
+                            .clone()
+                            .unwrap_or("unknown sender".to_string())
+                    ),
                     Style::default().fg(Color::Yellow),
                 ),
                 hint,
-            ],
-            None => vec![
+            ]
+        } else if let Some(orig_msg) = state.message_editor.editing_of() {
+            // Editing a message
+            vec![
+                Span::styled(
+                    format!(
+                        "Editing {0}'s message.",
+                        orig_msg
+                            .person_email
+                            .clone()
+                            .unwrap_or("unknown sender".to_string())
+                    ),
+                    Style::default().fg(Color::Yellow),
+                ),
+                hint,
+            ]
+        } else {
+            // Composing a new message
+            vec![
                 Span::styled("Type your new message.", Style::default().fg(Color::Yellow)),
                 hint,
-            ],
+            ]
         }
     } else {
+        // Not composing
         vec![Span::styled(
             "Press Enter with a selected room to type",
             Style::default(),
