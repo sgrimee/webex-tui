@@ -35,21 +35,29 @@ impl RoomContent {
         if msg.created.is_none() {
             return Err(eyre!("The message does not have a created date"));
         }
+
+        // If a message exists with that id in any of the threads, update it
+        for thread in self.threads.iter_mut() {
+            if thread.update_if_exists(msg)? {
+                return Ok(())
+            }
+        }
+
+        // Try to find an existing thread with that id, or create a new one
         let thread_id = msg.parent_id.clone().or(msg.id.clone());
-        // Try to find an existing thread with that id
         let index = self
             .threads
             .iter()
             .position(|thread| thread.id() == thread_id.as_ref());
         match index {
             Some(i) => {
-                self.threads[i].add(msg)?;
+                self.threads[i].update_or_add(msg)?;
             }
             None => {
                 // No thread with that id, create a new one and place it in chronological order
                 // based on the creation time of the first message in the thread.
                 let mut thread = MsgThread::default();
-                thread.add(msg)?;
+                thread.update_or_add(msg)?;
                 let pos = self.threads.partition_point(|t| {
                     t.creation_time_of_first_message() < thread.creation_time_of_first_message()
                 });
@@ -112,6 +120,20 @@ mod tests {
         let actual_ids: Vec<_> = messages
             .map(|message| message.id.as_ref().unwrap())
             .collect();
-        assert_eq!(expected_ids, actual_ids);
+        assert_eq!(actual_ids, expected_ids);
+    }
+
+    #[test]
+    fn update_msg_in_thread_wo_parent_id_should_not_create_new_thread() {
+        let mut room_content = RoomContent::default();
+        let parent = make_message("parent", None);
+        let child = make_message("child", Some("parent"));
+        room_content.add(&parent).unwrap();
+        room_content.add(&child).unwrap();
+        assert_eq!(room_content.threads.len(), 1);
+        // update received for child does not have the parent_id set
+        let child_update = make_message("child", None);
+        room_content.add(&child_update).unwrap();
+        assert_eq!(room_content.threads.len(), 1);
     }
 }

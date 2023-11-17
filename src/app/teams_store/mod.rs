@@ -111,8 +111,9 @@ mod tests {
         let message1 = make_message("message1", room_id, None);
         // add the message once to the empty store
         store.add_message(&message1).unwrap();
-        // add the message again, it should get added
-        store.add_message(&message1).unwrap();
+        // add another message to the same room
+        let message2 = make_message("message2", room_id, None);
+        store.add_message(&message2).unwrap();
         assert_eq!(store.rooms_content[room_id].len(), 2);
     }
 
