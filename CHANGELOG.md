@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 This project tries to follow semantic versioning.
 
-## [0.4.0] - 2023-11-17
+## [0.4.1] - 2023-11-17
 
 ### Bug Fixes
 
@@ -15,7 +15,7 @@ This project tries to follow semantic versioning.
 
 - Sort Rooms by last activity
 
-## [0.4.0] - 2023-11-17
+## [0.4.0] - 2023-11-11
 
 ### Bug Fixes
 
