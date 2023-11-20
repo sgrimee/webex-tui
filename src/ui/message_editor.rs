@@ -17,7 +17,7 @@ pub const MSG_INPUT_BLOCK_HEIGHT: u16 = 5;
 pub fn draw_message_editor<'a>(state: &'a AppState<'a>) -> TextArea<'a> {
     // Update title when in editing mode
     let hint = Span::styled(
-        " Enter: send, Ctrl-Enter: new line, Esc: cancel.",
+        " Enter: send, Alt-Enter: new line, Esc: cancel.",
         Style::default().fg(Color::Gray),
     );
     let title = if state.message_editor.is_composing() {
