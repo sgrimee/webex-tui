@@ -51,6 +51,7 @@ impl App<'_> {
             }
         }
         // update room details, including title, adding room if needed
+        // TODO: use events for room updates, maintain last_activity locally
         for room_id in room_ids {
             self.dispatch_to_teams(AppCmdEvent::UpdateRoom(room_id.to_owned()));
         }
