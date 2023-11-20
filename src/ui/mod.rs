@@ -38,7 +38,7 @@ pub fn render(rect: &mut Frame, state: &mut AppState) {
     // Vertical layout
     let app_rows = Layout::default()
         .direction(Direction::Vertical)
-        .constraints(app_constraints.as_ref())
+        .constraints(app_constraints)
         .split(size);
 
     // Title
