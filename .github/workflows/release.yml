@@ -10,8 +10,38 @@ on:
       - "completed"
 
 jobs:
+  # always generate changelog, using 'unreleased' if the tag was not set
+  changelog:
+    name: Generate changelog
+    needs: ["get-tag"]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Generate a changelog
+        uses: orhun/git-cliff-action@v2
+        id: git-cliff
+        with:
+          config: cliff.toml
+          args: --verbose
+        env:
+          OUTPUT: CHANGELOG.md
+
+      - name: Print the changelog
+        run: cat "${{ steps.git-cliff.outputs.changelog }}"
+
+      - name: write changelog to repo
+        uses: stefanzweifel/git-auto-commit-action@v4
+        with:
+          commit_message: Update CHANGELOG
+
+  # run below only if the tag was set (incremented in Cargo.toml)
+
   get-tag:
     name: "Get Tag From Package Version"
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: "ubuntu-latest"
     outputs:
       pkg-version: ${{ steps.pkg-version.outputs.PKG_VERSION }}
@@ -26,33 +56,6 @@ jobs:
         shell: "bash"
         run: |
           echo PKG_VERSION=$(awk -F ' = ' '$1 ~ /version/ { gsub(/["]/, "", $2); printf("%s",$2) }' Cargo.toml) >> $GITHUB_OUTPUT
-
-  changelog:
-    name: Generate changelog
-    needs: ["get-tag"]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Generate a changelog
-        uses: orhun/git-cliff-action@v2
-        id: git-cliff
-        with:
-          config: cliff.toml
-          args: --verbose --tag v${{ needs.get-tag.outputs.pkg-version }}
-        env:
-          OUTPUT: CHANGELOG.md
-
-      - name: Print the changelog
-        run: cat "${{ steps.git-cliff.outputs.changelog }}"
-
-      - name: write changelog to repo
-        uses: stefanzweifel/git-auto-commit-action@v4
-        with:
-          commit_message: Update CHANGELOG
 
   create-release:
     name: "Create release"
