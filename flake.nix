@@ -28,7 +28,7 @@
       in {
         devShell = pkgs.mkShell {
           nativeBuildInputs = with pkgs; [
-            (pkgs.rust-bin.stable.latest.default.override {
+            (pkgs.rust-bin.stable.latest.complete.override {
               extensions = ["rust-src" "cargo" "rustc"];
             })
             gcc
