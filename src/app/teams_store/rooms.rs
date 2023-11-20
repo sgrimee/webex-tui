@@ -4,7 +4,7 @@ use super::RoomId;
 use chrono::{DateTime, Duration, Utc};
 // use color_eyre::{eyre::eyre, Result};
 use log::*;
-use std::collections::{ HashSet};
+use std::collections::HashSet;
 use webex::Room;
 
 #[derive(Default, Debug)]

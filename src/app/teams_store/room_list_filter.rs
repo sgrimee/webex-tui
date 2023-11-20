@@ -4,11 +4,11 @@ use enum_iterator::Sequence;
 #[derive(Clone, Debug, PartialEq, Default, Sequence)]
 pub enum RoomsListFilter {
     /// All available rooms
+    #[default]
     All,
     /// Only direct messages
     Direct,
     /// Only rooms with recent activity
-    #[default]
     Recent,
     /// Only spaces
     Spaces,
