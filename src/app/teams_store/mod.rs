@@ -10,7 +10,6 @@ use webex::Message;
 pub mod msg_thread;
 pub mod room_content;
 pub mod room_list_filter;
-// pub mod room_list_order;
 pub mod rooms;
 
 use self::room_content::RoomContent;

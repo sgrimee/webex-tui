@@ -1,5 +1,4 @@
 use super::room_list_filter::RoomsListFilter;
-// use super::room_list_order::RoomsListOrder;
 use super::RoomId;
 use chrono::{DateTime, Duration, Utc};
 // use color_eyre::{eyre::eyre, Result};
