@@ -6,6 +6,11 @@ This project tries to follow semantic versioning.
 
 ## [0.4.1] - 2023-11-20
 
+### Bug Fixes
+
+- Alt-Enter for new line
+- Deselect messages after sending
+
 ### Features
 
 - Make All the default room sorting mode
