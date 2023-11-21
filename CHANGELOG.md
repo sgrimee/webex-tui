@@ -4,18 +4,20 @@ All notable changes to this project will be documented in this file.
 
 This project tries to follow semantic versioning.
 
-## [0.4.1] - 2023-11-20
+## [unreleased]
 
 ### Bug Fixes
 
 - Alt-Enter for new line
 - Deselect messages after sending
+- Unreleased in Changelog
 
 ### Features
 
 - Make All the default room sorting mode
+- Edit a message
 
-## [0.4.1] - 2023-11-20
+## [0.4.1] - 2023-11-17
 
 ### Bug Fixes
 
