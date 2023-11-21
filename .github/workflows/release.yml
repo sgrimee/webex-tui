@@ -13,7 +13,6 @@ jobs:
   # always generate changelog, using 'unreleased' if the tag was not set
   changelog:
     name: Generate changelog
-    needs: ["get-tag"]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
