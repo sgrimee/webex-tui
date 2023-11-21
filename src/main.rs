@@ -65,7 +65,7 @@ async fn main() -> Result<()> {
     });
 
     {
-        let mut app = app_ui.lock().await;
+        let app = app_ui.lock().await;
         app.dispatch_to_teams(AppCmdEvent::Initialize());
     }
 

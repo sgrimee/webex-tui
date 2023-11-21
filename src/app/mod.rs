@@ -170,30 +170,42 @@ impl App<'_> {
         if self.state.message_editor.is_empty() {
             return Err(eyre!("An empty message cannot be sent."));
         };
-        match self.state.active_room() {
-            Some(room) => {
-                let id = room.id.clone();
-                let lines = self.state.message_editor.lines().to_vec();
-                let msg_to_send = match self.state.message_editor.response_to() {
-                    Some(orig_msg) => {
-                        let mut reply = orig_msg.reply();
-                        reply.text = Some(lines.join("\n"));
-                        reply
-                    }
-                    None => webex::types::MessageOut {
-                        room_id: Some(id.clone()),
-                        text: Some(lines.join("\n")),
-                        ..Default::default()
-                    },
-                };
-                debug!("Sending message to room {:?}", room.title);
-                self.dispatch_to_teams(AppCmdEvent::SendMessage(msg_to_send));
-                self.state.message_editor.reset();
-                self.state.teams_store.rooms_info.mark_read(&id);
-                self.state.messages_list.deselect();
-            }
-            None => return Err(eyre!("Cannot send message, no room selected.")),
+        let room = self
+            .state
+            .active_room()
+            .ok_or(eyre!("Cannot send message, no room selected."))?;
+        let room_id = room.id.clone();
+            
+        let lines = self.state.message_editor.lines().to_vec();
+        if let Some(msg_to_edit) = self.state.message_editor.editing_of() {
+            // Editing a message
+            let msg_id = msg_to_edit
+                .id
+                .clone()
+                .ok_or(eyre!("Cannot edit message without id"))?;
+            let new_text = lines.join("\n");
+            self.dispatch_to_teams(AppCmdEvent::EditMessage(msg_id, room_id.clone(), new_text));
+        } else {
+            let msg_to_send = match self.state.message_editor.response_to() {
+                Some(orig_msg) => {
+                    // Replying to a message
+                    let mut reply = orig_msg.reply();
+                    reply.text = Some(lines.join("\n"));
+                    reply
+                }
+                None => webex::types::MessageOut {
+                    // Sending a new message
+                    room_id: Some(room_id.clone()),
+                    text: Some(lines.join("\n")),
+                    ..Default::default()
+                },
+            };
+            self.dispatch_to_teams(AppCmdEvent::SendMessage(msg_to_send));
         }
+        debug!("Sending message to room {:?}", room.title);
+        self.state.message_editor.reset();
+        self.state.teams_store.rooms_info.mark_read(&room_id);
+        self.state.messages_list.deselect();
         Ok(())
     }
 
@@ -256,7 +268,7 @@ impl App<'_> {
 
     /// Send a command to the teams thread
     /// Does not block
-    pub fn dispatch_to_teams(&mut self, action: AppCmdEvent) {
+    pub fn dispatch_to_teams(& self, action: AppCmdEvent) {
         if let Err(e) = self.app_to_teams_tx.send(action) {
             error!("Error from dispatch {}", e);
         };

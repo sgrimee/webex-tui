@@ -11,14 +11,15 @@ use super::Teams;
 use color_eyre::eyre::{eyre, Result};
 use log::*;
 use webex::{
-    GlobalId, GlobalIdType, Message, MessageListParams, MessageOut, Room, RoomListParams,
-    SortRoomsBy,
+    GlobalId, GlobalIdType, Message, MessageEditParams, MessageListParams, MessageOut, Room,
+    RoomListParams, SortRoomsBy,
 };
 
 /// Commands the main `App` can send to the `Teams` thread.
 #[derive(Debug)]
 pub enum AppCmdEvent {
     DeleteMessage(MessageId),
+    EditMessage(MessageId, RoomId, String),
     Initialize(),
     ListAllRooms(),
     ListMessagesInRoom(RoomId),
@@ -41,6 +42,9 @@ impl Teams<'_> {
                 self.do_list_messages_in_room(&room_id).await
             }
             AppCmdEvent::SendMessage(msg_to_send) => self.do_send_message(&msg_to_send).await,
+            AppCmdEvent::EditMessage(msg_id, room_id, text) => {
+                self.do_edit_message(&msg_id, &room_id, &text).await
+            }
             AppCmdEvent::UpdateRoom(room_id) => self.do_refresh_room(&room_id).await,
             // AppCmdEvent::Quit() => self.do_quit().await,
         } {
@@ -81,6 +85,29 @@ impl Teams<'_> {
                 Ok(())
             }
             Err(e) => Err(eyre!("Error sending message: {}", e)),
+        }
+    }
+
+    /// Edits the message with given id and params
+    async fn do_edit_message(
+        &self,
+        message_id: &MessageId,
+        room_id: &RoomId,
+        text: &str,
+    ) -> Result<()> {
+        let message_id = GlobalId::new(GlobalIdType::Message, message_id.to_owned()).unwrap();
+        let room_id = GlobalId::new(GlobalIdType::Room, room_id.to_owned()).unwrap();
+        let params = MessageEditParams {
+            room_id: room_id.id(),
+            text: Some(text),
+            ..Default::default()
+        };
+        match self.client.edit_message(&message_id, &params).await {
+            Ok(_) => {
+                debug!("Edited message with id: {:?}", message_id);
+                Ok(())
+            }
+            Err(e) => Err(eyre!("Could not edit message: {}", e)),
         }
     }
 
