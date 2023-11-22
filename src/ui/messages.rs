@@ -125,6 +125,15 @@ fn row_for_message<'a>(msg: Message, width: u16) -> (Row<'a>, usize) {
     text.extend(Text::from(title_line));
     text.extend(Text::from(fill(&content, options)));
 
+    // Indicate the presence of attachments
+    if let Some(files) = msg.files {
+        text.extend(Text::from(format!(
+            "-- {} attachment{}",
+            files.len(),
+            if files.len() > 1 { "s" } else { "" }
+        )));
+    }
+
     let height = text.height();
     let cell = Cell::from(text);
     let row = Row::new(vec![cell]).height(height as u16);
