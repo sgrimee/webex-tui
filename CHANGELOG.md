@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 This project tries to follow semantic versioning.
 
-## [unreleased]
+## [0.4.2] - 2023-11-22
 
 ### Bug Fixes
 
@@ -16,6 +16,7 @@ This project tries to follow semantic versioning.
 
 - Make All the default room sorting mode
 - Edit a message
+- Indicate msg attachments
 
 ## [0.4.1] - 2023-11-17
 
