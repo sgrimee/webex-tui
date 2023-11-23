@@ -11,6 +11,7 @@ pub const ACTIVE_ROOM_MIN_WIDTH: u16 = 30;
 pub const ROOM_MIN_HEIGHT: u16 = 8;
 
 use crate::app::state::{ActivePane, AppState};
+use html2text::from_read;
 use ratatui::prelude::Rect;
 use webex::Message;
 
@@ -78,6 +79,15 @@ fn human_timestamp(datetime_str: &str) -> String {
     local_datetime.format(format).to_string()
 }
 
+fn trim_newline(s: &mut String) {
+    if s.ends_with('\n') {
+        s.pop();
+        if s.ends_with('\r') {
+            s.pop();
+        }
+    }
+}
+
 /// Returns a row with the formatted message and the number of lines.
 fn row_for_message<'a>(msg: Message, width: u16) -> (Row<'a>, usize) {
     // Offset messages that are part of a conversation
@@ -107,17 +117,23 @@ fn row_for_message<'a>(msg: Message, width: u16) -> (Row<'a>, usize) {
         .push(Span::styled(stamp, Style::new().gray()));
 
     // Message content
-    let options = textwrap::Options::new((width - CONTENT_RIGHT_MARGIN) as usize)
+    let text_width = (width - CONTENT_RIGHT_MARGIN) as usize;
+    let options = textwrap::Options::new(text_width)
         .initial_indent(content_indent)
         .subsequent_indent(content_indent);
-    let mut content = String::new();
-    if msg.markdown.is_some() {
-        // Detect markdown, but do not render it yet
-        title_line.spans.push(Span::from("  MD"));
-    }
-    if let Some(raw_text) = msg.text {
-        content = raw_text;
-    }
+    let mut content = match (msg.html, msg.markdown, msg.text) {
+        (None, None, None) => String::from("No content"),
+        (Some(html), _, _) => {
+            title_line.spans.push(Span::from(" (HTML)"));
+            from_read(html.as_bytes(), text_width)
+        }
+        (_, Some(markdown), _) => {
+            title_line.spans.push(Span::from("  (MD)"));
+            markdown
+        }
+        (_, _, Some(text)) => text,
+    };
+    trim_newline(&mut content);
 
     let mut text = Text::default();
     // One empty line, with a conversation marker if applicable
