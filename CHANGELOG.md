@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 This project tries to follow semantic versioning.
 
+## [0.4.5] - 2023-11-23
+
+### Features
+
+- Render html messages
+
 ## [0.4.3] - 2023-11-23
 
 ### Bug Fixes
