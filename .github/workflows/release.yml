@@ -109,7 +109,9 @@ jobs:
   update-homebrew:
     name: "Update homebrew formula"
     needs:
-      - "upload-assets"
+      # - "upload-assets" # use this when using the binary in brew
+      - "get-tag"
+      - "create-release"
     runs-on: "ubuntu-latest"
     steps:
       - name: Bump homebrew formula
@@ -119,3 +121,4 @@ jobs:
           token: ${{ secrets.WORKFLOW_AND_PUBLIC_REPO_TOKEN }}
           tap: sgrimee/tap
           formula: webex-tui
+          tag: ${{ needs.get-tag.outputs.pkg-version }}
