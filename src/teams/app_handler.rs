@@ -154,7 +154,7 @@ impl Teams<'_> {
                 }
                 Ok(())
             }
-            Err(e) => Err(eyre!("Error retrieving rooms: {}", e)),
+            Err(e) => Err(eyre!("Error retrieving rooms: {:#?}", e)),
         }
     }
 
@@ -173,7 +173,7 @@ impl Teams<'_> {
                     .await;
                 Ok(())
             }
-            Err(e) => Err(eyre!("Error retrieving messages in room: {:#}", e)),
+            Err(e) => Err(eyre!("Error retrieving messages in room: {:#?}", e)),
         }
     }
 }
