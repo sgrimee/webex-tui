@@ -58,7 +58,9 @@ jobs:
 
   create-release:
     name: "Create release"
-    needs: ["get-tag", "changelog"]
+    needs:
+      - "get-tag"
+      - "changelog"
     runs-on: "ubuntu-latest"
     steps:
       - name: "Check out the repo"
@@ -77,6 +79,7 @@ jobs:
   upload-assets:
     name: "Upload assets to Github releases"
     needs:
+      - "get-tag"
       - "create-release"
     strategy:
       matrix:
