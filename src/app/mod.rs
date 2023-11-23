@@ -175,7 +175,7 @@ impl App<'_> {
             .active_room()
             .ok_or(eyre!("Cannot send message, no room selected."))?;
         let room_id = room.id.clone();
-            
+
         let lines = self.state.message_editor.lines().to_vec();
         if let Some(msg_to_edit) = self.state.message_editor.editing_of() {
             // Editing a message
@@ -268,7 +268,7 @@ impl App<'_> {
 
     /// Send a command to the teams thread
     /// Does not block
-    pub fn dispatch_to_teams(& self, action: AppCmdEvent) {
+    pub fn dispatch_to_teams(&self, action: AppCmdEvent) {
         if let Err(e) = self.app_to_teams_tx.send(action) {
             error!("Error from dispatch {}", e);
         };
