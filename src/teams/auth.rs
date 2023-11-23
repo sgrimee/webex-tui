@@ -2,7 +2,7 @@
 
 //! Handles OAuth authentication to the user's `Webex` integration.
 //!
-//! Inspired by https://github.com/Nabushika/webexterm
+//! Inspired by `https://github.com/Nabushika/webexterm`
 
 use super::ClientCredentials;
 use color_eyre::eyre::{eyre, Result};
