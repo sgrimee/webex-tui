@@ -18,7 +18,7 @@ use crate::ui::render;
 
 pub type CrosstermTerminal = ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stderr>>;
 
-const BACKEND_TICK_TIME_MS: u64 = 500;
+const BACKEND_TICK_TIME_MS: u64 = 200;
 /// Representation of a terminal user interface.
 ///
 /// It is responsible for setting up the terminal,
