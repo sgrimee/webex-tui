@@ -23,6 +23,7 @@ pub fn setup_logger() {
         "webex_tui::app::state",
         "webex_tui::app::rooms_list",
         "webex_tui::app::teams_store",
+        "webex_tui::app::teams_store::room_content",
         "webex_tui::teams",
         "webex_tui::teams::app_handler",
         "webex_tui::teams:auth",

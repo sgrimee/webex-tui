@@ -1,6 +1,7 @@
 // app/teams_store/room_content.rs
 
 use color_eyre::{eyre::eyre, Result};
+use log::*;
 use webex::Message;
 
 use super::{msg_thread::MsgThread, MessageId};
@@ -39,7 +40,8 @@ impl RoomContent {
         // If a message exists with that id in any of the threads, update it
         for thread in self.threads.iter_mut() {
             if thread.update_if_exists(msg)? {
-                return Ok(())
+                debug!("Updating existing message: {:?}", msg.id);
+                return Ok(());
             }
         }
 

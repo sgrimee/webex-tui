@@ -41,7 +41,9 @@ impl Teams<'_> {
             AppCmdEvent::ListMessagesInRoom(room_id) => {
                 self.do_list_messages_in_room(&room_id).await
             }
+
             AppCmdEvent::SendMessage(msg_to_send) => self.do_send_message(&msg_to_send).await,
+
             AppCmdEvent::EditMessage(msg_id, room_id, text) => {
                 self.do_edit_message(&msg_id, &room_id, &text).await
             }
@@ -79,8 +81,8 @@ impl Teams<'_> {
     /// Sends `msg_to_send` and calls back `cb_message_sent` on app when done.
     async fn do_send_message(&mut self, msg_to_send: &MessageOut) -> Result<()> {
         match self.client.send_message(msg_to_send).await {
-            Ok(_) => {
-                self.app.lock().await.cb_message_sent();
+            Ok(msg) => {
+                self.app.lock().await.cb_message_sent(&msg);
                 debug!("Sent message: {:?}", msg_to_send);
                 Ok(())
             }
@@ -166,11 +168,7 @@ impl Teams<'_> {
         match self.client.list_with_params::<Message>(params).await {
             Ok(messages) => {
                 // add messages but do not mark the room as unread
-                self.app
-                    .lock()
-                    .await
-                    .cb_messages_received(&messages, false)
-                    .await;
+                self.app.lock().await.cb_messages_received(&messages, false);
                 Ok(())
             }
             Err(e) => Err(eyre!("Error retrieving messages in room: {:#?}", e)),

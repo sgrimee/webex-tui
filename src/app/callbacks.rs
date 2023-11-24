@@ -23,19 +23,19 @@ impl App<'_> {
         self.state.set_me(person);
     }
 
-    /// Callback when a message was sent. Does nothing.
-    pub fn cb_message_sent(&mut self) {
-        debug!("Message was sent.");
+    /// Callback when a message was sent. Add the message to the room immediately.
+    pub fn cb_message_sent(&mut self, message: &Message) {
+        self.cb_message_received(message, false);
     }
 
     /// Stores a single received message
-    pub async fn cb_message_received(&mut self, msg: &Message, mark_unread: bool) {
+    pub fn cb_message_received(&mut self, msg: &Message, mark_unread: bool) {
         let messages: [Message; 1] = [msg.clone()];
-        self.cb_messages_received(&messages, mark_unread).await
+        self.cb_messages_received(&messages, mark_unread)
     }
 
     /// Stores multiple received messages
-    pub async fn cb_messages_received(&mut self, messages: &[Message], mark_unread: bool) {
+    pub fn cb_messages_received(&mut self, messages: &[Message], mark_unread: bool) {
         // keep track of rooms we add messages to
         let mut room_ids = HashSet::new();
         // messages came in with most recent first, so reverse them
