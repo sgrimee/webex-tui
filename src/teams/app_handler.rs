@@ -161,14 +161,17 @@ impl Teams<'_> {
     }
 
     /// Gets all the messages in a room and update the store.
-    async fn do_list_messages_in_room(&mut self, id: &RoomId) -> Result<()> {
-        debug!("Getting messages in room {}", id);
-        let gid = GlobalId::new(GlobalIdType::Room, id.to_owned()).unwrap();
+    async fn do_list_messages_in_room(&mut self, room_id: &RoomId) -> Result<()> {
+        debug!("Getting messages in room {}", room_id);
+        let gid = GlobalId::new(GlobalIdType::Room, room_id.to_owned()).unwrap();
         let params = MessageListParams::new(gid.id());
         match self.client.list_with_params::<Message>(params).await {
             Ok(messages) => {
-                // add messages but do not mark the room as unread
-                self.app.lock().await.cb_messages_received(&messages, false);
+                // add messages but do not change the room unread status
+                self.app
+                    .lock()
+                    .await
+                    .cb_messages_received_in_room(room_id, &messages, false);
                 Ok(())
             }
             Err(e) => Err(eyre!("Error retrieving messages in room: {:#?}", e)),

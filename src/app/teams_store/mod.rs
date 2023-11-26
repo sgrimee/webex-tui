@@ -4,6 +4,7 @@
 
 use std::collections::HashMap;
 
+use chrono::{DateTime, Utc};
 use color_eyre::{eyre::eyre, Result};
 use webex::Message;
 
@@ -35,8 +36,21 @@ impl TeamsStore {
     /// Adds a message to the store, respecting the thread order.
     pub fn add_message(&mut self, msg: &Message) -> Result<()> {
         let room_id = msg.room_id.clone().ok_or(eyre!("message has no room id"))?;
-        let content = self.rooms_content.entry(room_id).or_default();
+        let content = self.rooms_content.entry(room_id.clone()).or_default();
         content.add(msg)?;
+        // Update the room last activity if the room is already present.
+        // If not, it will come later with the correct last activity.
+        if let Some(room) = self.rooms_info.room_with_id_mut(&room_id) {
+            // get message timestamp from last update, if not use its creatiom time, if not error
+            let time_str = msg
+                .updated
+                .clone()
+                .or_else(|| msg.created.clone())
+                .ok_or(eyre!("message has no timestamp"))?;
+            // convert it to DateTime<Utc> and use it to update the room last activity
+            let timestamp = DateTime::parse_from_rfc3339(&time_str)?.with_timezone(&Utc);
+            room.update_last_activity(timestamp);
+        }
         Ok(())
     }
 

@@ -54,6 +54,13 @@ impl Room {
     pub fn has_activity_since(&self, duration: Duration) -> bool {
         self.last_activity() > (Utc::now() - duration)
     }
+
+    /// Updates the last activity of the room if the new activity is more recent.
+    pub fn update_last_activity(&mut self, last_activity: DateTime<Utc>) {
+        if last_activity > self.last_activity {
+            self.last_activity = last_activity;
+        }
+    }
 }
 
 impl From<WebexRoom> for Room {

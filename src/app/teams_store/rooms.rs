@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use super::room::{Room, RoomId};
 use super::room_list_filter::RoomsListFilter;
 
@@ -8,17 +10,30 @@ use webex::Room as WebexRoom;
 pub struct Rooms {
     /// RoomInfo sorted by last activity.
     sorted_rooms: Vec<Room>,
+    /// Set of rooms for which we requested room info.
+    requested_rooms: HashSet<RoomId>,
 }
 
 impl Rooms {
-    /// Returns the room for given id, if found.
+    /// Returns a mutable reference to the room for given id, if found.
+    pub fn room_with_id_mut(&mut self, id: &RoomId) -> Option<&mut Room> {
+        self.sorted_rooms.iter_mut().find(|room| room.id() == id)
+    }
+
+    /// Returns a reference to the room for given id, if found.
     pub fn room_with_id(&self, id: &RoomId) -> Option<&Room> {
         self.sorted_rooms.iter().find(|room| room.id() == id)
+    }
+
+    /// Adds a `RoomId` to the set of requested room
+    pub fn add_requested_room(&mut self, room_id: RoomId) {
+        self.requested_rooms.insert(room_id);
     }
 
     /// Adds or updates a `WebexRoom` in the store. If the room already exists, it is updated.
     /// The list is kept in order of last_activity.
     pub fn update_with_webex_room(&mut self, webex_room: WebexRoom) {
+        let room_id = webex_room.id.clone();
         let mut room: Room = webex_room.into();
         // If the room is already in the list, remove it.
         if let Some(index) = self.sorted_rooms.iter().position(|r| r.id() == room.id()) {
@@ -32,6 +47,13 @@ impl Rooms {
                 .partition_point(|r| r.last_activity() > room.last_activity());
             self.sorted_rooms.insert(pos, room);
         }
+        // The room has been received, remove it from the requested list
+        self.requested_rooms.remove(&room_id);
+    }
+
+    /// Returns whether the room is already present, or if it has already been requested.
+    pub fn room_exists_or_requested(&self, id: &RoomId) -> bool {
+        self.sorted_rooms.iter().any(|room| room.id() == id) || self.requested_rooms.contains(id)
     }
 
     /// Mark a room as unread.
@@ -55,13 +77,6 @@ impl Rooms {
             }
         }
     }
-
-    /// Returns whether the room has unread messages.
-    // pub fn room_has_unread(&self, id: &RoomId) -> Result<bool> {
-    //     self.room_with_id(id)
-    //         .ok_or(eyre!("Room {} not found", id))
-    //         .map(|room| room.unread())
-    // }
 
     /// Returns an iterator to rooms with the given filter.
     #[allow(clippy::needless_lifetimes)]

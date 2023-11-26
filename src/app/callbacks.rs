@@ -2,11 +2,10 @@
 
 //! Callback functions called by the `Teams` thread (under locking)
 
-use super::App;
+use super::{teams_store::room::RoomId, App};
 use crate::teams::app_handler::AppCmdEvent;
 
 use log::*;
-use std::collections::HashSet;
 use webex::{Message, Person};
 
 impl App<'_> {
@@ -29,31 +28,51 @@ impl App<'_> {
     }
 
     /// Stores a single received message
-    pub fn cb_message_received(&mut self, msg: &Message, mark_unread: bool) {
-        let messages: [Message; 1] = [msg.clone()];
-        self.cb_messages_received(&messages, mark_unread)
+    /// If `update_unread` is true and the messages are not from self, the room is marked as unread.
+    /// Otherwise, the unread status is unchanged.
+    pub fn cb_message_received(&mut self, msg: &Message, update_unread: bool) {
+        match msg.room_id.clone() {
+            Some(room_id) => {
+                let messages: [Message; 1] = [msg.clone()];
+                self.cb_messages_received_in_room(&room_id, &messages, update_unread)
+            }
+            None => {
+                error!("Received message without room id: {:#?}", msg);
+            }
+        }
     }
 
     /// Stores multiple received messages
-    pub fn cb_messages_received(&mut self, messages: &[Message], mark_unread: bool) {
-        // keep track of rooms we add messages to
-        let mut room_ids = HashSet::new();
+    /// If `update_unread` is true and the messages are not from self, the room is marked as unread.
+    /// Otherwise, the unread status is unchanged.
+    pub fn cb_messages_received_in_room(
+        &mut self,
+        room_id: &RoomId,
+        messages: &[Message],
+        update_unread: bool,
+    ) {
         // messages came in with most recent first, so reverse them
         for msg in messages.iter().rev() {
-            if let Some(id) = &msg.room_id {
-                room_ids.insert(id);
-                if mark_unread && !self.state.is_me(&msg.person_id) {
-                    self.state.teams_store.rooms_info.mark_unread(id);
-                }
+            if update_unread && !self.state.is_me(&msg.person_id) {
+                self.state.teams_store.rooms_info.mark_unread(room_id);
             }
             if let Err(err) = self.state.teams_store.add_message(msg) {
                 error!("Error adding received message to store: {}", err);
             }
         }
-        // update room details, including title, adding room if needed
-        // TODO: use events for room updates, maintain last_activity locally
-        for room_id in room_ids {
-            self.dispatch_to_teams(AppCmdEvent::UpdateRoom(room_id.to_owned()));
+        // TODO: use events for room updates. He we just request it once.
+        // If the room doesn't exist, request room info and add it to the list of requested rooms.
+        if !self
+            .state
+            .teams_store
+            .rooms_info
+            .room_exists_or_requested(room_id)
+        {
+            self.state
+                .teams_store
+                .rooms_info
+                .add_requested_room(room_id.clone());
+            self.dispatch_to_teams(AppCmdEvent::UpdateRoom(room_id.to_string()));
         }
     }
 
