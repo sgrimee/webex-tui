@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 This project tries to follow semantic versioning.
 
+## [unreleased]
+
+### Bug Fixes
+
+- Do not duplicate room content loading #33
+
+### Features
+
+- Make terminal more responsive (200ms)
+- Display sent message sooner
+
 ## [0.4.5] - 2023-11-23
 
 ### Features
