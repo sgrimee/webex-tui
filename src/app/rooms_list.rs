@@ -2,12 +2,12 @@
 
 //! List of rooms, with UI scrolling and selection state and display filters.
 
+use super::teams_store::room::{Room, RoomId};
+use super::teams_store::room_list_filter::RoomsListFilter;
+use super::teams_store::TeamsStore;
 use enum_iterator::{next_cycle, previous_cycle};
 use log::*;
 use ratatui::widgets::TableState;
-use webex::Room;
-
-use super::teams_store::{room_list_filter::RoomsListFilter, RoomId, TeamsStore};
 
 #[derive(Default)]
 pub struct RoomsList {
@@ -54,7 +54,7 @@ impl RoomsList {
     /// Returns the id of the selected room if there is one.
     pub fn id_of_selected(&self, rooms: &[&Room]) -> Option<RoomId> {
         let id = match self.table_state.selected() {
-            Some(selected) => rooms.get(selected).map(|room| room.id.to_owned()),
+            Some(selected) => rooms.get(selected).map(|room| room.id().to_owned()),
             None => None,
         };
         id
@@ -129,5 +129,4 @@ impl RoomsList {
     pub fn set_active_room_id(&mut self, active_room_id: Option<RoomId>) {
         self.active_room_id = active_room_id;
     }
-
 }

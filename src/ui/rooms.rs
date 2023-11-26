@@ -30,11 +30,11 @@ pub fn draw_rooms_table<'a>(state: &AppState) -> Table<'a> {
         .rooms_filtered_by(state.rooms_list.filter())
         .map(|room| {
             let mut style = Style::default();
-            if state.teams_store.rooms_info.room_has_unread(&room.id) {
+            if room.unread() {
                 style = style.fg(Color::LightBlue).add_modifier(Modifier::BOLD);
             }
             Row::new(vec![Cell::from(Span::styled(
-                room.title.clone().unwrap_or_default(),
+                room.title().unwrap_or("No title").to_string(),
                 style,
             ))])
         })

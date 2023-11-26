@@ -4,14 +4,14 @@
 //!
 //! Callbacks to the `App` are made via mutex.
 
-use crate::app::state::ActivePane;
-use crate::app::teams_store::{MessageId, RoomId};
-
 use super::Teams;
+use crate::app::state::ActivePane;
+use crate::app::teams_store::room::RoomId;
+use crate::app::teams_store::MessageId;
 use color_eyre::eyre::{eyre, Result};
 use log::*;
 use webex::{
-    GlobalId, GlobalIdType, Message, MessageEditParams, MessageListParams, MessageOut, Room,
+    GlobalId, GlobalIdType, Message, MessageEditParams, MessageListParams, MessageOut,
     RoomListParams, SortRoomsBy,
 };
 
@@ -119,9 +119,9 @@ impl Teams<'_> {
             "Getting room with local id {} and global id: {:?}",
             id, global_id
         );
-        match self.client.get::<Room>(&global_id).await {
-            Ok(room) => {
-                self.app.lock().await.cb_room_updated(room);
+        match self.client.get::<webex::Room>(&global_id).await {
+            Ok(webex_room) => {
+                self.app.lock().await.cb_room_updated(webex_room);
                 Ok(())
             }
             Err(e) => Err(eyre!("Error retrieving room: {}", e)),
@@ -148,11 +148,11 @@ impl Teams<'_> {
 
     /// Gets the rooms as per `params`, updates the store.
     async fn list_and_add_rooms(&mut self, params: RoomListParams<'_>) -> Result<()> {
-        match self.client.list_with_params::<Room>(params).await {
-            Ok(rooms) => {
-                debug!("Got {} rooms", rooms.len());
-                for room in rooms {
-                    self.app.lock().await.cb_room_updated(room);
+        match self.client.list_with_params::<webex::Room>(params).await {
+            Ok(webex_rooms) => {
+                debug!("Got {} rooms", webex_rooms.len());
+                for webex_room in webex_rooms {
+                    self.app.lock().await.cb_room_updated(webex_room);
                 }
                 Ok(())
             }

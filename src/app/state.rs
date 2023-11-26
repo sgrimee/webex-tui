@@ -6,13 +6,14 @@ use color_eyre::{eyre::eyre, Result};
 use enum_iterator::{next_cycle, Sequence};
 use itertools::concat;
 use log::*;
-use webex::{Message, Person, Room};
+use webex::{Message, Person};
 
 use super::actions::{Action, Actions};
 use super::message_editor::MessageEditor;
 use super::messages_list::MessagesList;
 use super::rooms_list::RoomsList;
-use super::teams_store::{RoomId, TeamsStore};
+use super::teams_store::room::{Room, RoomId};
+use super::teams_store::TeamsStore;
 
 /// State of the application, including
 /// - available `actions`` in the current context
@@ -92,7 +93,7 @@ impl AppState<'_> {
     /// This is useful after the number or order of items in the list changes.
     pub fn update_selection_with_active_room(&mut self) {
         if let Some(id) = self.rooms_list.active_room_id() {
-            let pos_option = self.visible_rooms().position(|room| &room.id == id);
+            let pos_option = self.visible_rooms().position(|room| room.id() == id);
             if let Some(position) = pos_option {
                 self.rooms_list.table_state_mut().select(Some(position))
             }

@@ -7,7 +7,7 @@ use crate::teams::app_handler::AppCmdEvent;
 
 use log::*;
 use std::collections::HashSet;
-use webex::{Message, Person, Room};
+use webex::{Message, Person};
 
 impl App<'_> {
     /// Deselects all active panes and initialise the retrieval of all rooms
@@ -60,8 +60,11 @@ impl App<'_> {
     /// Callback when room information is received.
     /// Saves the room info in the store and adjusts the position
     /// of the selector in the list.
-    pub fn cb_room_updated(&mut self, room: Room) {
-        self.state.teams_store.rooms_info.update_room(room);
+    pub fn cb_room_updated(&mut self, webex_room: webex::Room) {
+        self.state
+            .teams_store
+            .rooms_info
+            .update_with_webex_room(webex_room);
         self.state.update_selection_with_active_room();
     }
 }

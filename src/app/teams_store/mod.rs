@@ -8,14 +8,15 @@ use color_eyre::{eyre::eyre, Result};
 use webex::Message;
 
 pub mod msg_thread;
+pub mod room;
 pub mod room_content;
 pub mod room_list_filter;
 pub mod rooms;
 
 use self::room_content::RoomContent;
+use room::RoomId;
 use rooms::Rooms;
 
-pub type RoomId = String;
 pub type MessageId = String;
 
 /// `TeamsStore` maintains a local cache of room information,

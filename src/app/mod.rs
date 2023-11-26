@@ -10,11 +10,12 @@ pub mod rooms_list;
 pub mod state;
 pub mod teams_store;
 
-use self::{state::AppState, teams_store::RoomId};
+use self::state::AppState;
 use crate::app::actions::Action;
 use crate::app::state::ActivePane;
 use crate::inputs::key::Key;
 use crate::teams::app_handler::AppCmdEvent;
+use teams_store::room::RoomId;
 
 use color_eyre::{eyre::eyre, Result};
 use crossterm::event::KeyEvent;
@@ -174,7 +175,7 @@ impl App<'_> {
             .state
             .active_room()
             .ok_or(eyre!("Cannot send message, no room selected."))?;
-        let room_id = room.id.clone();
+        let room_id = room.id().clone();
 
         let lines = self.state.message_editor.lines().to_vec();
         if let Some(msg_to_edit) = self.state.message_editor.editing_of() {
@@ -202,7 +203,7 @@ impl App<'_> {
             };
             self.dispatch_to_teams(AppCmdEvent::SendMessage(msg_to_send));
         }
-        debug!("Sending message to room {:?}", room.title);
+        debug!("Sending message to room {:?}", room.title());
         self.state.message_editor.reset();
         self.state.teams_store.rooms_info.mark_read(&room_id);
         self.state.messages_list.deselect();
