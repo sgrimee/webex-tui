@@ -82,3 +82,24 @@ impl From<WebexRoom> for Room {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::TimeZone;
+
+    #[test]
+    fn test_room_update_last_activity() {
+        let mut room = Room {
+            id: "id".to_string(),
+            title: None,
+            room_type: "group".to_string(),
+            last_activity: Utc.with_ymd_and_hms(2020, 1, 1, 0, 0, 0).unwrap(),
+            unread: false,
+        };
+        room.update_last_activity( Utc.with_ymd_and_hms(2020, 1, 1, 0, 0, 1).unwrap());
+        assert_eq!(room.last_activity,  Utc.with_ymd_and_hms(2020, 1, 1, 0, 0, 1).unwrap());
+        room.update_last_activity( Utc.with_ymd_and_hms(2020, 1, 1, 0, 0, 0).unwrap());
+        assert_eq!(room.last_activity,  Utc.with_ymd_and_hms(2020, 1, 1, 0, 0, 1).unwrap());
+    }
+}

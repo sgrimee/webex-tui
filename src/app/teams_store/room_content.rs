@@ -22,6 +22,7 @@ impl RoomContent {
         self.threads.iter().flat_map(|thread| thread.messages())
     }
 
+    /// Returns the message with the given index in display order, if any.
     pub fn nth_message(&self, index: usize) -> Result<&Message> {
         self.messages()
             .nth(index)
@@ -137,5 +138,36 @@ mod tests {
         let child_update = make_message("child", None);
         room_content.add(&child_update).unwrap();
         assert_eq!(room_content.threads.len(), 1);
+    }
+
+    #[test]
+    fn test_nth_message() {
+        let mut room_content = RoomContent::default();
+        let parent = make_message("parent", None);
+        let child = make_message("child", Some("parent"));
+        room_content.add(&parent).unwrap();
+        room_content.add(&child).unwrap();
+        assert_eq!(
+            room_content.nth_message(0).unwrap().id,
+            Some("parent".into())
+        );
+        assert_eq!(
+            room_content.nth_message(1).unwrap().id,
+            Some("child".into())
+        );
+    }
+
+    #[test]
+    fn test_delete_message() {
+        let mut room_content = RoomContent::default();
+        let parent = make_message("parent", None);
+        let child = make_message("child", Some("parent"));
+        room_content.add(&parent).unwrap();
+        room_content.add(&child).unwrap();
+        assert_eq!(room_content.len(), 2);
+        room_content.delete_message(&"parent".into()).unwrap();
+        assert_eq!(room_content.len(), 1);
+        room_content.delete_message(&"child".into()).unwrap();
+        assert_eq!(room_content.len(), 0);
     }
 }
