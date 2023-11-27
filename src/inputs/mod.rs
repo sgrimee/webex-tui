@@ -2,5 +2,5 @@
 
 //! Manages keyboard input.
 
-pub mod handler;
-pub mod key;
+pub(crate) mod handler;
+pub(crate) mod key;

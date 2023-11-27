@@ -4,7 +4,7 @@ use log::LevelFilter;
 use tui_logger::{init_logger, set_default_level};
 
 /// Configures the logger with levels per module.
-pub fn setup_logger() {
+pub(crate) fn setup_logger() {
     init_logger(LevelFilter::Trace).unwrap();
     set_default_level(LevelFilter::Info);
     for target in [

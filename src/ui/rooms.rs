@@ -10,10 +10,10 @@ use ratatui::text::Span;
 use ratatui::widgets::block::{Block, BorderType};
 use ratatui::widgets::{Borders, Cell, Row, Table};
 
-pub const ROOMS_LIST_WIDTH: u16 = 32;
+pub(crate) const ROOMS_LIST_WIDTH: u16 = 32;
 
 /// Draws the list of rooms as per selected filtering mode.
-pub fn draw_rooms_table<'a>(state: &AppState) -> Table<'a> {
+pub(crate) fn draw_rooms_table<'a>(state: &AppState) -> Table<'a> {
     // highlight pane if it is active
     let border_style = match state.active_pane() {
         Some(ActivePane::Rooms) => Style::default().fg(Color::Cyan),

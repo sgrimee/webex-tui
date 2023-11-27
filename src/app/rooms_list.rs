@@ -10,7 +10,7 @@ use log::*;
 use ratatui::widgets::TableState;
 
 #[derive(Default)]
-pub struct RoomsList {
+pub(crate) struct RoomsList {
     filter: RoomsListFilter,
     table_state: TableState,
     active_room_id: Option<RoomId>,
@@ -19,7 +19,7 @@ pub struct RoomsList {
 impl RoomsList {
     /// Switches the rooms list table to the next filtering mode.
     /// Does not update the active room.
-    pub fn next_filter(&mut self, store: &TeamsStore) {
+    pub(crate) fn next_filter(&mut self, store: &TeamsStore) {
         if let Some(new_mode) = next_cycle(&self.filter) {
             debug!("Rooms list filter set to {:?}", new_mode);
             self.filter = new_mode;
@@ -36,7 +36,7 @@ impl RoomsList {
 
     /// Switches the rooms list table to the previous filtering mode.
     /// Does not update the active room.
-    pub fn previous_filter(&mut self, store: &TeamsStore) {
+    pub(crate) fn previous_filter(&mut self, store: &TeamsStore) {
         if let Some(new_mode) = previous_cycle(&self.filter) {
             debug!("Rooms list mode set to {:?}", new_mode);
             self.filter = new_mode;
@@ -52,7 +52,7 @@ impl RoomsList {
     }
 
     /// Returns the id of the selected room if there is one.
-    pub fn id_of_selected(&self, rooms: &[&Room]) -> Option<RoomId> {
+    pub(crate) fn id_of_selected(&self, rooms: &[&Room]) -> Option<RoomId> {
         let id = match self.table_state.selected() {
             Some(selected) => rooms.get(selected).map(|room| room.id().to_owned()),
             None => None,
@@ -60,13 +60,13 @@ impl RoomsList {
         id
     }
 
-    pub fn has_selection(&self) -> bool {
+    pub(crate) fn has_selection(&self) -> bool {
         self.table_state.selected().is_some()
     }
 
     /// Selects the next room in the list and updates the table_state.
     /// Does not update the active room.
-    pub fn select_next_room(&mut self, num_rooms: usize) {
+    pub(crate) fn select_next_room(&mut self, num_rooms: usize) {
         match self.table_state.selected() {
             Some(_) if num_rooms == 0 => {
                 // no items so deselect
@@ -91,7 +91,7 @@ impl RoomsList {
 
     /// Selects the previous room in the list and updates the table_state
     /// Does not update the active room
-    pub fn select_previous_room(&mut self, num_rooms: usize) {
+    pub(crate) fn select_previous_room(&mut self, num_rooms: usize) {
         match self.table_state.selected() {
             Some(_) if num_rooms == 0 => {
                 // no items so deselect
@@ -114,19 +114,19 @@ impl RoomsList {
         }
     }
 
-    pub fn table_state_mut(&mut self) -> &mut TableState {
+    pub(crate) fn table_state_mut(&mut self) -> &mut TableState {
         &mut self.table_state
     }
 
-    pub fn filter(&self) -> &RoomsListFilter {
+    pub(crate) fn filter(&self) -> &RoomsListFilter {
         &self.filter
     }
 
-    pub fn active_room_id(&self) -> Option<&String> {
+    pub(crate) fn active_room_id(&self) -> Option<&String> {
         self.active_room_id.as_ref()
     }
 
-    pub fn set_active_room_id(&mut self, active_room_id: Option<RoomId>) {
+    pub(crate) fn set_active_room_id(&mut self, active_room_id: Option<RoomId>) {
         self.active_room_id = active_room_id;
     }
 }

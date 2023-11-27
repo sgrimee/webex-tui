@@ -11,10 +11,10 @@ use tui_textarea::TextArea;
 
 use crate::app::state::{ActivePane, AppState};
 
-pub const MSG_INPUT_BLOCK_HEIGHT: u16 = 5;
+pub(crate) const MSG_INPUT_BLOCK_HEIGHT: u16 = 5;
 
 // Draws a text editor where the user can type a message.
-pub fn draw_message_editor<'a>(state: &'a AppState<'a>) -> TextArea<'a> {
+pub(crate) fn draw_message_editor<'a>(state: &'a AppState<'a>) -> TextArea<'a> {
     // Update title when in editing mode
     let hint = Span::styled(
         " Enter: send, Alt-Enter: new line, Esc: cancel.",

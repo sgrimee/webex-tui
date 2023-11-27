@@ -21,28 +21,28 @@ use super::teams_store::TeamsStore;
 /// - whether a background thread `is_loading`
 /// - a `teams_store` cache for Webex messages and rooms
 /// and other UI state
-pub struct AppState<'a> {
+pub(crate) struct AppState<'a> {
     // App
-    pub actions: Actions,
-    pub is_loading: bool,
+    pub(crate) actions: Actions,
+    pub(crate) is_loading: bool,
 
     // Webex
-    pub teams_store: TeamsStore,
-    pub me: Option<webex::Person>,
+    pub(crate) teams_store: TeamsStore,
+    pub(crate) me: Option<webex::Person>,
 
     // UI
-    pub show_logs: bool,
-    pub show_help: bool,
-    pub rooms_list: RoomsList,
-    pub messages_list: MessagesList,
-    pub message_editor: MessageEditor<'a>,
+    pub(crate) show_logs: bool,
+    pub(crate) show_help: bool,
+    pub(crate) rooms_list: RoomsList,
+    pub(crate) messages_list: MessagesList,
+    pub(crate) message_editor: MessageEditor<'a>,
     active_pane: Option<ActivePane>,
 }
 
 /// The active pane is used by the UI to draw attention to what
 /// key mappings are in use
 #[derive(Clone, Debug, PartialEq, Sequence, Default)]
-pub enum ActivePane {
+pub(crate) enum ActivePane {
     #[default]
     /// The list of rooms
     Rooms,
@@ -56,26 +56,26 @@ impl AppState<'_> {
     /// Returns the active `Room` if any.
     /// This is the room displayed in the messages view and
     /// where messages are sent to.
-    pub fn active_room(&self) -> Option<&Room> {
+    pub(crate) fn active_room(&self) -> Option<&Room> {
         self.rooms_list
             .active_room_id()
             .and_then(|id| self.teams_store.rooms_info.room_with_id(id))
     }
 
     /// Returns an iterator over all visible rooms with the current filter.
-    pub fn visible_rooms(&self) -> impl Iterator<Item = &Room> {
+    pub(crate) fn visible_rooms(&self) -> impl Iterator<Item = &Room> {
         self.teams_store
             .rooms_info
             .rooms_filtered_by(self.rooms_list.filter())
     }
 
     /// Returns the number of visible rooms with the current filter.
-    pub fn num_of_visible_rooms(&self) -> usize {
+    pub(crate) fn num_of_visible_rooms(&self) -> usize {
         self.visible_rooms().collect::<Vec<_>>().len()
     }
 
     /// Returns the number of messages in the active room.
-    pub fn num_messages_active_room(&self) -> usize {
+    pub(crate) fn num_messages_active_room(&self) -> usize {
         match self.rooms_list.active_room_id() {
             Some(id) => self.teams_store.nb_messages_in_room(id),
             None => 0,
@@ -84,14 +84,14 @@ impl AppState<'_> {
 
     /// Returns the `RoomId` of the room selection in the list.
     /// This is used to set the active room.
-    pub fn id_of_selected_room(&self) -> Option<RoomId> {
+    pub(crate) fn id_of_selected_room(&self) -> Option<RoomId> {
         self.rooms_list
             .id_of_selected(self.visible_rooms().collect::<Vec<_>>().as_slice())
     }
 
     /// Reset the list selection to the active room.
     /// This is useful after the number or order of items in the list changes.
-    pub fn update_selection_with_active_room(&mut self) {
+    pub(crate) fn update_selection_with_active_room(&mut self) {
         if let Some(id) = self.rooms_list.active_room_id() {
             let pos_option = self.visible_rooms().position(|room| room.id() == id);
             if let Some(position) = pos_option {
@@ -103,21 +103,21 @@ impl AppState<'_> {
     /// Mark the active room as being read.
     /// Only local storage for now, this is not synced between multiple clients,
     /// or multiple invocations of the same client.
-    pub fn mark_active_read(&mut self) {
+    pub(crate) fn mark_active_read(&mut self) {
         if let Some(id) = self.id_of_selected_room() {
             self.teams_store.rooms_info.mark_read(&id);
         }
     }
 
     /// Returns the active pane.
-    pub fn active_pane(&self) -> &Option<ActivePane> {
+    pub(crate) fn active_pane(&self) -> &Option<ActivePane> {
         &self.active_pane
     }
 
     /// Sets the active pane to `active_pane` and updates the list of possible actions
     /// according to what can be do in that pane.
     /// It also removes any message selection when switching to non Messages panes.
-    pub fn set_active_pane(&mut self, active_pane: Option<ActivePane>) {
+    pub(crate) fn set_active_pane(&mut self, active_pane: Option<ActivePane>) {
         debug!("Activating pane: {:?}", active_pane);
         // Deselect messages when switching to non Messages panes
         match self.active_pane {
@@ -129,7 +129,7 @@ impl AppState<'_> {
     }
 
     /// Updates the list of possible actions according to what can be done in the pane
-    pub fn update_actions(&mut self, active_pane: Option<ActivePane>) {
+    pub(crate) fn update_actions(&mut self, active_pane: Option<ActivePane>) {
         let actions = match &active_pane {
             Some(ActivePane::Compose) => {
                 vec![
@@ -193,7 +193,7 @@ impl AppState<'_> {
 
     /// Cycles between the room selection and message selection panes.
     /// The message compose pane is skipped.
-    pub fn cycle_active_pane(&mut self) {
+    pub(crate) fn cycle_active_pane(&mut self) {
         match self.active_pane() {
             None => self.set_active_pane(Some(ActivePane::default())),
             Some(active_pane) => {
@@ -212,7 +212,7 @@ impl AppState<'_> {
     }
 
     /// Returns the selected message, if there is one
-    pub fn selected_message(&self) -> Result<&Message> {
+    pub(crate) fn selected_message(&self) -> Result<&Message> {
         let room_id = self
             .id_of_selected_room()
             .ok_or(eyre!("No room selected"))?;
@@ -224,13 +224,13 @@ impl AppState<'_> {
     }
 
     /// Sets the user of the app, used to filter its own messages.
-    pub fn set_me(&mut self, me: Person) {
+    pub(crate) fn set_me(&mut self, me: Person) {
         self.me = Some(me);
     }
 
     /// Returns true if me is not None, person_id is not None and person_id equals me.
     /// Returns false if they are different or either is None.
-    pub fn is_me(&self, person_id: &Option<String>) -> bool {
+    pub(crate) fn is_me(&self, person_id: &Option<String>) -> bool {
         match (&self.me, person_id) {
             (Some(me), Some(id)) => me.id.eq(id),
             _ => false,
@@ -238,7 +238,7 @@ impl AppState<'_> {
     }
 
     /// Returns true if the selected message is from me.
-    pub fn selected_message_is_from_me(&self) -> Result<bool> {
+    pub(crate) fn selected_message_is_from_me(&self) -> Result<bool> {
         let message = self.selected_message()?;
         Ok(self.is_me(&message.person_id))
     }

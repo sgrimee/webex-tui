@@ -3,8 +3,8 @@
 //! Handles IO for Webex, including making network calls
 //! and listening to events.
 
-pub mod app_handler;
-pub mod auth;
+pub(crate) mod app_handler;
+pub(crate) mod auth;
 mod client;
 mod webex_handler;
 
@@ -20,20 +20,23 @@ use webex::{GlobalId, GlobalIdType, Person, Webex, WebexEventStream};
 
 /// ClientCredentials obtained when creating the Webex integration
 #[derive(Clone)]
-pub struct ClientCredentials {
-    pub client_id: String,
-    pub client_secret: String,
+pub(crate) struct ClientCredentials {
+    pub(crate) client_id: String,
+    pub(crate) client_secret: String,
 }
 
 /// `Teams` is meant to run in a separate thread from the `App`.
 /// It makes API calls to Webex.
-pub struct Teams<'a> {
+pub(crate) struct Teams<'a> {
     client: Webex,
     app: Arc<tokio::sync::Mutex<App<'a>>>,
 }
 
 impl<'a> Teams<'a> {
-    pub async fn new(token: AccessToken, app: Arc<tokio::sync::Mutex<App<'a>>>) -> Teams<'a> {
+    pub(crate) async fn new(
+        token: AccessToken,
+        app: Arc<tokio::sync::Mutex<App<'a>>>,
+    ) -> Teams<'a> {
         let client = get_webex_client(token).await;
 
         // Retrieve the logged in user
@@ -56,7 +59,10 @@ impl<'a> Teams<'a> {
 
     /// Spawns a new thread to receive events from Webex
     /// and send them to the `Teams` thread for handling
-    pub async fn handle_events(&mut self, mut app_to_teams_rx: UnboundedReceiver<AppCmdEvent>) {
+    pub(crate) async fn handle_events(
+        &mut self,
+        mut app_to_teams_rx: UnboundedReceiver<AppCmdEvent>,
+    ) {
         // Webex events
         let client = self.client.clone();
         let (wbx_stream_to_teams_tx, mut wbx_stream_to_teams_rx) =

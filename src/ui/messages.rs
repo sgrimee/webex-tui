@@ -7,8 +7,8 @@ const CONTENT_INDENT: &str = "  ";
 const CONTENT_RIGHT_MARGIN: u16 = 2;
 const TITLE_INDENT_REPLY: &str = "  | ";
 const TITLE_INDENT: &str = "";
-pub const ACTIVE_ROOM_MIN_WIDTH: u16 = 30;
-pub const ROOM_MIN_HEIGHT: u16 = 8;
+pub(crate) const ACTIVE_ROOM_MIN_WIDTH: u16 = 30;
+pub(crate) const ROOM_MIN_HEIGHT: u16 = 8;
 
 use crate::app::state::{ActivePane, AppState};
 use html2text::from_read;
@@ -158,7 +158,7 @@ fn row_for_message<'a>(msg: Message, width: u16) -> (Row<'a>, usize) {
 
 /// Draws a table containing the formatted messages for the active room.
 /// Also returns the number or messages(rows) in the table and the number of text lines.
-pub fn draw_msg_table<'a>(state: &AppState, rect: &Rect) -> (Table<'a>, usize, usize) {
+pub(crate) fn draw_msg_table<'a>(state: &AppState, rect: &Rect) -> (Table<'a>, usize, usize) {
     let mut title = "No selected room";
     let mut rows = Vec::<Row>::new();
 

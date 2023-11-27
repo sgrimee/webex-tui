@@ -11,7 +11,7 @@ use crate::inputs::key::Key;
 /// All possible user actions.
 /// Not all actions are available in all contexts.
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Sequence)]
-pub enum Action {
+pub(crate) enum Action {
     DeleteMessage,
     ComposeNewMessage,
     EditSelectedMessage,
@@ -34,7 +34,7 @@ pub enum Action {
 
 impl Action {
     /// Return a slice with the key(s) associated to the action.
-    pub fn keys(&self) -> &[Key] {
+    pub(crate) fn keys(&self) -> &[Key] {
         match self {
             Action::DeleteMessage => &[Key::Char('d')],
             Action::ComposeNewMessage => &[Key::Enter],
@@ -90,17 +90,17 @@ impl Display for Action {
 /// given context.
 /// In a context, a key must map to at most one action.
 #[derive(Default, Debug, Clone)]
-pub struct Actions(Vec<Action>);
+pub(crate) struct Actions(Vec<Action>);
 
 impl Actions {
     /// Given a key, find the corresponding action
-    pub fn find(&self, key: Key) -> Option<Action> {
+    pub(crate) fn find(&self, key: Key) -> Option<Action> {
         all::<Action>()
             .filter(|action| self.0.contains(action))
             .find(|action| action.keys().contains(&key))
     }
 
-    pub fn actions(&self) -> &[Action] {
+    pub(crate) fn actions(&self) -> &[Action] {
         self.0.as_slice()
     }
 }

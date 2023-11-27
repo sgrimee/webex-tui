@@ -8,7 +8,7 @@ use crossterm::event;
 
 /// Represents an key.
 #[derive(PartialEq, Eq, Clone, Copy, Hash, Debug)]
-pub enum Key {
+pub(crate) enum Key {
     Alt(char),
     AltEnter,
     Backspace,
@@ -46,7 +46,7 @@ pub enum Key {
 
 impl Key {
     /// If exit
-    // pub fn is_exit(&self) -> bool {
+    // pub(crate) fn is_exit(&self) -> bool {
     //     matches!(self, Key::Ctrl('c'))
     // }
 
@@ -57,7 +57,7 @@ impl Key {
     /// # Panics
     ///
     /// If `n == 0 || n > 12`
-    pub fn from_f(n: u8) -> Key {
+    pub(crate) fn from_f(n: u8) -> Key {
         match n {
             0 => Key::F0,
             1 => Key::F1,

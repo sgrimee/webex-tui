@@ -9,10 +9,10 @@ use ratatui::widgets::{Borders, Paragraph};
 
 use crate::app::state::AppState;
 
-pub const TITLE_BLOCK_HEIGHT: u16 = 3;
+pub(crate) const TITLE_BLOCK_HEIGHT: u16 = 3;
 
 /// Draws the application title panel.
-pub fn draw_title<'a>(state: &AppState) -> Paragraph<'a> {
+pub(crate) fn draw_title<'a>(state: &AppState) -> Paragraph<'a> {
     let title = match state.is_loading {
         true => "webex-tui (loading)",
         false => "webex-tui",

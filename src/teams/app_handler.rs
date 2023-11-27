@@ -17,7 +17,7 @@ use webex::{
 
 /// Commands the main `App` can send to the `Teams` thread.
 #[derive(Debug)]
-pub enum AppCmdEvent {
+pub(crate) enum AppCmdEvent {
     DeleteMessage(MessageId),
     EditMessage(MessageId, RoomId, String),
     Initialize(),
@@ -30,7 +30,7 @@ pub enum AppCmdEvent {
 
 impl Teams<'_> {
     /// Handle an `AppCmdEvent` dispatched by the App.
-    pub async fn handle_app_event(&mut self, app_cmd_event: AppCmdEvent) {
+    pub(crate) async fn handle_app_event(&mut self, app_cmd_event: AppCmdEvent) {
         {
             self.app.lock().await.state.is_loading = true;
         }

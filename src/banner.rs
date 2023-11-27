@@ -3,7 +3,7 @@
 //! Application name in ASCII art.
 
 #[allow(dead_code)]
-pub const BANNER: &str = r"
+pub(crate) const BANNER: &str = r"
               ___.                             __        .__ 
 __  _  __ ____\_ |__   ____ ___  ___         _/  |_ __ __|__|
 \ \/ \/ // __ \| __ \_/ __ \\  \/  /  ______ \   __\  |  \  |

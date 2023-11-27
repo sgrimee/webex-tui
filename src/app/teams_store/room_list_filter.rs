@@ -2,7 +2,7 @@ use enum_iterator::Sequence;
 
 /// Filters used to present a subset of all available rooms.
 #[derive(Clone, Debug, PartialEq, Default, Sequence)]
-pub enum RoomsListFilter {
+pub(crate) enum RoomsListFilter {
     /// All available rooms
     #[default]
     All,

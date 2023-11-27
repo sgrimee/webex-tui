@@ -8,14 +8,14 @@ use super::MessageId;
 /// A `MsgThread` is a list of `Message`s in a room ordered by creation time,
 /// where all messages starting from the second one have the first one as parent.
 #[derive(Default, Debug)]
-pub struct MsgThread {
+pub(crate) struct MsgThread {
     messages: Vec<Message>,
     id: Option<MessageId>,
 }
 
 impl MsgThread {
     /// Adds a message to self.messages while maintaining ordering by creation date.
-    pub fn update_or_add(&mut self, msg: &Message) -> Result<()> {
+    pub(crate) fn update_or_add(&mut self, msg: &Message) -> Result<()> {
         if !self.update_if_exists(msg)? {
             // Update the thread id if needed
             self.check_and_update_thread_id(msg)?;
@@ -29,7 +29,7 @@ impl MsgThread {
     /// Updates the message only if it already exists in the thread.
     /// Returns true if the message was found and updated, false otherwise.
     /// Returns an error if the message does not have a created date.
-    pub fn update_if_exists(&mut self, msg: &Message) -> Result<bool> {
+    pub(crate) fn update_if_exists(&mut self, msg: &Message) -> Result<bool> {
         if msg.created.is_none() {
             return Err(eyre!("The message does not have a created date"));
         }
@@ -84,21 +84,21 @@ impl MsgThread {
     }
 
     /// Returns the creation time of the first message in the thread.
-    pub fn creation_time_of_first_message(&self) -> Option<&str> {
+    pub(crate) fn creation_time_of_first_message(&self) -> Option<&str> {
         self.messages.first().and_then(|msg| msg.created.as_deref())
     }
 
-    pub fn messages(&self) -> impl Iterator<Item = &Message> {
+    pub(crate) fn messages(&self) -> impl Iterator<Item = &Message> {
         self.messages.iter()
     }
 
-    pub fn id(&self) -> Option<&String> {
+    pub(crate) fn id(&self) -> Option<&String> {
         self.id.as_ref()
     }
 
     /// Deletes a message from the thread, returns true if the message was found and deleted,
     /// false otherwise.
-    pub fn delete_message(&mut self, msg_id: &MessageId) -> bool {
+    pub(crate) fn delete_message(&mut self, msg_id: &MessageId) -> bool {
         if let Some(index) = self
             .messages
             .iter()
@@ -110,7 +110,7 @@ impl MsgThread {
         false
     }
 
-    pub fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.messages.len()
     }
 }

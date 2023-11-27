@@ -11,26 +11,26 @@ use super::{msg_thread::MsgThread, MessageId};
 /// are kept together after the first message in the thread.
 
 #[derive(Default, Debug)]
-pub struct RoomContent {
+pub(crate) struct RoomContent {
     threads: Vec<MsgThread>,
 }
 
 impl RoomContent {
     /// Returns an iterator to all messages in the room in the order they should be displayed:
     /// ordered by creation time and with threads grouped together.
-    pub fn messages(&self) -> impl Iterator<Item = &Message> {
+    pub(crate) fn messages(&self) -> impl Iterator<Item = &Message> {
         self.threads.iter().flat_map(|thread| thread.messages())
     }
 
     /// Returns the message with the given index in display order, if any.
-    pub fn nth_message(&self, index: usize) -> Result<&Message> {
+    pub(crate) fn nth_message(&self, index: usize) -> Result<&Message> {
         self.messages()
             .nth(index)
             .ok_or(eyre!("Message {} not found in room", index))
     }
 
     /// Adds a message to the room content, respecting the thread order.
-    pub fn add(&mut self, msg: &Message) -> Result<()> {
+    pub(crate) fn add(&mut self, msg: &Message) -> Result<()> {
         if msg.id.is_none() {
             return Err(eyre!("The message does not have an id"));
         }
@@ -79,7 +79,7 @@ impl RoomContent {
         Err(eyre!("Message not found"))
     }
 
-    pub fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.threads.iter().map(|thread| thread.len()).sum()
     }
 

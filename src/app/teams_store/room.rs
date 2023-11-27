@@ -1,12 +1,12 @@
 use chrono::{DateTime, Duration, Utc};
 use webex::Room as WebexRoom;
 
-pub type RoomId = String;
+pub(crate) type RoomId = String;
 
 /// `Room` is a wrapper around the webex Room type, adding some extra information.
 
 #[derive(Debug)]
-pub struct Room {
+pub(crate) struct Room {
     id: String,
     title: Option<String>,
     room_type: String,
@@ -20,43 +20,43 @@ pub struct Room {
 
 impl Room {
     /// Returns whether a room is a 1-1 chat
-    pub fn is_direct(&self) -> bool {
+    pub(crate) fn is_direct(&self) -> bool {
         self.room_type == "direct"
     }
 
     /// Returns whether a room is a space.
-    pub fn is_space(&self) -> bool {
+    pub(crate) fn is_space(&self) -> bool {
         self.room_type == "group"
     }
 
-    pub fn id(&self) -> &RoomId {
+    pub(crate) fn id(&self) -> &RoomId {
         &self.id
     }
 
-    pub fn title(&self) -> Option<&str> {
+    pub(crate) fn title(&self) -> Option<&str> {
         self.title.as_deref()
     }
 
-    pub fn last_activity(&self) -> DateTime<Utc> {
+    pub(crate) fn last_activity(&self) -> DateTime<Utc> {
         self.last_activity
     }
 
-    pub fn unread(&self) -> bool {
+    pub(crate) fn unread(&self) -> bool {
         self.unread
     }
 
-    pub fn set_unread(&mut self, unread: bool) {
+    pub(crate) fn set_unread(&mut self, unread: bool) {
         self.unread = unread;
     }
 
     /// Returns whether the room has seen any activity in the past specified period.
     /// Panics if room is not known.
-    pub fn has_activity_since(&self, duration: Duration) -> bool {
+    pub(crate) fn has_activity_since(&self, duration: Duration) -> bool {
         self.last_activity() > (Utc::now() - duration)
     }
 
     /// Updates the last activity of the room if the new activity is more recent.
-    pub fn update_last_activity(&mut self, last_activity: DateTime<Utc>) {
+    pub(crate) fn update_last_activity(&mut self, last_activity: DateTime<Utc>) {
         if last_activity > self.last_activity {
             self.last_activity = last_activity;
         }
@@ -97,9 +97,15 @@ mod tests {
             last_activity: Utc.with_ymd_and_hms(2020, 1, 1, 0, 0, 0).unwrap(),
             unread: false,
         };
-        room.update_last_activity( Utc.with_ymd_and_hms(2020, 1, 1, 0, 0, 1).unwrap());
-        assert_eq!(room.last_activity,  Utc.with_ymd_and_hms(2020, 1, 1, 0, 0, 1).unwrap());
-        room.update_last_activity( Utc.with_ymd_and_hms(2020, 1, 1, 0, 0, 0).unwrap());
-        assert_eq!(room.last_activity,  Utc.with_ymd_and_hms(2020, 1, 1, 0, 0, 1).unwrap());
+        room.update_last_activity(Utc.with_ymd_and_hms(2020, 1, 1, 0, 0, 1).unwrap());
+        assert_eq!(
+            room.last_activity,
+            Utc.with_ymd_and_hms(2020, 1, 1, 0, 0, 1).unwrap()
+        );
+        room.update_last_activity(Utc.with_ymd_and_hms(2020, 1, 1, 0, 0, 0).unwrap());
+        assert_eq!(
+            room.last_activity,
+            Utc.with_ymd_and_hms(2020, 1, 1, 0, 0, 1).unwrap()
+        );
     }
 }

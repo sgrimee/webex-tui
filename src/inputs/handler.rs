@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-pub enum Event {
+pub(crate) enum Event {
     /// An input event occurred.
     // Input(Key),
     Input(crossterm::event::KeyEvent),
@@ -17,7 +17,7 @@ pub enum Event {
 
 /// Event handler that wraps crossterm input and tick event.
 /// Each event type is handled in its own thread and returned to a common `Receiver`
-pub struct EventHandler {
+pub(crate) struct EventHandler {
     rx: tokio::sync::mpsc::Receiver<Event>,
     // Need to be kept around to prevent disposing the sender side.
     _tx: tokio::sync::mpsc::Sender<Event>,
@@ -28,7 +28,7 @@ pub struct EventHandler {
 impl EventHandler {
     /// Constructs an new instance of `Events` with the default config
     /// and given `tick_rate`.
-    pub fn new(tick_rate: Duration) -> Self {
+    pub(crate) fn new(tick_rate: Duration) -> Self {
         let (tx, rx) = tokio::sync::mpsc::channel(100);
         let stop_capture = Arc::new(AtomicBool::new(false));
 
@@ -63,12 +63,12 @@ impl EventHandler {
     }
 
     /// Attempts to read an event.
-    pub async fn next(&mut self) -> Event {
+    pub(crate) async fn next(&mut self) -> Event {
         self.rx.recv().await.unwrap_or(Event::Tick)
     }
 
     /// Close
-    pub fn close(&mut self) {
+    pub(crate) fn close(&mut self) {
         self.stop_capture.store(true, Ordering::Relaxed)
     }
 }

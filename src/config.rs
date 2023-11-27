@@ -17,20 +17,20 @@ const APP_CONFIG_DIR: &str = "webex-tui";
 // const TOKEN_CACHE_FILE: &str = ".webex_token_cache.json";
 
 #[derive(Default, Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct ClientConfig {
-    pub client_id: String,
-    pub client_secret: String,
+pub(crate) struct ClientConfig {
+    pub(crate) client_id: String,
+    pub(crate) client_secret: String,
     // FIXME: port should be defined in `user_config` not in here
-    pub port: Option<u16>,
+    pub(crate) port: Option<u16>,
 }
 
 struct ConfigPaths {
-    pub config_file_path: PathBuf,
-    // pub token_cache_path: PathBuf,
+    pub(crate) config_file_path: PathBuf,
+    // pub(crate) token_cache_path: PathBuf,
 }
 
 impl ClientConfig {
-    pub fn new() -> ClientConfig {
+    pub(crate) fn new() -> ClientConfig {
         ClientConfig {
             client_id: "".to_string(),
             client_secret: "".to_string(),
@@ -71,7 +71,7 @@ impl ClientConfig {
     /// Reads the configuration from the config file if it exists.
     /// If it doesn't, prompt the user to enter the integration credentials
     /// and save them to the configuration file.
-    pub fn load_config(&mut self) -> Result<()> {
+    pub(crate) fn load_config(&mut self) -> Result<()> {
         let paths = self.get_or_build_paths()?;
         if paths.config_file_path.exists() {
             let config_string = fs::read_to_string(&paths.config_file_path)?;

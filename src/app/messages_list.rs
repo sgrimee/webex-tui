@@ -5,7 +5,7 @@
 use ratatui::widgets::{ScrollbarState, TableState};
 
 #[derive(Default)]
-pub struct MessagesList {
+pub(crate) struct MessagesList {
     table_state: TableState,
     // workaround so we can set the Option in TableState to usize::MAX when there is no selection
     // to scroll the table to the last message
@@ -16,7 +16,7 @@ pub struct MessagesList {
 }
 
 impl MessagesList {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         let mut list = MessagesList::default();
         list.table_state.select(Some(usize::MAX));
         list
@@ -24,7 +24,7 @@ impl MessagesList {
 
     /// Returns the message corresponding to the selection, if there is one.
     /// If the selection is out of bounds, returns None.
-    pub fn selected_index(&self) -> Option<usize> {
+    pub(crate) fn selected_index(&self) -> Option<usize> {
         if !self.has_selection {
             return None;
         }
@@ -32,7 +32,7 @@ impl MessagesList {
     }
 
     /// Selects the next message in the list and updates the table_state.
-    pub fn select_next_message(&mut self) {
+    pub(crate) fn select_next_message(&mut self) {
         if !self.has_selection {
             self.select_first_message();
             return;
@@ -57,7 +57,7 @@ impl MessagesList {
     }
 
     /// Selects the previous message in the list and updates the table_state
-    pub fn select_previous_message(&mut self) {
+    pub(crate) fn select_previous_message(&mut self) {
         if !self.has_selection {
             self.select_last_message();
             return;
@@ -101,7 +101,7 @@ impl MessagesList {
         self.table_state.select(Some(self.nb_messages - 1));
     }
 
-    pub fn deselect(&mut self) {
+    pub(crate) fn deselect(&mut self) {
         self.has_selection = false;
         // Workaround to show the last message instead of the first one
         self.table_state.select(Some(usize::MAX));
@@ -109,7 +109,7 @@ impl MessagesList {
 
     /// Position the scrollbar according to the TableState selection.
     /// PANICS if self.has_selection() is true while self.table_state.selected() is usize::MAX
-    pub fn scroll_to_selection(&mut self) {
+    pub(crate) fn scroll_to_selection(&mut self) {
         if self.has_selection() {
             if let Some(selected) = self.table_state.selected() {
                 assert_ne!(selected, usize::MAX); // because has_selection() is true
@@ -125,24 +125,24 @@ impl MessagesList {
     /// Sets the number of messages in the list.
     /// This needs to be kept up to date for other functions to work.
     /// A good place to call it is at UI render time.
-    pub fn set_nb_messages(&mut self, nb_messages: usize) {
+    pub(crate) fn set_nb_messages(&mut self, nb_messages: usize) {
         self.nb_messages = nb_messages;
     }
 
-    pub fn table_state_mut(&mut self) -> &mut TableState {
+    pub(crate) fn table_state_mut(&mut self) -> &mut TableState {
         &mut self.table_state
     }
 
-    pub fn has_selection(&self) -> bool {
+    pub(crate) fn has_selection(&self) -> bool {
         self.has_selection
     }
 
-    pub fn set_nb_lines(&mut self, nb_lines: usize) {
+    pub(crate) fn set_nb_lines(&mut self, nb_lines: usize) {
         *self.scroll_state_mut() = self.scroll_state.content_length(nb_lines);
         self.nb_lines = nb_lines;
     }
 
-    pub fn scroll_state_mut(&mut self) -> &mut ScrollbarState {
+    pub(crate) fn scroll_state_mut(&mut self) -> &mut ScrollbarState {
         &mut self.scroll_state
     }
 }

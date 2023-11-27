@@ -2,13 +2,13 @@
 
 //! Controller used to handle user input and interaction with the `Teams` thread.
 
-pub mod actions;
-pub mod callbacks;
-pub mod message_editor;
-pub mod messages_list;
-pub mod rooms_list;
-pub mod state;
-pub mod teams_store;
+pub(crate) mod actions;
+pub(crate) mod callbacks;
+pub(crate) mod message_editor;
+pub(crate) mod messages_list;
+pub(crate) mod rooms_list;
+pub(crate) mod state;
+pub(crate) mod teams_store;
 
 use self::state::AppState;
 use crate::app::actions::Action;
@@ -24,15 +24,15 @@ use tui_textarea::Input;
 
 /// Return status indicating whether the app should exit or not.
 #[derive(Debug, PartialEq, Eq)]
-pub enum AppReturn {
+pub(crate) enum AppReturn {
     Exit,
     Continue,
 }
 
 /// `App` contains the state of the application and a tx channel to the `Teams` thread.
-pub struct App<'a> {
+pub(crate) struct App<'a> {
     app_to_teams_tx: tokio::sync::mpsc::UnboundedSender<AppCmdEvent>,
-    pub state: AppState<'a>,
+    pub(crate) state: AppState<'a>,
 }
 
 impl App<'_> {
@@ -41,7 +41,7 @@ impl App<'_> {
     /// # Arguments
     ///
     /// * `app_to_teams_tx` - An unbounded channel used to send commands to the `Teams` thread
-    pub fn new(app_to_teams_tx: tokio::sync::mpsc::UnboundedSender<AppCmdEvent>) -> Self {
+    pub(crate) fn new(app_to_teams_tx: tokio::sync::mpsc::UnboundedSender<AppCmdEvent>) -> Self {
         Self {
             app_to_teams_tx,
             state: AppState::default(),
@@ -50,7 +50,7 @@ impl App<'_> {
 
     /// Process a key event to the text editor if active, or to execute
     /// the corresponding action otherwise
-    pub async fn process_key_event(&mut self, key_event: KeyEvent) -> AppReturn {
+    pub(crate) async fn process_key_event(&mut self, key_event: KeyEvent) -> AppReturn {
         if self.state.message_editor.is_composing() {
             trace!("Keyevent: {:?}", key_event);
             self.process_editing_key(key_event)
@@ -160,7 +160,7 @@ impl App<'_> {
     }
 
     /// We could update the app or dispatch event on tick
-    pub async fn update_on_tick(&mut self) -> AppReturn {
+    pub(crate) async fn update_on_tick(&mut self) -> AppReturn {
         self.state.update_on_tick();
         AppReturn::Continue
     }
@@ -269,7 +269,7 @@ impl App<'_> {
 
     /// Send a command to the teams thread
     /// Does not block
-    pub fn dispatch_to_teams(&self, action: AppCmdEvent) {
+    pub(crate) fn dispatch_to_teams(&self, action: AppCmdEvent) {
         if let Err(e) = self.app_to_teams_tx.send(action) {
             error!("Error from dispatch {}", e);
         };

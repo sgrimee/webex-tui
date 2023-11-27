@@ -23,7 +23,7 @@ use rooms::{draw_rooms_table, ROOMS_LIST_WIDTH};
 use title::{draw_title, TITLE_BLOCK_HEIGHT};
 
 /// Render all blocks.
-pub fn render(rect: &mut Frame, state: &mut AppState) {
+pub(crate) fn render(rect: &mut Frame, state: &mut AppState) {
     let size = rect.size();
     check_size(&size, state);
 

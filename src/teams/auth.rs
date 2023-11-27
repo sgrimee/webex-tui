@@ -16,11 +16,10 @@ use oauth2::{
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
 use std::net::TcpStream;
-use webbrowser;
 
 /// Create and authorize a client with the given `ClientCredentials`.
 /// A browser is opened for user authentication.
-pub async fn get_integration_token(credentials: ClientCredentials) -> Result<AccessToken> {
+pub(crate) async fn get_integration_token(credentials: ClientCredentials) -> Result<AccessToken> {
     let client = create_basic_client(credentials)?;
 
     let (auth_url, csrf_state) = get_authorize_url(&client)?;

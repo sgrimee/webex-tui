@@ -10,7 +10,7 @@ use webex::{Message, Person};
 
 impl App<'_> {
     /// Deselects all active panes and initialise the retrieval of all rooms
-    pub fn cb_teams_initialized(&mut self) {
+    pub(crate) fn cb_teams_initialized(&mut self) {
         self.state.set_active_pane(None);
         // Some more heavy tasks that we put after init to ensure quick startup
         self.dispatch_to_teams(AppCmdEvent::ListAllRooms());
@@ -18,19 +18,19 @@ impl App<'_> {
 
     /// Saves `me` as the user of the client
     /// This is used to identify when a message was originated by that user.
-    pub fn cb_set_me(&mut self, person: Person) {
+    pub(crate) fn cb_set_me(&mut self, person: Person) {
         self.state.set_me(person);
     }
 
     /// Callback when a message was sent. Add the message to the room immediately.
-    pub fn cb_message_sent(&mut self, message: &Message) {
+    pub(crate) fn cb_message_sent(&mut self, message: &Message) {
         self.cb_message_received(message, false);
     }
 
     /// Stores a single received message
     /// If `update_unread` is true and the messages are not from self, the room is marked as unread.
     /// Otherwise, the unread status is unchanged.
-    pub fn cb_message_received(&mut self, msg: &Message, update_unread: bool) {
+    pub(crate) fn cb_message_received(&mut self, msg: &Message, update_unread: bool) {
         match msg.room_id.clone() {
             Some(room_id) => {
                 let messages: [Message; 1] = [msg.clone()];
@@ -45,7 +45,7 @@ impl App<'_> {
     /// Stores multiple received messages
     /// If `update_unread` is true and the messages are not from self, the room is marked as unread.
     /// Otherwise, the unread status is unchanged.
-    pub fn cb_messages_received_in_room(
+    pub(crate) fn cb_messages_received_in_room(
         &mut self,
         room_id: &RoomId,
         messages: &[Message],
@@ -79,7 +79,7 @@ impl App<'_> {
     /// Callback when room information is received.
     /// Saves the room info in the store and adjusts the position
     /// of the selector in the list.
-    pub fn cb_room_updated(&mut self, webex_room: webex::Room) {
+    pub(crate) fn cb_room_updated(&mut self, webex_room: webex::Room) {
         self.state
             .teams_store
             .rooms_info

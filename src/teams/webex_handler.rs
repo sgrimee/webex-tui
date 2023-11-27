@@ -15,7 +15,7 @@ impl Teams<'_> {
     /// Handle a webex event.
     /// Currently only supports `Message` events.
     // TODO: add support for Room updated (e.g. rename) events
-    pub async fn handle_webex_event(&mut self, event: Event) {
+    pub(crate) async fn handle_webex_event(&mut self, event: Event) {
         match event.activity_type() {
             Message(Posted) | Message(Shared) => {
                 // The event doesn't contain the message content, go fetch it

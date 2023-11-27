@@ -7,10 +7,10 @@ use ratatui::widgets::block::Block;
 use ratatui::widgets::Borders;
 use tui_logger::TuiLoggerWidget;
 
-pub const LOG_BLOCK_HEIGHT: u16 = 15;
+pub(crate) const LOG_BLOCK_HEIGHT: u16 = 15;
 
 // Draw the logs panel
-pub fn draw_logs<'a>() -> TuiLoggerWidget<'a> {
+pub(crate) fn draw_logs<'a>() -> TuiLoggerWidget<'a> {
     TuiLoggerWidget::default()
         .style_error(Style::default().fg(Color::Red))
         .style_debug(Style::default().fg(Color::Green))
