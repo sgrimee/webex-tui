@@ -2,9 +2,9 @@
 
 //! List of rooms, with UI scrolling and selection state and display filters.
 
-use super::teams_store::room::{Room, RoomId};
-use super::teams_store::room_list_filter::RoomsListFilter;
-use super::teams_store::TeamsStore;
+use super::cache::room::{Room, RoomId};
+use super::cache::room_list_filter::RoomsListFilter;
+use super::cache::Cache;
 use enum_iterator::{next_cycle, previous_cycle};
 use log::*;
 use ratatui::widgets::TableState;
@@ -19,7 +19,7 @@ pub(crate) struct RoomsList {
 impl RoomsList {
     /// Switches the rooms list table to the next filtering mode.
     /// Does not update the active room.
-    pub(crate) fn next_filter(&mut self, store: &TeamsStore) {
+    pub(crate) fn next_filter(&mut self, store: &Cache) {
         if let Some(new_mode) = next_cycle(&self.filter) {
             debug!("Rooms list filter set to {:?}", new_mode);
             self.filter = new_mode;
@@ -36,7 +36,7 @@ impl RoomsList {
 
     /// Switches the rooms list table to the previous filtering mode.
     /// Does not update the active room.
-    pub(crate) fn previous_filter(&mut self, store: &TeamsStore) {
+    pub(crate) fn previous_filter(&mut self, store: &Cache) {
         if let Some(new_mode) = previous_cycle(&self.filter) {
             debug!("Rooms list mode set to {:?}", new_mode);
             self.filter = new_mode;

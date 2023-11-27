@@ -9,17 +9,17 @@ use log::*;
 use webex::{Message, Person};
 
 use super::actions::{Action, Actions};
+use super::cache::room::{Room, RoomId};
+use super::cache::Cache;
 use super::message_editor::MessageEditor;
 use super::messages_list::MessagesList;
 use super::rooms_list::RoomsList;
-use super::teams_store::room::{Room, RoomId};
-use super::teams_store::TeamsStore;
 
 /// State of the application, including
 /// - available `actions`` in the current context
 /// - whether `editing_mode` is enabled or not
 /// - whether a background thread `is_loading`
-/// - a `teams_store` cache for Webex messages and rooms
+/// - a `Cache` for Webex messages and rooms
 /// and other UI state
 pub(crate) struct AppState<'a> {
     // App
@@ -27,7 +27,7 @@ pub(crate) struct AppState<'a> {
     pub(crate) is_loading: bool,
 
     // Webex
-    pub(crate) teams_store: TeamsStore,
+    pub(crate) cache: Cache,
     pub(crate) me: Option<webex::Person>,
 
     // UI
@@ -59,12 +59,12 @@ impl AppState<'_> {
     pub(crate) fn active_room(&self) -> Option<&Room> {
         self.rooms_list
             .active_room_id()
-            .and_then(|id| self.teams_store.rooms_info.room_with_id(id))
+            .and_then(|id| self.cache.rooms_info.room_with_id(id))
     }
 
     /// Returns an iterator over all visible rooms with the current filter.
     pub(crate) fn visible_rooms(&self) -> impl Iterator<Item = &Room> {
-        self.teams_store
+        self.cache
             .rooms_info
             .rooms_filtered_by(self.rooms_list.filter())
     }
@@ -77,7 +77,7 @@ impl AppState<'_> {
     /// Returns the number of messages in the active room.
     pub(crate) fn num_messages_active_room(&self) -> usize {
         match self.rooms_list.active_room_id() {
-            Some(id) => self.teams_store.nb_messages_in_room(id),
+            Some(id) => self.cache.nb_messages_in_room(id),
             None => 0,
         }
     }
@@ -105,7 +105,7 @@ impl AppState<'_> {
     /// or multiple invocations of the same client.
     pub(crate) fn mark_active_read(&mut self) {
         if let Some(id) = self.id_of_selected_room() {
-            self.teams_store.rooms_info.mark_read(&id);
+            self.cache.rooms_info.mark_read(&id);
         }
     }
 
@@ -220,7 +220,7 @@ impl AppState<'_> {
             .messages_list
             .selected_index()
             .ok_or(eyre!("No message selected in room {}", room_id))?;
-        self.teams_store.nth_message_in_room(index, &room_id)
+        self.cache.nth_message_in_room(index, &room_id)
     }
 
     /// Sets the user of the app, used to filter its own messages.
@@ -250,7 +250,7 @@ impl Default for AppState<'_> {
             actions: vec![Action::Quit, Action::ToggleHelp, Action::ToggleLogs].into(),
             is_loading: false,
 
-            teams_store: TeamsStore::default(),
+            cache: Cache::default(),
             me: None,
             show_logs: false,
             show_help: true,

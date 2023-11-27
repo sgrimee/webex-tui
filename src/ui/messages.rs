@@ -166,7 +166,7 @@ pub(crate) fn draw_msg_table<'a>(state: &AppState, rect: &Rect) -> (Table<'a>, u
     if let Some(room) = state.active_room() {
         title = room.title().unwrap_or("Untitled room");
         rows = state
-            .teams_store
+            .cache
             .messages_in_room(room.id())
             .map(|msg| {
                 let (row, height) = row_for_message(msg.clone(), rect.width - 2);

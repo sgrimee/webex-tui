@@ -2,7 +2,7 @@
 
 //! Callback functions called by the `Teams` thread (under locking)
 
-use super::{teams_store::room::RoomId, App};
+use super::{cache::room::RoomId, App};
 use crate::teams::app_handler::AppCmdEvent;
 
 use log::*;
@@ -54,9 +54,9 @@ impl App<'_> {
         // messages came in with most recent first, so reverse them
         for msg in messages.iter().rev() {
             if update_unread && !self.state.is_me(&msg.person_id) {
-                self.state.teams_store.rooms_info.mark_unread(room_id);
+                self.state.cache.rooms_info.mark_unread(room_id);
             }
-            if let Err(err) = self.state.teams_store.add_message(msg) {
+            if let Err(err) = self.state.cache.add_message(msg) {
                 error!("Error adding received message to store: {}", err);
             }
         }
@@ -64,12 +64,12 @@ impl App<'_> {
         // If the room doesn't exist, request room info and add it to the list of requested rooms.
         if !self
             .state
-            .teams_store
+            .cache
             .rooms_info
             .room_exists_or_requested(room_id)
         {
             self.state
-                .teams_store
+                .cache
                 .rooms_info
                 .add_requested_room(room_id.clone());
             self.dispatch_to_teams(AppCmdEvent::UpdateRoom(room_id.to_string()));
@@ -81,7 +81,7 @@ impl App<'_> {
     /// of the selector in the list.
     pub(crate) fn cb_room_updated(&mut self, webex_room: webex::Room) {
         self.state
-            .teams_store
+            .cache
             .rooms_info
             .update_with_webex_room(webex_room);
         self.state.update_selection_with_active_room();

@@ -1,4 +1,4 @@
-// app/teams_store/sorted_messages.rs
+// app/cache/sorted_messages.rs
 
 use color_eyre::{eyre::eyre, Result};
 use webex::Message;

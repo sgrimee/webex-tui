@@ -1,4 +1,4 @@
-// app/teams_store/room_content.rs
+// app/cache/room_content.rs
 
 use color_eyre::{eyre::eyre, Result};
 use log::*;

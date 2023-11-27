@@ -1,4 +1,4 @@
-// app/teams_store/mod.rs
+// app/cache/mod.rs
 
 //! A caching store for Webex messages and context.
 
@@ -27,12 +27,12 @@ pub(crate) type MessageId = String;
 /// Currently there is no garbage collection and the cache only grows.
 /// This is usually acceptable for a daily session.
 #[derive(Default, Debug)]
-pub(crate) struct TeamsStore {
+pub(crate) struct Cache {
     pub(crate) rooms_info: Rooms,
     rooms_content: HashMap<RoomId, RoomContent>,
 }
 
-impl TeamsStore {
+impl Cache {
     /// Adds a message to the store, respecting the thread order.
     pub(crate) fn add_message(&mut self, msg: &Message) -> Result<()> {
         let room_id = msg.room_id.clone().ok_or(eyre!("message has no room id"))?;
@@ -116,7 +116,7 @@ mod tests {
 
     #[test]
     fn should_add_message_with_unknown_room() {
-        let mut store = TeamsStore::default();
+        let mut store = Cache::default();
         let room_id = "some_new_room_id";
         let message1 = make_message("message1", room_id, None);
         store.add_message(&message1).unwrap();
@@ -125,7 +125,7 @@ mod tests {
 
     #[test]
     fn should_add_message_with_known_room() {
-        let mut store = TeamsStore::default();
+        let mut store = Cache::default();
         let room_id = "some_new_room_id";
         let message1 = make_message("message1", room_id, None);
         // add the message once to the empty store
@@ -138,7 +138,7 @@ mod tests {
 
     #[test]
     fn should_sort_messages_by_thread() {
-        let mut store = TeamsStore::default();
+        let mut store = Cache::default();
         let room_id: RoomId = "some_new_room_id".into();
         store
             .add_message(&make_message("message1", &room_id, None))

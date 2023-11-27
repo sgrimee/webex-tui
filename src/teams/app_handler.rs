@@ -6,8 +6,8 @@
 
 use super::Teams;
 use crate::app::state::ActivePane;
-use crate::app::teams_store::room::RoomId;
-use crate::app::teams_store::MessageId;
+use crate::app::cache::room::RoomId;
+use crate::app::cache::MessageId;
 use color_eyre::eyre::{eyre, Result};
 use log::*;
 use webex::{

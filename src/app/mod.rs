@@ -3,19 +3,19 @@
 //! Controller used to handle user input and interaction with the `Teams` thread.
 
 pub(crate) mod actions;
+pub(crate) mod cache;
 pub(crate) mod callbacks;
 pub(crate) mod message_editor;
 pub(crate) mod messages_list;
 pub(crate) mod rooms_list;
 pub(crate) mod state;
-pub(crate) mod teams_store;
 
 use self::state::AppState;
 use crate::app::actions::Action;
 use crate::app::state::ActivePane;
 use crate::inputs::key::Key;
 use crate::teams::app_handler::AppCmdEvent;
-use teams_store::room::RoomId;
+use cache::room::RoomId;
 
 use color_eyre::{eyre::eyre, Result};
 use crossterm::event::KeyEvent;
@@ -205,7 +205,7 @@ impl App<'_> {
         }
         debug!("Sending message to room {:?}", room.title());
         self.state.message_editor.reset();
-        self.state.teams_store.rooms_info.mark_read(&room_id);
+        self.state.cache.rooms_info.mark_read(&room_id);
         self.state.messages_list.deselect();
         Ok(())
     }
@@ -229,7 +229,7 @@ impl App<'_> {
         // Dispatch a delete event and remove the message from the store
         self.state.messages_list.select_previous_message();
         self.dispatch_to_teams(AppCmdEvent::DeleteMessage(msg_id.clone()));
-        self.state.teams_store.delete_message(&msg_id, &room_id)?;
+        self.state.cache.delete_message(&msg_id, &room_id)?;
         Ok(())
     }
 
@@ -262,7 +262,7 @@ impl App<'_> {
 
     /// Retrieves the latest messages in the room, only if it is empty
     fn get_messages_if_room_empty(&mut self, id: &RoomId) {
-        if self.state.teams_store.room_is_empty(id) {
+        if self.state.cache.room_is_empty(id) {
             self.dispatch_to_teams(AppCmdEvent::ListMessagesInRoom(id.clone()));
         }
     }
@@ -296,16 +296,14 @@ impl App<'_> {
     /// Change the rooms list filter to the previous one
     fn previous_filtering_mode(&mut self) {
         self.state.rooms_list.set_active_room_id(None);
-        self.state
-            .rooms_list
-            .previous_filter(&self.state.teams_store);
+        self.state.rooms_list.previous_filter(&self.state.cache);
         self.set_active_room_to_selection();
     }
 
     /// Change the rooms list filter to the next one
     fn next_filtering_mode(&mut self) {
         self.state.rooms_list.set_active_room_id(None);
-        self.state.rooms_list.next_filter(&self.state.teams_store);
+        self.state.rooms_list.next_filter(&self.state.cache);
         self.set_active_room_to_selection();
     }
 
