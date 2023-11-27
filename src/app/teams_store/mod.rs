@@ -50,6 +50,8 @@ impl TeamsStore {
             // convert it to DateTime<Utc> and use it to update the room last activity
             let timestamp = DateTime::parse_from_rfc3339(&time_str)?.with_timezone(&Utc);
             room.update_last_activity(timestamp);
+            // Re-position the room in the list with the new timestamp
+            self.rooms_info.reposition_room(&room_id);
         }
         Ok(())
     }

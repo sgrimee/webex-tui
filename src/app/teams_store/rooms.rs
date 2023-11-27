@@ -35,20 +35,34 @@ impl Rooms {
     pub fn update_with_webex_room(&mut self, webex_room: WebexRoom) {
         let room_id = webex_room.id.clone();
         let mut room: Room = webex_room.into();
-        // If the room is already in the list, remove it.
+        // If the room is already in the list
         if let Some(index) = self.sorted_rooms.iter().position(|r| r.id() == room.id()) {
-            // Conserve the unread attribute, replace the rest
+            // Conserve the unread attribute
             room.set_unread(self.sorted_rooms[index].unread());
-            self.sorted_rooms[index] = room;
-        } else {
-            // Add the room at the right position
-            let pos = self
-                .sorted_rooms
-                .partition_point(|r| r.last_activity() > room.last_activity());
-            self.sorted_rooms.insert(pos, room);
+            // Remove the room from the store
+            self.sorted_rooms.remove(index);
         }
-        // The room has been received, remove it from the requested list
+        // Add it (back) at the correct position
+        self.add_room_sorted(room);
+        // The room has been added, remove it from the requested list
         self.requested_rooms.remove(&room_id);
+    }
+
+    /// Adds a room to the list of rooms, keeping the list sorted by last activity.
+    /// It is an error to use this if the room already exists.
+    fn add_room_sorted(&mut self, room: Room) {
+        let pos = self
+            .sorted_rooms
+            .partition_point(|r| r.last_activity() > room.last_activity());
+        self.sorted_rooms.insert(pos, room);
+    }
+
+    /// Adjusts the position of the room in the list based in timestamp
+    pub(crate) fn reposition_room(&mut self, room_id: &str) {
+        if let Some(index) = self.sorted_rooms.iter().position(|r| r.id() == room_id) {
+            let room = self.sorted_rooms.remove(index);
+            self.add_room_sorted(room);
+        }       
     }
 
     /// Returns whether the room is already present, or if it has already been requested.
