@@ -9,6 +9,7 @@ This project tries to follow semantic versioning.
 ### Bug Fixes
 
 - Do not duplicate room content loading #33
+- Updated rooms are now re-ordered
 
 ### Features
 
