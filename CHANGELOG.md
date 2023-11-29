@@ -17,6 +17,7 @@ This project tries to follow semantic versioning.
 - Make terminal more responsive (200ms)
 - Display sent message sooner
 - Display team name alongside room name
+- Colorize room names
 
 ## [0.4.5] - 2023-11-23
 
