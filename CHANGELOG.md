@@ -10,6 +10,7 @@ This project tries to follow semantic versioning.
 
 - Do not duplicate room content loading #33
 - Updated rooms are now re-ordered
+- Follow room when re-ordering
 
 ### Features
 
