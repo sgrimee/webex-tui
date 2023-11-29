@@ -68,10 +68,7 @@ impl App<'_> {
             .rooms_info
             .room_exists_or_requested(room_id)
         {
-            self.state
-                .cache
-                .rooms_info
-                .add_requested_room(room_id.clone());
+            self.state.cache.rooms_info.add_requested(room_id.clone());
             self.dispatch_to_teams(AppCmdEvent::UpdateRoom(room_id.to_string()));
         }
     }
@@ -80,10 +77,31 @@ impl App<'_> {
     /// Saves the room info in the store and adjusts the position
     /// of the selector in the list.
     pub(crate) fn cb_room_updated(&mut self, webex_room: webex::Room) {
+        let team_id = webex_room.team_id.clone();
+        let room_title = webex_room.title.clone().unwrap_or_default();
         self.state
             .cache
             .rooms_info
             .update_with_webex_room(webex_room);
         self.state.update_selection_with_active_room();
+
+        // If the webex_room has a team_id, and the team is not already requested, request it and add it to the list of requested teams.
+        if let Some(team_id) = team_id {
+            if !self.state.cache.teams.exists_or_requested(&team_id) {
+                trace!(
+                    "Requesting team {} identified by room: {}",
+                    team_id,
+                    room_title
+                );
+                self.state.cache.teams.add_requested(team_id.clone());
+                self.dispatch_to_teams(AppCmdEvent::UpdateTeam(team_id));
+            }
+        }
+    }
+
+    /// Callback when team information is received.
+    /// Saves the team info in the store.
+    pub(crate) fn cb_team_updated(&mut self, team: webex::Team) {
+        self.state.cache.teams.add(team);
     }
 }

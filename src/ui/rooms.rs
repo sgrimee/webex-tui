@@ -34,7 +34,10 @@ pub(crate) fn draw_rooms_table<'a>(state: &AppState) -> Table<'a> {
                 style = style.fg(Color::LightBlue).add_modifier(Modifier::BOLD);
             }
             Row::new(vec![Cell::from(Span::styled(
-                room.title().unwrap_or("No title").to_string(),
+                state
+                    .cache
+                    .room_title_with_team_name(room.id())
+                    .unwrap_or(String::from("Unknown room")),
                 style,
             ))])
         })

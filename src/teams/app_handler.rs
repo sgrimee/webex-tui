@@ -5,9 +5,10 @@
 //! Callbacks to the `App` are made via mutex.
 
 use super::Teams;
-use crate::app::state::ActivePane;
 use crate::app::cache::room::RoomId;
+use crate::app::cache::teams::TeamId;
 use crate::app::cache::MessageId;
+use crate::app::state::ActivePane;
 use color_eyre::eyre::{eyre, Result};
 use log::*;
 use webex::{
@@ -25,6 +26,7 @@ pub(crate) enum AppCmdEvent {
     ListMessagesInRoom(RoomId),
     SendMessage(MessageOut),
     UpdateRoom(RoomId),
+    UpdateTeam(String),
     // Quit(),
 }
 
@@ -48,6 +50,7 @@ impl Teams<'_> {
                 self.do_edit_message(&msg_id, &room_id, &text).await
             }
             AppCmdEvent::UpdateRoom(room_id) => self.do_refresh_room(&room_id).await,
+            AppCmdEvent::UpdateTeam(team_id) => self.do_refresh_team(&team_id).await,
             // AppCmdEvent::Quit() => self.do_quit().await,
         } {
             error!("Error handling app event: {}", error);
@@ -126,6 +129,18 @@ impl Teams<'_> {
             }
             Err(e) => Err(eyre!("Error retrieving room: {}", e)),
         }
+    }
+
+    /// Gets the team with given id and updates the store.
+    /// Many of these calls fail because the user does not have access to the
+    /// team details, so errors are silenced.
+    async fn do_refresh_team(&self, team_id: &TeamId) -> Result<()> {
+        let global_id = GlobalId::new(GlobalIdType::Team, team_id.to_owned()).unwrap();
+        debug!("Getting team with global id: {:?}", global_id);
+        if let Ok(webex_team) = self.client.get::<webex::Team>(&global_id).await {
+            self.app.lock().await.cb_team_updated(webex_team);
+        };
+        Ok(())
     }
 
     /// Gets as many rooms as the API allows (1000 as webex-rust does not yet implement paging) rooms.

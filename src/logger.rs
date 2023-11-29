@@ -19,15 +19,16 @@ pub(crate) fn setup_logger() {
         tui_logger::set_level_for_target(target, LevelFilter::Info);
     }
     for target in [
-        "webex_tui::app",
-        "webex_tui::app::state",
-        "webex_tui::app::rooms_list",
-        "webex_tui::app::cache",
         "webex_tui::app::cache::room_content",
-        "webex_tui::teams",
+        "webex_tui::app::cache",
+        "webex_tui::app::callbacks",
+        "webex_tui::app::rooms_list",
+        "webex_tui::app::state",
+        "webex_tui::app",
         "webex_tui::teams::app_handler",
-        "webex_tui::teams:auth",
         "webex_tui::teams::webex_handler",
+        "webex_tui::teams:auth",
+        "webex_tui::teams",
         "webex_tui::tui",
     ] {
         tui_logger::set_level_for_target(target, LevelFilter::Trace);

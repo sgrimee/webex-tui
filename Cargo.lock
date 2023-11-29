@@ -389,18 +389,18 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "4.4.8"
+version = "4.4.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2275f18819641850fa26c89acc84d465c1bf91ce57bc2748b28c420473352f64"
+checksum = "41fffed7514f420abec6d183b1d3acfd9099c79c3a10a06ade4f8203f1411272"
 dependencies = [
  "clap_builder",
 ]
 
 [[package]]
 name = "clap_builder"
-version = "4.4.8"
+version = "4.4.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "07cdf1b148b25c1e1f7a42225e30a0d99a615cd4637eae7365548dd4529b95bc"
+checksum = "63361bae7eef3771745f02d8d892bec2fee5f6e34af316ba556e7f97a7069ff1"
 dependencies = [
  "anstream",
  "anstyle",
@@ -660,12 +660,12 @@ checksum = "5443807d6dff69373d433ab9ef5378ad8df50ca6298caf15de6e52e24aaf54d5"
 
 [[package]]
 name = "errno"
-version = "0.3.7"
+version = "0.3.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f258a7194e7f7c2a7837a8913aeab7fd8c383457034fa20ce4dd3dcb813e8eb8"
+checksum = "a258e46cdc063eb8519c00b9fc845fc47bcfca4130e2f08e88665ceda8474245"
 dependencies = [
  "libc",
- "windows-sys 0.48.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2658,16 +2658,16 @@ dependencies = [
 
 [[package]]
 name = "tokio-tungstenite"
-version = "0.18.0"
+version = "0.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "54319c93411147bced34cb5609a80e0a8e44c5999c93903a81cd866630ec0bfd"
+checksum = "212d5dcb2a1ce06d81107c3d0ffa3121fe974b73f068c8282cb1c32328113b6c"
 dependencies = [
  "futures-util",
  "log",
  "native-tls",
  "tokio",
  "tokio-native-tls",
- "tungstenite 0.18.0",
+ "tungstenite",
 ]
 
 [[package]]
@@ -2765,26 +2765,6 @@ dependencies = [
 
 [[package]]
 name = "tungstenite"
-version = "0.18.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "30ee6ab729cd4cf0fd55218530c4522ed30b7b6081752839b68fcec8d0960788"
-dependencies = [
- "base64 0.13.1",
- "byteorder",
- "bytes",
- "http",
- "httparse",
- "log",
- "native-tls",
- "rand",
- "sha1",
- "thiserror",
- "url",
- "utf-8",
-]
-
-[[package]]
-name = "tungstenite"
 version = "0.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9e3dac10fd62eaf6617d3a904ae222845979aec67c615d1c842b4002c7666fb9"
@@ -2795,6 +2775,7 @@ dependencies = [
  "http",
  "httparse",
  "log",
+ "native-tls",
  "rand",
  "sha1",
  "thiserror",
@@ -3015,9 +2996,9 @@ checksum = "7ab9b36309365056cd639da3134bf87fa8f3d86008abf99e612384a6eecd459f"
 
 [[package]]
 name = "web-sys"
-version = "0.3.65"
+version = "0.3.66"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5db499c5f66323272151db0e666cd34f78617522fb0c1604d31a27c50c206a85"
+checksum = "50c24a44ec86bb68fbecd1b3efed7e85ea5621b39b35ef2766b66cd984f8010f"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
@@ -3042,8 +3023,8 @@ dependencies = [
 
 [[package]]
 name = "webex"
-version = "0.9.0"
-source = "git+https://github.com/sgrimee/webex-rust.git?branch=master#9be9741a34f82d2bcfe184d05ac37cf398859115"
+version = "0.9.1"
+source = "git+https://github.com/sgrimee/webex-rust.git?rev=dd6e6ebcfcf301a2e560f4c395453cbfbe077d04#dd6e6ebcfcf301a2e560f4c395453cbfbe077d04"
 dependencies = [
  "async-std",
  "base64 0.21.5",
@@ -3062,7 +3043,7 @@ dependencies = [
  "tokio",
  "tokio-native-tls",
  "tokio-tungstenite",
- "tungstenite 0.20.1",
+ "tungstenite",
  "url",
  "uuid",
 ]

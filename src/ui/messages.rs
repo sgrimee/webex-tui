@@ -159,12 +159,15 @@ fn row_for_message<'a>(msg: Message, width: u16) -> (Row<'a>, usize) {
 /// Draws a table containing the formatted messages for the active room.
 /// Also returns the number or messages(rows) in the table and the number of text lines.
 pub(crate) fn draw_msg_table<'a>(state: &AppState, rect: &Rect) -> (Table<'a>, usize, usize) {
-    let mut title = "No selected room";
+    let mut title = String::from("No selected room");
     let mut rows = Vec::<Row>::new();
 
     let mut nb_lines = 0;
     if let Some(room) = state.active_room() {
-        title = room.title().unwrap_or("Untitled room");
+        title = state
+            .cache
+            .room_title_with_team_name(room.id())
+            .unwrap_or("Unknown room".to_string());
         rows = state
             .cache
             .messages_in_room(room.id())

@@ -26,7 +26,7 @@ impl Rooms {
     }
 
     /// Adds a `RoomId` to the set of requested room
-    pub(crate) fn add_requested_room(&mut self, room_id: RoomId) {
+    pub(crate) fn add_requested(&mut self, room_id: RoomId) {
         self.requested_rooms.insert(room_id);
     }
 

@@ -33,9 +33,9 @@ tokio = { version = "1.29.1", features = ["rt", "macros"] }
 tui-logger = "0.10.0"
 tui-textarea = "0.4.0"
 webbrowser = "0.8.11"
-# webex = "0.9.0"
+# webex = "0.9.1"
 # webex = { path = "../vendor/webex-rust" }
-webex = { git = "https://github.com/sgrimee/webex-rust.git", branch = "master" }
+webex = { git = "https://github.com/sgrimee/webex-rust.git", rev = "dd6e6ebcfcf301a2e560f4c395453cbfbe077d04" }
 
 [dev-dependencies]
 rstest = "0.18.2"

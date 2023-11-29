@@ -13,10 +13,12 @@ pub(crate) mod room;
 pub(crate) mod room_content;
 pub(crate) mod room_list_filter;
 pub(crate) mod rooms;
+pub(crate) mod teams;
 
 use self::room_content::RoomContent;
 use room::RoomId;
 use rooms::Rooms;
+use teams::Teams;
 
 pub(crate) type MessageId = String;
 
@@ -30,6 +32,7 @@ pub(crate) type MessageId = String;
 pub(crate) struct Cache {
     pub(crate) rooms_info: Rooms,
     rooms_content: HashMap<RoomId, RoomContent>,
+    pub(crate) teams: Teams,
 }
 
 impl Cache {
@@ -97,6 +100,25 @@ impl Cache {
             .get(room_id)
             .ok_or(eyre!("Room {} not found", index))?
             .nth_message(index)
+    }
+
+    /// Returns a title for the given room, including the room title and the team name if any.
+    pub(crate) fn room_title_with_team_name(&self, room_id: &RoomId) -> Result<String> {
+        let room = self
+            .rooms_info
+            .room_with_id(room_id)
+            .ok_or(eyre!("Room not found"))?;
+        let room_title = room.title().unwrap_or("No room title");
+        let team_name = room.team_id().and_then(|team_id| {
+            self.teams
+                .team_with_id(team_id)
+                .and_then(|team| team.name.clone())
+        });
+        Ok(match team_name {
+            None => room_title.to_string(),
+            Some(team_name) if team_name == room_title => format!("General ({})", team_name),
+            Some(team_name) => format!("{} ({})", room_title, team_name),
+        })
     }
 }
 
