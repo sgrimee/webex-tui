@@ -10,11 +10,13 @@ use webex::Message;
 
 pub(crate) mod msg_thread;
 pub(crate) mod room;
+pub(crate) mod room_and_team_title;
 pub(crate) mod room_content;
 pub(crate) mod room_list_filter;
 pub(crate) mod rooms;
 pub(crate) mod teams;
 
+use self::room_and_team_title::RoomAndTeamTitle;
 use self::room_content::RoomContent;
 use room::RoomId;
 use rooms::Rooms;
@@ -102,28 +104,40 @@ impl Cache {
             .nth_message(index)
     }
 
-    /// Returns a title for the given room, including the room title and the team name if any.
-    pub(crate) fn room_title_with_team_name(&self, room_id: &RoomId) -> Result<String> {
+    /// Returns a tuple with the title of the room and the team name if any.
+    ///
+    /// If the room is not found, returns an error.
+    /// If the room has no title, returns "No room title" and no team name.
+    /// If the room title is the same as the team name, returns "General" and the team name.
+    /// If the room title is different from the team name, returns the room title and the team name.
+    /// If the room has no team, returns the room title and no team name.
+    pub(crate) fn room_and_team_title(&self, room_id: &RoomId) -> Result<RoomAndTeamTitle> {
         let room = self
             .rooms_info
             .room_with_id(room_id)
             .ok_or(eyre!("Room not found"))?;
-        let room_title = room.title().unwrap_or("No room title");
-        let team_name = room.team_id().and_then(|team_id| {
+        let room_title = room.title.clone().unwrap_or(String::from("No room title"));
+        let team_name = room.team_id.clone().and_then(|team_id| {
             self.teams
-                .team_with_id(team_id)
+                .team_with_id(&team_id)
                 .and_then(|team| team.name.clone())
         });
-        Ok(match team_name {
-            None => room_title.to_string(),
-            Some(team_name) if team_name == room_title => format!("General ({})", team_name),
-            Some(team_name) => format!("{} ({})", room_title, team_name),
+        let (room_title, team_name) = match team_name {
+            None => (room_title.to_string(), None),
+            Some(team_name) if team_name == room_title => ("General".to_string(), Some(team_name)),
+            Some(team_name) => (room_title.to_string(), Some(team_name)),
+        };
+        Ok(RoomAndTeamTitle {
+            room_title,
+            team_name,
         })
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::app::cache::room::Room;
+
     use super::*;
 
     fn make_message(id: &str, room_id: &str, parent_id: Option<&str>) -> Message {
@@ -179,5 +193,64 @@ mod tests {
         for (i, msg) in store.messages_in_room(&room_id).enumerate() {
             assert_eq!(&expected[i], msg.id.as_ref().unwrap());
         }
+    }
+
+    #[test]
+    fn test_room_title_and_team_name() {
+        const TEAM_ID: &str = "some_new_team_id";
+        const TEAM_NAME: &str = "Team name";
+        let mut store = Cache::default();
+        let team = webex::Team {
+            id: TEAM_ID.into(),
+            name: Some(TEAM_NAME.into()),
+            created: "2020-01-01T00:00:00.000Z".to_string(),
+            description: None,
+        };
+        store.teams.add(team);
+
+        // Non-General room in a team
+        store.rooms_info.update_with_room(&Room {
+            id: String::from("room1"),
+            title: Some(String::from("room1 title")),
+            team_id: Some(TEAM_ID.into()),
+            ..Default::default()
+        });
+        assert_eq!(
+            store.room_and_team_title(&String::from("room1")).unwrap(),
+            RoomAndTeamTitle {
+                room_title: String::from("room1 title"),
+                team_name: Some(String::from("Team name"))
+            }
+        );
+
+        // General room in a team
+        store.rooms_info.update_with_room(&Room {
+            id: String::from("room2"),
+            title: Some(TEAM_NAME.into()),
+            team_id: Some(TEAM_ID.into()),
+            ..Default::default()
+        });
+        assert_eq!(
+            store.room_and_team_title(&String::from("room2")).unwrap(),
+            RoomAndTeamTitle {
+                room_title: String::from("General"),
+                team_name: Some(String::from("Team name"))
+            }
+        );
+
+        // Room with no team
+        store.rooms_info.update_with_room(&Room {
+            id: String::from("room3"),
+            title: Some(String::from("room3 title")),
+            team_id: None,
+            ..Default::default()
+        });
+        assert_eq!(
+            store.room_and_team_title(&String::from("room3")).unwrap(),
+            RoomAndTeamTitle {
+                room_title: String::from("room3 title"),
+                team_name: None
+            }
+        );
     }
 }

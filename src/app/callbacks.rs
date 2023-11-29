@@ -84,7 +84,7 @@ impl App<'_> {
         self.state
             .cache
             .rooms_info
-            .update_with_webex_room(webex_room);
+            .update_with_room(&webex_room.into());
         self.state.update_selection_with_active_room();
 
         // If the webex_room has a team_id, and the team is not already requested, request it and add it to the list of requested teams.

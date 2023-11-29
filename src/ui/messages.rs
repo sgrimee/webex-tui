@@ -25,6 +25,8 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use textwrap::fill;
 
+use super::style::line_for_room_and_team_title;
+
 /// Assigns a color/style to each message sender, spreading over the palette
 /// while ensuring each user always gets the same style for consistency.
 fn style_for_user(id: &Option<String>) -> Style {
@@ -159,18 +161,21 @@ fn row_for_message<'a>(msg: Message, width: u16) -> (Row<'a>, usize) {
 /// Draws a table containing the formatted messages for the active room.
 /// Also returns the number or messages(rows) in the table and the number of text lines.
 pub(crate) fn draw_msg_table<'a>(state: &AppState, rect: &Rect) -> (Table<'a>, usize, usize) {
-    let mut title = String::from("No selected room");
+    let mut title_line = Line::from("No selected room");
     let mut rows = Vec::<Row>::new();
 
     let mut nb_lines = 0;
     if let Some(room) = state.active_room() {
-        title = state
+        // get the formatted title for the room
+        let ratt = state
             .cache
-            .room_title_with_team_name(room.id())
-            .unwrap_or("Unknown room".to_string());
+            .room_and_team_title(&room.id)
+            .unwrap_or_default();
+        title_line = line_for_room_and_team_title(ratt, room.unread);
+
         rows = state
             .cache
-            .messages_in_room(room.id())
+            .messages_in_room(&room.id)
             .map(|msg| {
                 let (row, height) = row_for_message(msg.clone(), rect.width - 2);
                 nb_lines += height;
@@ -190,7 +195,7 @@ pub(crate) fn draw_msg_table<'a>(state: &AppState, rect: &Rect) -> (Table<'a>, u
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .border_style(border_style)
-        .title(title.to_string());
+        .title(title_line);
 
     (
         Table::new(rows)

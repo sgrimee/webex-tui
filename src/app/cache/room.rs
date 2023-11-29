@@ -1,23 +1,21 @@
 use chrono::{DateTime, Duration, Utc};
 use webex::Room as WebexRoom;
 
-use super::teams::TeamId;
-
 pub(crate) type RoomId = String;
 
 /// `Room` is a wrapper around the webex Room type, adding some extra information.
 
-#[derive(Default, Debug)]
+#[derive(Clone, Default, Debug)]
 pub(crate) struct Room {
-    id: String,
-    title: Option<String>,
-    room_type: String,
+    pub(crate) id: String,
+    pub(crate) title: Option<String>,
+    pub(crate) room_type: String,
     // is_locked: bool,
-    team_id: Option<String>,
-    last_activity: DateTime<Utc>,
+    pub(crate) team_id: Option<String>,
+    pub(crate) last_activity: DateTime<Utc>,
     // creator_id: String,
     // created: String,
-    unread: bool,
+    pub(crate) unread: bool,
 }
 
 impl Room {
@@ -31,34 +29,10 @@ impl Room {
         self.room_type == "group"
     }
 
-    pub(crate) fn id(&self) -> &RoomId {
-        &self.id
-    }
-
-    pub(crate) fn title(&self) -> Option<&str> {
-        self.title.as_deref()
-    }
-
-    pub(crate) fn team_id(&self) -> Option<&TeamId> {
-        self.team_id.as_ref()
-    }
-
-    pub(crate) fn last_activity(&self) -> DateTime<Utc> {
-        self.last_activity
-    }
-
-    pub(crate) fn unread(&self) -> bool {
-        self.unread
-    }
-
-    pub(crate) fn set_unread(&mut self, unread: bool) {
-        self.unread = unread;
-    }
-
     /// Returns whether the room has seen any activity in the past specified period.
     /// Panics if room is not known.
     pub(crate) fn has_activity_since(&self, duration: Duration) -> bool {
-        self.last_activity() > (Utc::now() - duration)
+        self.last_activity > (Utc::now() - duration)
     }
 
     /// Updates the last activity of the room if the new activity is more recent.

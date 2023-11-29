@@ -1,14 +1,13 @@
-// ui/rooms.rs
-
 //! Panel with a list of rooms
 
 use crate::app::state::{ActivePane, AppState};
 
 use ratatui::layout::Constraint;
 use ratatui::style::{Color, Modifier, Style};
-use ratatui::text::Span;
 use ratatui::widgets::block::{Block, BorderType};
 use ratatui::widgets::{Borders, Cell, Row, Table};
+
+use super::style::line_for_room_and_team_title;
 
 pub(crate) const ROOMS_LIST_WIDTH: u16 = 32;
 
@@ -29,17 +28,12 @@ pub(crate) fn draw_rooms_table<'a>(state: &AppState) -> Table<'a> {
         .rooms_info
         .rooms_filtered_by(state.rooms_list.filter())
         .map(|room| {
-            let mut style = Style::default();
-            if room.unread() {
-                style = style.fg(Color::LightBlue).add_modifier(Modifier::BOLD);
-            }
-            Row::new(vec![Cell::from(Span::styled(
-                state
-                    .cache
-                    .room_title_with_team_name(room.id())
-                    .unwrap_or(String::from("Unknown room")),
-                style,
-            ))])
+            let ratt = state
+                .cache
+                .room_and_team_title(&room.id)
+                .unwrap_or_default();
+            let line = line_for_room_and_team_title(ratt, room.unread);
+            Row::new(vec![Cell::from(line)])
         })
         .collect();
     Table::new(items)

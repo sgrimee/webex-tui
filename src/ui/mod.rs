@@ -12,6 +12,7 @@ mod logs;
 mod message_editor;
 mod messages;
 mod rooms;
+mod style;
 mod title;
 
 use crate::app::state::AppState;

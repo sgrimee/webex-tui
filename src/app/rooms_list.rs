@@ -54,7 +54,7 @@ impl RoomsList {
     /// Returns the id of the selected room if there is one.
     pub(crate) fn id_of_selected(&self, rooms: &[&Room]) -> Option<RoomId> {
         let id = match self.table_state.selected() {
-            Some(selected) => rooms.get(selected).map(|room| room.id().to_owned()),
+            Some(selected) => rooms.get(selected).map(|room| room.id.clone()),
             None => None,
         };
         id

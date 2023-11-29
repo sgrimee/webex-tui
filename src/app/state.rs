@@ -93,7 +93,7 @@ impl AppState<'_> {
     /// This is useful after the number or order of items in the list changes.
     pub(crate) fn update_selection_with_active_room(&mut self) {
         if let Some(id) = self.rooms_list.active_room_id() {
-            let pos_option = self.visible_rooms().position(|room| room.id() == id);
+            let pos_option = self.visible_rooms().position(|room| room.id == *id);
             if let Some(position) = pos_option {
                 self.rooms_list.table_state_mut().select(Some(position))
             }

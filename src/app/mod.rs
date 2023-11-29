@@ -175,8 +175,6 @@ impl App<'_> {
             .state
             .active_room()
             .ok_or(eyre!("Cannot send message, no room selected."))?;
-        let room_id = room.id().clone();
-
         let lines = self.state.message_editor.lines().to_vec();
         if let Some(msg_to_edit) = self.state.message_editor.editing_of() {
             // Editing a message
@@ -185,7 +183,7 @@ impl App<'_> {
                 .clone()
                 .ok_or(eyre!("Cannot edit message without id"))?;
             let new_text = lines.join("\n");
-            self.dispatch_to_teams(AppCmdEvent::EditMessage(msg_id, room_id.clone(), new_text));
+            self.dispatch_to_teams(AppCmdEvent::EditMessage(msg_id, room.id.clone(), new_text));
         } else {
             let msg_to_send = match self.state.message_editor.response_to() {
                 Some(orig_msg) => {
@@ -196,16 +194,16 @@ impl App<'_> {
                 }
                 None => webex::types::MessageOut {
                     // Sending a new message
-                    room_id: Some(room_id.clone()),
+                    room_id: Some(room.id.clone()),
                     text: Some(lines.join("\n")),
                     ..Default::default()
                 },
             };
             self.dispatch_to_teams(AppCmdEvent::SendMessage(msg_to_send));
         }
-        debug!("Sending message to room {:?}", room.title());
+        debug!("Sending message to room {:?}", room.title);
+        self.state.cache.rooms_info.mark_read(&room.id.clone());
         self.state.message_editor.reset();
-        self.state.cache.rooms_info.mark_read(&room_id);
         self.state.messages_list.deselect();
         Ok(())
     }
