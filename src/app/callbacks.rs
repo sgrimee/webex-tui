@@ -60,6 +60,8 @@ impl App<'_> {
                 error!("Error adding received message to store: {}", err);
             }
         }
+        // If the room is the active one, maintain the selection if the room order changes.
+        self.state.update_selection_with_active_room();
         // TODO: use events for room updates. He we just request it once.
         // If the room doesn't exist, request room info and add it to the list of requested rooms.
         if !self
