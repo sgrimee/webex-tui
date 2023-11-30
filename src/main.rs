@@ -41,6 +41,7 @@ async fn main() -> Result<()> {
     setup_logger(); // only for tui mode
 
     println!("{}", BANNER);
+    println!("Starting webex-tui, version {}.", env!("CARGO_PKG_VERSION"));
 
     // Read configuration or prompt for integration details
     let credentials = get_credentials()?;
