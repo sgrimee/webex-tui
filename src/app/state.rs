@@ -6,7 +6,7 @@ use color_eyre::{eyre::eyre, Result};
 use enum_iterator::{next_cycle, Sequence};
 use itertools::concat;
 use log::*;
-use webex::{Message, Person};
+use webex::Message;
 
 use super::actions::{Action, Actions};
 use super::cache::room::{Room, RoomId};
@@ -28,15 +28,14 @@ pub(crate) struct AppState<'a> {
 
     // Webex
     pub(crate) cache: Cache,
-    pub(crate) me: Option<webex::Person>,
 
     // UI
-    pub(crate) show_logs: bool,
-    pub(crate) show_help: bool,
-    pub(crate) rooms_list: RoomsList,
-    pub(crate) messages_list: MessagesList,
+    pub(crate) active_pane: Option<ActivePane>,
     pub(crate) message_editor: MessageEditor<'a>,
-    active_pane: Option<ActivePane>,
+    pub(crate) messages_list: MessagesList,
+    pub(crate) rooms_list: RoomsList,
+    pub(crate) show_help: bool,
+    pub(crate) show_logs: bool,
 }
 
 /// The active pane is used by the UI to draw attention to what
@@ -223,24 +222,10 @@ impl AppState<'_> {
         self.cache.nth_message_in_room(index, &room_id)
     }
 
-    /// Sets the user of the app, used to filter its own messages.
-    pub(crate) fn set_me(&mut self, me: Person) {
-        self.me = Some(me);
-    }
-
-    /// Returns true if me is not None, person_id is not None and person_id equals me.
-    /// Returns false if they are different or either is None.
-    pub(crate) fn is_me(&self, person_id: &Option<String>) -> bool {
-        match (&self.me, person_id) {
-            (Some(me), Some(id)) => me.id.eq(id),
-            _ => false,
-        }
-    }
-
     /// Returns true if the selected message is from me.
     pub(crate) fn selected_message_is_from_me(&self) -> Result<bool> {
         let message = self.selected_message()?;
-        Ok(self.is_me(&message.person_id))
+        Ok(self.cache.is_me(&message.person_id))
     }
 }
 
@@ -248,16 +233,14 @@ impl Default for AppState<'_> {
     fn default() -> Self {
         AppState {
             actions: vec![Action::Quit, Action::ToggleHelp, Action::ToggleLogs].into(),
-            is_loading: false,
-
-            cache: Cache::default(),
-            me: None,
-            show_logs: false,
-            show_help: true,
-            rooms_list: RoomsList::default(),
-            messages_list: MessagesList::new(),
-            message_editor: MessageEditor::default(),
             active_pane: None,
+            cache: Cache::default(),
+            is_loading: false,
+            message_editor: MessageEditor::default(),
+            messages_list: MessagesList::new(),
+            rooms_list: RoomsList::default(),
+            show_help: true,
+            show_logs: false,
         }
     }
 }

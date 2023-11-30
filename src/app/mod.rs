@@ -215,7 +215,7 @@ impl App<'_> {
         let room_id = self.state.id_of_selected_room().unwrap();
 
         // Ensure we attempt to delete only our own messages
-        if !self.state.is_me(&message.person_id) {
+        if !self.state.cache.is_me(&message.person_id) {
             return Err(eyre!("Cannot delete message, it was not authored by self"));
         }
 
@@ -244,7 +244,7 @@ impl App<'_> {
     fn edit_selected_message(&mut self) -> Result<()> {
         let message = self.state.selected_message()?.clone();
         // return an error if the message is not from self
-        if !self.state.is_me(&message.person_id) {
+        if !self.state.cache.is_me(&message.person_id) {
             return Err(eyre!("Cannot edit message, it was not authored by self"));
         }
 

@@ -6,7 +6,7 @@ use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
 use color_eyre::{eyre::eyre, Result};
-use webex::Message;
+use webex::{Message, Person};
 
 pub(crate) mod msg_thread;
 pub(crate) mod room;
@@ -35,9 +35,24 @@ pub(crate) struct Cache {
     pub(crate) rooms_info: Rooms,
     rooms_content: HashMap<RoomId, RoomContent>,
     pub(crate) teams: Teams,
+    pub(crate) me: Option<webex::Person>,
 }
 
 impl Cache {
+    /// Sets the user of the app, used to filter its own messages.
+    pub(crate) fn set_me(&mut self, me: Person) {
+        self.me = Some(me);
+    }
+
+    /// Returns true if me is not None, person_id is not None and person_id equals me.
+    /// Returns false if they are different or either is None.
+    pub(crate) fn is_me(&self, person_id: &Option<String>) -> bool {
+        match (&self.me, person_id) {
+            (Some(me), Some(id)) => me.id.eq(id),
+            _ => false,
+        }
+    }
+
     /// Adds a message to the store, respecting the thread order.
     pub(crate) fn add_message(&mut self, msg: &Message) -> Result<()> {
         let room_id = msg.room_id.clone().ok_or(eyre!("message has no room id"))?;
