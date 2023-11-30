@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 This project tries to follow semantic versioning.
 
-## [unreleased]
+## [0.4.6] - 2023-11-30
 
 ### Bug Fixes
 
