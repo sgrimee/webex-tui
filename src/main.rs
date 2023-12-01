@@ -9,12 +9,14 @@ mod teams;
 mod tui;
 mod ui;
 
+use crate::logger::{crate_modules, setup_logger};
 use app::{App, AppReturn};
 use banner::BANNER;
+use clap::{arg, command, value_parser};
 use config::ClientConfig;
-use crate::logger::{crate_modules, setup_logger};
 use inputs::handler::Event;
 use log::LevelFilter;
+// use std::path::PathBuf;
 use teams::app_handler::AppCmdEvent;
 use teams::auth::get_integration_token;
 use teams::ClientCredentials;
@@ -37,9 +39,36 @@ fn get_credentials() -> Result<ClientCredentials> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Parse command line arguments
+    let matches = command!()
+        .before_help(BANNER)
+        .after_help(
+          "Your webex Client ID and Client Secret are stored in $HOME/.config/webex-tui/client.yml",
+        )
+        // .arg(
+        //     arg!(
+        //     -c --config <FILE> "Specify configuration file path."
+        //     )
+        //     .required(false)
+        //     .value_parser(value_parser!(PathBuf)),
+        // )
+        .arg(arg!(
+            -d --debug ... "Show debug logging. Use twice for trace level."
+        ))
+        .get_matches();
+
     // Setup logging.
     color_eyre::install()?;
-    setup_logger(LevelFilter::Info, crate_modules(), LevelFilter::Info); // only for tui mode
+    let log_level = match matches
+        .get_one::<u8>("debug")
+        .expect("Count's are defaulted")
+    {
+        0 => LevelFilter::Info,
+        1 => LevelFilter::Debug,
+        2 => LevelFilter::Trace,
+        _ => LevelFilter::Trace,
+    };
+    setup_logger(log_level, crate_modules(), LevelFilter::Info); // only for tui mode
     println!("{}", BANNER);
     println!("Starting webex-tui, version {}.", env!("CARGO_PKG_VERSION"));
 

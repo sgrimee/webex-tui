@@ -62,7 +62,7 @@ impl Action {
             Action::LogSelectNextTarget => &[Key::Down],
             Action::LogSelectPreviousTarget => &[Key::Up],
             Action::LogToggleFilteredTargets => &[Key::Char(' ')],
-            Action::LogToggleTargetSelector => &[Key::Char('/')],
+            Action::LogToggleTargetSelector => &[Key::Char('h')],
             Action::MarkRead => &[Key::Char('r')],
             Action::NextMessage => &[Key::Down],
             Action::NextPane => &[Key::Tab],
@@ -75,7 +75,7 @@ impl Action {
             Action::Quit => &[Key::Ctrl('c'), Key::Char('q')],
             Action::RespondMessage => &[Key::Char('r')],
             Action::SendMessage => &[],
-            Action::ToggleHelp => &[Key::Char('h')],
+            Action::ToggleHelp => &[Key::Char('?')],
             Action::ToggleLogs => &[Key::Char('l')],
             Action::UnselectMessage => &[Key::Esc],
         }
