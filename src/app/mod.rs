@@ -20,6 +20,7 @@ use cache::room::RoomId;
 use color_eyre::{eyre::eyre, Result};
 use crossterm::event::KeyEvent;
 use log::*;
+use tui_logger::TuiWidgetEvent;
 use tui_textarea::Input;
 
 /// Return status indicating whether the app should exit or not.
@@ -81,12 +82,59 @@ impl App<'_> {
                     self.state.message_editor.set_is_composing(true);
                     self.state.set_active_pane(Some(ActivePane::Compose));
                 }
+                Action::EndComposeMessage => {
+                    self.state.message_editor.set_is_composing(false);
+                    self.state.set_active_pane(Some(ActivePane::Messages));
+                }
+                Action::LogExitPageMode => {
+                    self.state.log_state.transition(&TuiWidgetEvent::EscapeKey);
+                }
+                Action::LogFocusSelectedTarget => {
+                    self.state.log_state.transition(&TuiWidgetEvent::FocusKey);
+                }
+                Action::LogIncreaseCapturedOneLevel => {
+                    self.state.log_state.transition(&TuiWidgetEvent::PlusKey);
+                }
+                Action::LogIncreaseShownOneLevel => {
+                    self.state.log_state.transition(&TuiWidgetEvent::RightKey);
+                }
+                Action::LogPageDown => {
+                    self.state
+                        .log_state
+                        .transition(&TuiWidgetEvent::NextPageKey);
+                }
+                Action::LogPageUp => {
+                    self.state
+                        .log_state
+                        .transition(&TuiWidgetEvent::PrevPageKey);
+                }
+                Action::LogReduceCapturedOneLevel => {
+                    self.state.log_state.transition(&TuiWidgetEvent::MinusKey);
+                }
+                Action::LogReduceShownOneLevel => {
+                    self.state.log_state.transition(&TuiWidgetEvent::LeftKey);
+                }
+                Action::LogSelectNextTarget => {
+                    self.state.log_state.transition(&TuiWidgetEvent::DownKey);
+                }
+                Action::LogSelectPreviousTarget => {
+                    self.state.log_state.transition(&TuiWidgetEvent::UpKey);
+                }
+                Action::LogToggleFilteredTargets => {
+                    self.state.log_state.transition(&TuiWidgetEvent::SpaceKey);
+                }
+                Action::LogToggleTargetSelector => {
+                    self.state.log_state.transition(&TuiWidgetEvent::HideKey);
+                }
                 Action::MarkRead => {
                     self.state.mark_active_read();
                     self.next_room();
                 }
                 Action::NextPane => {
-                    self.state.cycle_active_pane();
+                    self.state.next_active_pane();
+                }
+                Action::PreviousPane => {
+                    self.state.previous_active_pane();
                 }
                 Action::NextRoomFilter => {
                     self.next_filtering_mode();
@@ -109,6 +157,9 @@ impl App<'_> {
                 }
                 Action::ToggleLogs => {
                     self.state.show_logs = !self.state.show_logs;
+                    if !self.state.show_logs && self.state.active_pane == Some(ActivePane::Logs) {
+                        self.state.next_active_pane();
+                    }
                 }
                 Action::ToggleHelp => {
                     self.state.show_help = !self.state.show_help;
@@ -127,9 +178,6 @@ impl App<'_> {
                 }
                 Action::UnselectMessage => {
                     self.state.messages_list.deselect();
-                }
-                _ => {
-                    warn!("Unsupported action {} in this context", action);
                 }
             }
         } else {

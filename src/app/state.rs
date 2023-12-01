@@ -1,11 +1,11 @@
-// app/state.rs
-
 //! State of the application
 
 use color_eyre::{eyre::eyre, Result};
-use enum_iterator::{next_cycle, Sequence};
+use enum_iterator::{next_cycle, previous_cycle, Sequence};
 use itertools::concat;
 use log::*;
+use ratatui::layout::Rect;
+use tui_logger::TuiWidgetState;
 use webex::Message;
 
 use super::actions::{Action, Actions};
@@ -31,6 +31,8 @@ pub(crate) struct AppState<'a> {
 
     // UI
     pub(crate) active_pane: Option<ActivePane>,
+    pub(crate) last_frame_size: Rect,
+    pub(crate) log_state: TuiWidgetState,
     pub(crate) message_editor: MessageEditor<'a>,
     pub(crate) messages_list: MessagesList,
     pub(crate) rooms_list: RoomsList,
@@ -49,6 +51,8 @@ pub(crate) enum ActivePane {
     Messages,
     /// The text editor when composing a message
     Compose,
+    /// Configurable logs output
+    Logs,
 }
 
 impl AppState<'_> {
@@ -135,6 +139,9 @@ impl AppState<'_> {
                     Action::EndComposeMessage,
                     Action::SendMessage,
                     Action::NextPane,
+                    Action::PreviousPane,
+                    Action::ToggleHelp,
+                    Action::ToggleLogs,
                     Action::Quit,
                 ]
             }
@@ -156,6 +163,7 @@ impl AppState<'_> {
                 }
                 actions.extend(vec![
                     Action::NextPane,
+                    Action::PreviousPane,
                     Action::ToggleHelp,
                     Action::ToggleLogs,
                     Action::Quit,
@@ -169,6 +177,7 @@ impl AppState<'_> {
                     Action::NextRoomFilter,
                     Action::PreviousRoomFilter,
                     Action::NextPane,
+                    Action::PreviousPane,
                     Action::ToggleHelp,
                     Action::ToggleLogs,
                     Action::Quit,
@@ -183,6 +192,27 @@ impl AppState<'_> {
                     false => common_actions,
                 }
             }
+            Some(ActivePane::Logs) => {
+                vec![
+                    Action::LogToggleTargetSelector,
+                    Action::LogSelectNextTarget,
+                    Action::LogSelectPreviousTarget,
+                    Action::LogFocusSelectedTarget,
+                    Action::LogIncreaseCapturedOneLevel,
+                    Action::LogReduceCapturedOneLevel,
+                    Action::LogIncreaseShownOneLevel,
+                    Action::LogReduceShownOneLevel,
+                    Action::LogPageUp,
+                    Action::LogPageDown,
+                    Action::LogExitPageMode,
+                    Action::LogToggleFilteredTargets,
+                    Action::NextPane,
+                    Action::PreviousPane,
+                    Action::ToggleHelp,
+                    Action::ToggleLogs,
+                    Action::Quit,
+                ]
+            }
             None => {
                 vec![Action::ToggleHelp, Action::ToggleLogs, Action::Quit]
             }
@@ -190,9 +220,9 @@ impl AppState<'_> {
         self.actions = actions.into();
     }
 
-    /// Cycles between the room selection and message selection panes.
+    /// Selects the next active pane in a cycle.
     /// The message compose pane is skipped.
-    pub(crate) fn cycle_active_pane(&mut self) {
+    pub(crate) fn next_active_pane(&mut self) {
         match self.active_pane() {
             None => self.set_active_pane(Some(ActivePane::default())),
             Some(active_pane) => {
@@ -201,7 +231,31 @@ impl AppState<'_> {
                 if next_pane == ActivePane::Compose {
                     next_pane = next_cycle(&next_pane).unwrap_or_default();
                 };
+                // Skip the logs pane if not enabled
+                if next_pane == ActivePane::Logs && !self.show_logs {
+                    next_pane = next_cycle(&next_pane).unwrap_or_default();
+                };
                 self.set_active_pane(Some(next_pane))
+            }
+        }
+    }
+
+    /// Selects the previous active pane in a cycle.
+    /// The message compose pane is skipped.
+    pub(crate) fn previous_active_pane(&mut self) {
+        match self.active_pane() {
+            None => self.set_active_pane(Some(ActivePane::default())),
+            Some(active_pane) => {
+                let mut previous_pane = previous_cycle(active_pane).unwrap_or_default();
+                // Skip the message compose pane
+                if previous_pane == ActivePane::Compose {
+                    previous_pane = previous_cycle(&previous_pane).unwrap_or_default();
+                };
+                // Skip the logs pane if not enabled
+                if previous_pane == ActivePane::Logs && !self.show_logs {
+                    previous_pane = previous_cycle(&previous_pane).unwrap_or_default();
+                };
+                self.set_active_pane(Some(previous_pane))
             }
         }
     }
@@ -231,11 +285,15 @@ impl AppState<'_> {
 
 impl Default for AppState<'_> {
     fn default() -> Self {
+        let mut log_state = TuiWidgetState::default();
+        log_state.transition(&tui_logger::TuiWidgetEvent::HideKey);
         AppState {
             actions: vec![Action::Quit, Action::ToggleHelp, Action::ToggleLogs].into(),
             active_pane: None,
             cache: Cache::default(),
             is_loading: false,
+            last_frame_size: Rect::new(0, 0, 0, 0),
+            log_state,
             message_editor: MessageEditor::default(),
             messages_list: MessagesList::new(),
             rooms_list: RoomsList::default(),

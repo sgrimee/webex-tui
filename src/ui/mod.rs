@@ -17,7 +17,7 @@ mod title;
 
 use crate::app::state::AppState;
 use help::{draw_help, HELP_WIDTH};
-use logs::{draw_logs, LOG_BLOCK_HEIGHT};
+use logs::{draw_logs, LOG_BLOCK_PERCENTAGE};
 use message_editor::{draw_message_editor, MSG_INPUT_BLOCK_HEIGHT};
 use messages::{draw_msg_table, ACTIVE_ROOM_MIN_WIDTH, ROOM_MIN_HEIGHT};
 use rooms::{draw_rooms_table, ROOMS_LIST_WIDTH};
@@ -26,14 +26,18 @@ use title::{draw_title, TITLE_BLOCK_HEIGHT};
 /// Render all blocks.
 pub(crate) fn render(rect: &mut Frame, state: &mut AppState) {
     let size = rect.size();
-    check_size(&size, state);
+    // Check size constraints when the size changes
+    if size != state.last_frame_size {
+        check_size(&size, state);
+        state.last_frame_size = size;
+    }
 
     let mut app_constraints = vec![
         Constraint::Length(TITLE_BLOCK_HEIGHT),
         Constraint::Min(ROOM_MIN_HEIGHT + MSG_INPUT_BLOCK_HEIGHT),
     ];
     if state.show_logs {
-        app_constraints.push(Constraint::Length(LOG_BLOCK_HEIGHT));
+        app_constraints.push(Constraint::Percentage(LOG_BLOCK_PERCENTAGE));
     }
 
     // Vertical layout
@@ -104,7 +108,7 @@ pub(crate) fn render(rect: &mut Frame, state: &mut AppState) {
 
     // Logs
     if state.show_logs {
-        let logs = draw_logs();
+        let logs = draw_logs(state);
         rect.render_widget(logs, app_rows[2]);
     }
 
@@ -124,10 +128,7 @@ fn check_size(rect: &Rect, state: &AppState) {
         warn!("Require width >= {}, (got {})", min_width, rect.width);
     }
 
-    let mut min_height = TITLE_BLOCK_HEIGHT + ROOM_MIN_HEIGHT + MSG_INPUT_BLOCK_HEIGHT;
-    if state.show_logs {
-        min_height += LOG_BLOCK_HEIGHT
-    };
+    let min_height = TITLE_BLOCK_HEIGHT + ROOM_MIN_HEIGHT + MSG_INPUT_BLOCK_HEIGHT;
     if rect.height < min_height {
         warn!("Require height >= {}, (got {})", min_height, rect.height);
     }

@@ -12,7 +12,9 @@ mod ui;
 use app::{App, AppReturn};
 use banner::BANNER;
 use config::ClientConfig;
+use crate::logger::{crate_modules, setup_logger};
 use inputs::handler::Event;
+use log::LevelFilter;
 use teams::app_handler::AppCmdEvent;
 use teams::auth::get_integration_token;
 use teams::ClientCredentials;
@@ -20,7 +22,6 @@ use teams::Teams;
 use tui::Tui;
 
 use color_eyre::eyre::Result;
-use logger::setup_logger;
 use std::sync::Arc;
 
 /// Retrieve credentials from config file, interactively guiding the user
@@ -38,8 +39,7 @@ fn get_credentials() -> Result<ClientCredentials> {
 async fn main() -> Result<()> {
     // Setup logging.
     color_eyre::install()?;
-    setup_logger(); // only for tui mode
-
+    setup_logger(LevelFilter::Info, crate_modules(), LevelFilter::Info); // only for tui mode
     println!("{}", BANNER);
     println!("Starting webex-tui, version {}.", env!("CARGO_PKG_VERSION"));
 
