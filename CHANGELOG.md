@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 This project tries to follow semantic versioning.
 
+## [0.5.0] - 2023-12-04
+
+### Features
+
+- Live log configuration
+- Define log level on command line
+
 ## [0.4.6] - 2023-11-30
 
 ### Bug Fixes
