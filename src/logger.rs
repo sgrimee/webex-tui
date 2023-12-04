@@ -1,23 +1,42 @@
 // logger.rs
 
 use log::LevelFilter;
+use std::{collections::HashMap, path::PathBuf};
 use tui_logger::{init_logger, set_default_level};
 
 /// Configures the logger with levels per module.
+/// `default_level` is the default log level for all modules. Using Trace
+/// here is NOT recommended.
+/// `modules` is a list of modules to set the log level to TRACE for.
 pub(crate) fn setup_logger(
     default_level: LevelFilter,
-    modules: &[&str],
-    modules_level: LevelFilter,
+    tracing_modules: Vec<&String>,
+    logfile: Option<&PathBuf>,
 ) {
     init_logger(LevelFilter::Trace).unwrap();
+
     set_default_level(default_level);
 
-    for target in modules {
-        tui_logger::set_level_for_target(target, modules_level);
+    // also apply to to all crate modules so that they show up in the list
+    let mut targets = HashMap::new();
+    for module in crate_modules().iter() {
+        targets.insert(*module, default_level);
     }
 
-    const LOG_FILE: &str = concat!(env!("CARGO_PKG_NAME"), ".log");
-    let _ = tui_logger::set_log_file(LOG_FILE);
+    // if any modules are specified, set them to trace
+    for module in tracing_modules {
+        targets.insert(module, LevelFilter::Trace);
+    }
+
+    // configure the logger
+    for (target, level) in targets {
+        tui_logger::set_level_for_target(target, level);
+    }
+
+    // set the log file
+    if let Some(logfile) = logfile {
+        let _ = tui_logger::set_log_file(&logfile.to_string_lossy());
+    }
 }
 
 /// Returns a list of the modules in this crate
