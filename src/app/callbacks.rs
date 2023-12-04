@@ -19,7 +19,7 @@ impl App<'_> {
     /// Saves `me` as the user of the client
     /// This is used to identify when a message was originated by that user.
     pub(crate) fn cb_set_me(&mut self, person: Person) {
-        self.state.set_me(person);
+        self.state.cache.set_me(person);
     }
 
     /// Callback when a message was sent. Add the message to the room immediately.
@@ -53,7 +53,7 @@ impl App<'_> {
     ) {
         // messages came in with most recent first, so reverse them
         for msg in messages.iter().rev() {
-            if update_unread && !self.state.is_me(&msg.person_id) {
+            if update_unread && !self.state.cache.is_me(&msg.person_id) {
                 self.state.cache.rooms_info.mark_unread(room_id);
             }
             if let Err(err) = self.state.cache.add_message(msg) {

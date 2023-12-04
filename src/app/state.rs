@@ -1,12 +1,12 @@
-// app/state.rs
-
 //! State of the application
 
 use color_eyre::{eyre::eyre, Result};
-use enum_iterator::{next_cycle, Sequence};
+use enum_iterator::{next_cycle, previous_cycle, Sequence};
 use itertools::concat;
 use log::*;
-use webex::{Message, Person};
+use ratatui::layout::Rect;
+use tui_logger::TuiWidgetState;
+use webex::Message;
 
 use super::actions::{Action, Actions};
 use super::cache::room::{Room, RoomId};
@@ -28,15 +28,16 @@ pub(crate) struct AppState<'a> {
 
     // Webex
     pub(crate) cache: Cache,
-    pub(crate) me: Option<webex::Person>,
 
     // UI
-    pub(crate) show_logs: bool,
-    pub(crate) show_help: bool,
-    pub(crate) rooms_list: RoomsList,
-    pub(crate) messages_list: MessagesList,
+    pub(crate) active_pane: Option<ActivePane>,
+    pub(crate) last_frame_size: Rect,
+    pub(crate) log_state: TuiWidgetState,
     pub(crate) message_editor: MessageEditor<'a>,
-    active_pane: Option<ActivePane>,
+    pub(crate) messages_list: MessagesList,
+    pub(crate) rooms_list: RoomsList,
+    pub(crate) show_help: bool,
+    pub(crate) show_logs: bool,
 }
 
 /// The active pane is used by the UI to draw attention to what
@@ -50,6 +51,8 @@ pub(crate) enum ActivePane {
     Messages,
     /// The text editor when composing a message
     Compose,
+    /// Configurable logs output
+    Logs,
 }
 
 impl AppState<'_> {
@@ -136,6 +139,9 @@ impl AppState<'_> {
                     Action::EndComposeMessage,
                     Action::SendMessage,
                     Action::NextPane,
+                    Action::PreviousPane,
+                    Action::ToggleHelp,
+                    Action::ToggleLogs,
                     Action::Quit,
                 ]
             }
@@ -157,6 +163,7 @@ impl AppState<'_> {
                 }
                 actions.extend(vec![
                     Action::NextPane,
+                    Action::PreviousPane,
                     Action::ToggleHelp,
                     Action::ToggleLogs,
                     Action::Quit,
@@ -170,6 +177,7 @@ impl AppState<'_> {
                     Action::NextRoomFilter,
                     Action::PreviousRoomFilter,
                     Action::NextPane,
+                    Action::PreviousPane,
                     Action::ToggleHelp,
                     Action::ToggleLogs,
                     Action::Quit,
@@ -184,6 +192,27 @@ impl AppState<'_> {
                     false => common_actions,
                 }
             }
+            Some(ActivePane::Logs) => {
+                vec![
+                    Action::LogToggleTargetSelector,
+                    Action::LogSelectNextTarget,
+                    Action::LogSelectPreviousTarget,
+                    Action::LogFocusSelectedTarget,
+                    Action::LogIncreaseCapturedOneLevel,
+                    Action::LogReduceCapturedOneLevel,
+                    Action::LogIncreaseShownOneLevel,
+                    Action::LogReduceShownOneLevel,
+                    Action::LogPageUp,
+                    Action::LogPageDown,
+                    Action::LogExitPageMode,
+                    Action::LogToggleFilteredTargets,
+                    Action::NextPane,
+                    Action::PreviousPane,
+                    Action::ToggleHelp,
+                    Action::ToggleLogs,
+                    Action::Quit,
+                ]
+            }
             None => {
                 vec![Action::ToggleHelp, Action::ToggleLogs, Action::Quit]
             }
@@ -191,9 +220,9 @@ impl AppState<'_> {
         self.actions = actions.into();
     }
 
-    /// Cycles between the room selection and message selection panes.
+    /// Selects the next active pane in a cycle.
     /// The message compose pane is skipped.
-    pub(crate) fn cycle_active_pane(&mut self) {
+    pub(crate) fn next_active_pane(&mut self) {
         match self.active_pane() {
             None => self.set_active_pane(Some(ActivePane::default())),
             Some(active_pane) => {
@@ -202,7 +231,31 @@ impl AppState<'_> {
                 if next_pane == ActivePane::Compose {
                     next_pane = next_cycle(&next_pane).unwrap_or_default();
                 };
+                // Skip the logs pane if not enabled
+                if next_pane == ActivePane::Logs && !self.show_logs {
+                    next_pane = next_cycle(&next_pane).unwrap_or_default();
+                };
                 self.set_active_pane(Some(next_pane))
+            }
+        }
+    }
+
+    /// Selects the previous active pane in a cycle.
+    /// The message compose pane is skipped.
+    pub(crate) fn previous_active_pane(&mut self) {
+        match self.active_pane() {
+            None => self.set_active_pane(Some(ActivePane::default())),
+            Some(active_pane) => {
+                let mut previous_pane = previous_cycle(active_pane).unwrap_or_default();
+                // Skip the message compose pane
+                if previous_pane == ActivePane::Compose {
+                    previous_pane = previous_cycle(&previous_pane).unwrap_or_default();
+                };
+                // Skip the logs pane if not enabled
+                if previous_pane == ActivePane::Logs && !self.show_logs {
+                    previous_pane = previous_cycle(&previous_pane).unwrap_or_default();
+                };
+                self.set_active_pane(Some(previous_pane))
             }
         }
     }
@@ -223,41 +276,29 @@ impl AppState<'_> {
         self.cache.nth_message_in_room(index, &room_id)
     }
 
-    /// Sets the user of the app, used to filter its own messages.
-    pub(crate) fn set_me(&mut self, me: Person) {
-        self.me = Some(me);
-    }
-
-    /// Returns true if me is not None, person_id is not None and person_id equals me.
-    /// Returns false if they are different or either is None.
-    pub(crate) fn is_me(&self, person_id: &Option<String>) -> bool {
-        match (&self.me, person_id) {
-            (Some(me), Some(id)) => me.id.eq(id),
-            _ => false,
-        }
-    }
-
     /// Returns true if the selected message is from me.
     pub(crate) fn selected_message_is_from_me(&self) -> Result<bool> {
         let message = self.selected_message()?;
-        Ok(self.is_me(&message.person_id))
+        Ok(self.cache.is_me(&message.person_id))
     }
 }
 
 impl Default for AppState<'_> {
     fn default() -> Self {
+        let mut log_state = TuiWidgetState::default();
+        log_state.transition(&tui_logger::TuiWidgetEvent::HideKey);
         AppState {
             actions: vec![Action::Quit, Action::ToggleHelp, Action::ToggleLogs].into(),
-            is_loading: false,
-
-            cache: Cache::default(),
-            me: None,
-            show_logs: false,
-            show_help: true,
-            rooms_list: RoomsList::default(),
-            messages_list: MessagesList::new(),
-            message_editor: MessageEditor::default(),
             active_pane: None,
+            cache: Cache::default(),
+            is_loading: false,
+            last_frame_size: Rect::new(0, 0, 0, 0),
+            log_state,
+            message_editor: MessageEditor::default(),
+            messages_list: MessagesList::new(),
+            rooms_list: RoomsList::default(),
+            show_help: true,
+            show_logs: false,
         }
     }
 }

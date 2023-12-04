@@ -9,10 +9,15 @@ mod teams;
 mod tui;
 mod ui;
 
+use crate::logger::setup_logger;
 use app::{App, AppReturn};
 use banner::BANNER;
+use clap::{arg, command, value_parser};
+use clap::{Arg, ArgAction};
 use config::ClientConfig;
 use inputs::handler::Event;
+use log::LevelFilter;
+use std::path::PathBuf;
 use teams::app_handler::AppCmdEvent;
 use teams::auth::get_integration_token;
 use teams::ClientCredentials;
@@ -20,7 +25,6 @@ use teams::Teams;
 use tui::Tui;
 
 use color_eyre::eyre::Result;
-use logger::setup_logger;
 use std::sync::Arc;
 
 /// Retrieve credentials from config file, interactively guiding the user
@@ -36,11 +40,62 @@ fn get_credentials() -> Result<ClientCredentials> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Parse command line arguments
+    let matches = command!()
+        .before_help(BANNER)
+        .after_help(
+          "Your webex Client ID and Client Secret are stored in $HOME/.config/webex-tui/client.yml",
+        )
+        .arg(
+            arg!(-d --debug ... "Set default log level to debug")
+             .action(ArgAction::SetTrue)
+        )
+        .arg(
+            arg!(-t --trace <MODULES> "Set trace logging for comma separated module names (see list-modules)")
+            .required(false)
+            .value_delimiter(',')
+            .action(clap::ArgAction::Append)
+        )
+        .arg(
+            Arg::new("list-modules")
+            .long("list-modules")
+            .help("List modules that can be traced")
+            .required(false)
+            .action(ArgAction::SetTrue)
+        )
+        .arg(
+            arg!(-l --log <FILE> "Log to file")
+            .required(false)
+            .value_parser(value_parser!(PathBuf))
+        )
+        .get_matches();
+
+    // Display list of modules that can be traced and
+    if matches.get_flag("list-modules") {
+        println!("Modules that can be traced:");
+        for module in logger::crate_modules().iter() {
+            println!("  {}", module);
+        }
+        return Ok(());
+    }
+
     // Setup logging.
     color_eyre::install()?;
-    setup_logger(); // only for tui mode
+    let default_log_level = if matches.get_flag("debug") {
+        LevelFilter::Debug
+    } else {
+        LevelFilter::Info
+    };
+    let trace_modules = matches
+        .get_many::<String>("trace")
+        .unwrap_or_default()
+        .collect::<Vec<_>>();
+    let log_file_opt = matches.get_one::<PathBuf>("log");
+    setup_logger(default_log_level, trace_modules, log_file_opt); // only for tui mode
 
+    // Welcome message
     println!("{}", BANNER);
+    println!("Starting webex-tui, version {}.", env!("CARGO_PKG_VERSION"));
 
     // Read configuration or prompt for integration details
     let credentials = get_credentials()?;
