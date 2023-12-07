@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 This project tries to follow semantic versioning.
 
+## [unreleased]
+
+### Features
+
+- Scroll up to load older messages
+
 ## [0.5.0] - 2023-12-04
 
 ### Features
