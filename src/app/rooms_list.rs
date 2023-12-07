@@ -25,7 +25,7 @@ impl RoomsList {
             self.filter = new_mode;
             // Reset selection when we change filter
             let num_rooms = store
-                .rooms_info
+                .rooms
                 .rooms_filtered_by(self.filter())
                 .collect::<Vec<_>>()
                 .len();
@@ -42,7 +42,7 @@ impl RoomsList {
             self.filter = new_mode;
             // Reset selection when we change filter
             let num_rooms = store
-                .rooms_info
+                .rooms
                 .rooms_filtered_by(self.filter())
                 .collect::<Vec<_>>()
                 .len();

@@ -171,7 +171,11 @@ impl App<'_> {
                     self.next_room();
                 }
                 Action::PreviousMessage => {
-                    self.state.messages_list.select_previous_message();
+                    let was_first = self.state.messages_list.select_previous_message();
+                    if was_first {
+                        let room_id = self.state.id_of_selected_room().unwrap();
+                        self.get_messages_before_first(&room_id);
+                    }
                 }
                 Action::PreviousRoom => {
                     self.previous_room();
@@ -250,7 +254,7 @@ impl App<'_> {
             self.dispatch_to_teams(AppCmdEvent::SendMessage(msg_to_send));
         }
         debug!("Sending message to room {:?}", room.title);
-        self.state.cache.rooms_info.mark_read(&room.id.clone());
+        self.state.cache.rooms.mark_read(&room.id.clone());
         self.state.message_editor.reset();
         self.state.messages_list.deselect();
         Ok(())
@@ -309,7 +313,17 @@ impl App<'_> {
     /// Retrieves the latest messages in the room, only if it is empty
     fn get_messages_if_room_empty(&mut self, id: &RoomId) {
         if self.state.cache.room_is_empty(id) {
-            self.dispatch_to_teams(AppCmdEvent::ListMessagesInRoom(id.clone()));
+            self.dispatch_to_teams(AppCmdEvent::ListMessagesInRoom(id.clone(), None));
+        }
+    }
+
+    /// Retrieves messages before the first message in the room
+    fn get_messages_before_first(&mut self, id: &RoomId) {
+        if let Some(first_message) = self.state.cache.messages_in_room(id).next() {
+            self.dispatch_to_teams(AppCmdEvent::ListMessagesInRoom(
+                id.clone(),
+                first_message.id.clone(),
+            ));
         }
     }
 
@@ -327,7 +341,7 @@ impl App<'_> {
         self.state.rooms_list.set_active_room_id(id_option.clone());
         // Changing active room may have affected the selection
         // e.g. with Unread filter which includes active room
-        self.state.update_selection_with_active_room();
+        self.state.update_room_selection_with_active_room();
         if let Some(id) = id_option {
             self.get_messages_if_room_empty(&id);
         }

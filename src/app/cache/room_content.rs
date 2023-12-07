@@ -29,6 +29,13 @@ impl RoomContent {
             .ok_or(eyre!("Message {} not found in room", index))
     }
 
+    /// Returns the index of the message with given id.
+    /// If the message is not found, returns None.
+    pub(crate) fn index_of_message(&self, msg_id: &MessageId) -> Option<usize> {
+        self.messages()
+            .position(|msg| msg.id.as_ref() == Some(msg_id))
+    }
+
     /// Adds a message to the room content, respecting the thread order.
     pub(crate) fn add(&mut self, msg: &Message) -> Result<()> {
         if msg.id.is_none() {

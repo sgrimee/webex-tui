@@ -2,7 +2,12 @@
 
 //! Callback functions called by the `Teams` thread (under locking)
 
-use super::{cache::room::RoomId, App};
+use std::collections::HashSet;
+
+use super::{
+    cache::{room::RoomId, MessageId},
+    App,
+};
 use crate::teams::app_handler::AppCmdEvent;
 
 use log::*;
@@ -51,26 +56,65 @@ impl App<'_> {
         messages: &[Message],
         update_unread: bool,
     ) {
-        // messages came in with most recent first, so reverse them
+        debug!(
+            "Received {} messages in room {}",
+            messages.len(),
+            room_id.to_string()
+        );
+        // keep track of the selected message, if any
+        let selected_message_id = self
+            .state
+            .selected_message()
+            .ok()
+            .and_then(|msg| msg.id.clone());
+
+        // messages came in with most recent first, reverse before adding them to cache
         for msg in messages.iter().rev() {
             if update_unread && !self.state.cache.is_me(&msg.person_id) {
-                self.state.cache.rooms_info.mark_unread(room_id);
+                self.state.cache.rooms.mark_unread(room_id);
             }
             if let Err(err) = self.state.cache.add_message(msg) {
                 error!("Error adding received message to store: {}", err);
             }
         }
-        // If the room is the active one, maintain the selection if the room order changes.
-        self.state.update_selection_with_active_room();
+
+        // Identify referenced parent messages that are not in cache
+        let new_parent_ids = HashSet::<&MessageId>::from_iter(
+            messages
+                .iter()
+                .filter_map(|msg| msg.parent_id.as_ref())
+                .filter(|parent_id| !self.state.cache.message_exists_in_room(parent_id, room_id)),
+        );
+        for parent_id in new_parent_ids {
+            // get the parent message
+            self.dispatch_to_teams(AppCmdEvent::UpdateMessage(parent_id.clone()));
+            // we have at least one child, ensure we have all its children
+            self.dispatch_to_teams(AppCmdEvent::UpdateChildrenMessages(
+                parent_id.clone(),
+                room_id.clone(),
+            ));
+        }
+
+        // Maintain the room selection if the room order changes.
+        self.state.update_room_selection_with_active_room();
+
+        // If the room is active, maintain the message selection as we are adding messages.
+        if self.state.is_active_room(room_id) {
+            if let Some(selected_message_id) = selected_message_id {
+                if let Some(msg_index) = self
+                    .state
+                    .cache
+                    .index_of_message_in_room(&selected_message_id, room_id)
+                {
+                    self.state.messages_list.select_index(msg_index);
+                }
+            }
+        }
+
         // TODO: use events for room updates. He we just request it once.
         // If the room doesn't exist, request room info and add it to the list of requested rooms.
-        if !self
-            .state
-            .cache
-            .rooms_info
-            .room_exists_or_requested(room_id)
-        {
-            self.state.cache.rooms_info.add_requested(room_id.clone());
+        if !self.state.cache.rooms.room_exists_or_requested(room_id) {
+            self.state.cache.rooms.add_requested(room_id.clone());
             self.dispatch_to_teams(AppCmdEvent::UpdateRoom(room_id.to_string()));
         }
     }
@@ -81,16 +125,13 @@ impl App<'_> {
     pub(crate) fn cb_room_updated(&mut self, webex_room: webex::Room) {
         let team_id = webex_room.team_id.clone();
         let room_title = webex_room.title.clone().unwrap_or_default();
-        self.state
-            .cache
-            .rooms_info
-            .update_with_room(&webex_room.into());
-        self.state.update_selection_with_active_room();
+        self.state.cache.rooms.update_with_room(&webex_room.into());
+        self.state.update_room_selection_with_active_room();
 
         // If the webex_room has a team_id, and the team is not already requested, request it and add it to the list of requested teams.
         if let Some(team_id) = team_id {
             if !self.state.cache.teams.exists_or_requested(&team_id) {
-                trace!(
+                debug!(
                     "Requesting team {} identified by room: {}",
                     team_id,
                     room_title

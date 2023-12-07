@@ -25,7 +25,7 @@ pub(crate) fn draw_rooms_table<'a>(state: &AppState) -> Table<'a> {
         .title(format!("Filter: {:?}", state.rooms_list.filter()));
     let items: Vec<_> = state
         .cache
-        .rooms_info
+        .rooms
         .rooms_filtered_by(state.rooms_list.filter())
         .map(|room| {
             let ratt = state

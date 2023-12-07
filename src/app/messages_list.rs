@@ -22,7 +22,7 @@ impl MessagesList {
         list
     }
 
-    /// Returns the message corresponding to the selection, if there is one.
+    /// Returns the index of the message corresponding to the selection, if there is one.
     /// If the selection is out of bounds, returns None.
     pub(crate) fn selected_index(&self) -> Option<usize> {
         if !self.has_selection {
@@ -30,6 +30,18 @@ impl MessagesList {
         }
         self.table_state.selected()
     }
+
+    /// Selects the message at the given index.
+    /// If the index is out of bounds, deselects.
+    pub(crate) fn select_index(&mut self, index: usize) {
+        if index >= self.nb_messages {
+            self.deselect();
+        } else {
+            self.has_selection = true;
+            self.table_state.select(Some(index));
+        }
+    }
+    
 
     /// Selects the next message in the list and updates the table_state.
     pub(crate) fn select_next_message(&mut self) {
@@ -56,11 +68,12 @@ impl MessagesList {
         }
     }
 
-    /// Selects the previous message in the list and updates the table_state
-    pub(crate) fn select_previous_message(&mut self) {
+    /// Selects the previous message in the list and updates the table_state.
+    /// Returns true if the selected message was the first one, false otherwise.
+    pub(crate) fn select_previous_message(&mut self) -> bool {
         if !self.has_selection {
             self.select_last_message();
-            return;
+            return false;
         }
         match self.table_state.selected() {
             Some(_) if self.nb_messages == 0 => {
@@ -68,7 +81,9 @@ impl MessagesList {
                 self.deselect();
             }
             Some(0) => {
-                // first was selected, do nothing
+                // first was selected, return true to signal loading
+                // earlier messages is needed
+                return true;
             }
             Some(selected) if selected > self.nb_messages => {
                 // selection is out of bounds, select last
@@ -81,6 +96,7 @@ impl MessagesList {
             }
             None => self.select_last_message(),
         }
+        false
     }
 
     fn select_first_message(&mut self) {
@@ -191,13 +207,17 @@ mod tests {
         let mut list = MessagesList::new();
         list.set_nb_messages(3);
         assert_eq!(list.table_state.selected(), Some(usize::MAX));
-        list.select_previous_message();
+        let was_first = list.select_previous_message();
+        assert!(!was_first);
         assert_eq!(list.table_state.selected(), Some(2));
-        list.select_previous_message();
+        let was_first = list.select_previous_message();
+        assert!(!was_first);
         assert_eq!(list.table_state.selected(), Some(1));
-        list.select_previous_message();
+        let was_first = list.select_previous_message();
+        assert!(!was_first);
         assert_eq!(list.table_state.selected(), Some(0));
-        list.select_previous_message();
+        let was_first = list.select_previous_message();
+        assert!(was_first);
         assert_eq!(list.table_state.selected(), Some(0));
     }
 

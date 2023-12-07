@@ -31,13 +31,13 @@ impl Teams<'_> {
                 }
             }
             Message(Deleted) => {
-                debug!("Message deletion is not implemented yet");
+                trace!("Message deletion from remote is not implemented yet");
             }
             Message(Acknowledged) => {
-                debug!("Acknowledged message activity is not implemented yet");
+                trace!("Acknowledged message activity is not implemented yet");
             }
             _ => {
-                trace!("Unhandled webex event type: {:#?}", event.activity_type());
+                debug!("Unhandled webex event type: {:#?}", event.activity_type());
             }
         }
     }

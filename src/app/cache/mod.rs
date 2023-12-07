@@ -32,7 +32,7 @@ pub(crate) type MessageId = String;
 /// This is usually acceptable for a daily session.
 #[derive(Default, Debug)]
 pub(crate) struct Cache {
-    pub(crate) rooms_info: Rooms,
+    pub(crate) rooms: Rooms,
     rooms_content: HashMap<RoomId, RoomContent>,
     pub(crate) teams: Teams,
     pub(crate) me: Option<webex::Person>,
@@ -60,7 +60,7 @@ impl Cache {
         content.add(msg)?;
         // Update the room last activity if the room is already present.
         // If not, it will come later with the correct last activity.
-        if let Some(room) = self.rooms_info.room_with_id_mut(&room_id) {
+        if let Some(room) = self.rooms.room_with_id_mut(&room_id) {
             // get message timestamp from last update, if not use its creatiom time, if not error
             let time_str = msg
                 .updated
@@ -71,7 +71,7 @@ impl Cache {
             let timestamp = DateTime::parse_from_rfc3339(&time_str)?.with_timezone(&Utc);
             room.update_last_activity(timestamp);
             // Re-position the room in the list with the new timestamp
-            self.rooms_info.reposition_room(&room_id);
+            self.rooms.reposition_room(&room_id);
         }
         Ok(())
     }
@@ -119,6 +119,23 @@ impl Cache {
             .nth_message(index)
     }
 
+    /// Returns the index of the message with given id in the room.
+    /// If the message is not found, returns None.
+    pub(crate) fn index_of_message_in_room(
+        &self,
+        msg_id: &MessageId,
+        room_id: &RoomId,
+    ) -> Option<usize> {
+        self.rooms_content
+            .get(room_id)
+            .and_then(|content| content.index_of_message(msg_id))
+    }
+
+    /// Returns true if the message with given id is in the room, false otherwise.
+    pub(crate) fn message_exists_in_room(&self, msg_id: &MessageId, room_id: &RoomId) -> bool {
+        self.index_of_message_in_room(msg_id, room_id).is_some()
+    }
+
     /// Returns a tuple with the title of the room and the team name if any.
     ///
     /// If the room is not found, returns an error.
@@ -128,7 +145,7 @@ impl Cache {
     /// If the room has no team, returns the room title and no team name.
     pub(crate) fn room_and_team_title(&self, room_id: &RoomId) -> Result<RoomAndTeamTitle> {
         let room = self
-            .rooms_info
+            .rooms
             .room_with_id(room_id)
             .ok_or(eyre!("Room not found"))?;
         let room_title = room.title.clone().unwrap_or(String::from("No room title"));
@@ -224,7 +241,7 @@ mod tests {
         store.teams.add(team);
 
         // Non-General room in a team
-        store.rooms_info.update_with_room(&Room {
+        store.rooms.update_with_room(&Room {
             id: String::from("room1"),
             title: Some(String::from("room1 title")),
             team_id: Some(TEAM_ID.into()),
@@ -239,7 +256,7 @@ mod tests {
         );
 
         // General room in a team
-        store.rooms_info.update_with_room(&Room {
+        store.rooms.update_with_room(&Room {
             id: String::from("room2"),
             title: Some(TEAM_NAME.into()),
             team_id: Some(TEAM_ID.into()),
@@ -254,7 +271,7 @@ mod tests {
         );
 
         // Room with no team
-        store.rooms_info.update_with_room(&Room {
+        store.rooms.update_with_room(&Room {
             id: String::from("room3"),
             title: Some(String::from("room3 title")),
             team_id: None,

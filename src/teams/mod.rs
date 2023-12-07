@@ -40,7 +40,6 @@ impl<'a> Teams<'a> {
         let client = get_webex_client(token).await;
 
         // Retrieve the logged in user
-        // TODO: should we do this after initialisation to reduce startup time
         if let Ok(me) = client
             .get::<Person>(&GlobalId::new_with_cluster_unchecked(
                 GlobalIdType::Person,

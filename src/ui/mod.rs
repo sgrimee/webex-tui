@@ -119,7 +119,6 @@ pub(crate) fn render(rect: &mut Frame, state: &mut AppState) {
 
 /// Logs warnings when terminal size constraints are not respected.
 fn check_size(rect: &Rect, state: &AppState) {
-    // TODO: log only once if the size does not change
     let mut min_width = ROOMS_LIST_WIDTH + ACTIVE_ROOM_MIN_WIDTH;
     if state.show_help {
         min_width += HELP_WIDTH

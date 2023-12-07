@@ -62,14 +62,20 @@ impl AppState<'_> {
     pub(crate) fn active_room(&self) -> Option<&Room> {
         self.rooms_list
             .active_room_id()
-            .and_then(|id| self.cache.rooms_info.room_with_id(id))
+            .and_then(|id| self.cache.rooms.room_with_id(id))
+    }
+
+    /// Returns whether the given room is the active room.
+    pub(crate) fn is_active_room(&self, room_id: &RoomId) -> bool {
+        match self.rooms_list.active_room_id() {
+            Some(id) => id == room_id,
+            None => false,
+        }
     }
 
     /// Returns an iterator over all visible rooms with the current filter.
     pub(crate) fn visible_rooms(&self) -> impl Iterator<Item = &Room> {
-        self.cache
-            .rooms_info
-            .rooms_filtered_by(self.rooms_list.filter())
+        self.cache.rooms.rooms_filtered_by(self.rooms_list.filter())
     }
 
     /// Returns the number of visible rooms with the current filter.
@@ -92,9 +98,9 @@ impl AppState<'_> {
             .id_of_selected(self.visible_rooms().collect::<Vec<_>>().as_slice())
     }
 
-    /// Reset the list selection to the active room.
+    /// Reset the room list selection to the active room.
     /// This is useful after the number or order of items in the list changes.
-    pub(crate) fn update_selection_with_active_room(&mut self) {
+    pub(crate) fn update_room_selection_with_active_room(&mut self) {
         if let Some(id) = self.rooms_list.active_room_id() {
             let pos_option = self.visible_rooms().position(|room| room.id == *id);
             if let Some(position) = pos_option {
@@ -103,12 +109,14 @@ impl AppState<'_> {
         }
     }
 
+    /// Reset the message list selection to the
+
     /// Mark the active room as being read.
     /// Only local storage for now, this is not synced between multiple clients,
     /// or multiple invocations of the same client.
     pub(crate) fn mark_active_read(&mut self) {
         if let Some(id) = self.id_of_selected_room() {
-            self.cache.rooms_info.mark_read(&id);
+            self.cache.rooms.mark_read(&id);
         }
     }
 
