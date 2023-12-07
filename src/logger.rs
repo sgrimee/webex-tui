@@ -23,6 +23,11 @@ pub(crate) fn setup_logger(
         targets.insert(*module, default_level);
     }
 
+    // force some noisy modules to be quiet
+    targets.insert("html5ever::tree_builder", LevelFilter::Info);
+    targets.insert("html5ever::tokenizer", LevelFilter::Info);
+    targets.insert("html5ever::tokenizer::char_ref", LevelFilter::Info);
+
     // if any modules are specified, set them to trace
     for module in tracing_modules {
         targets.insert(module, LevelFilter::Trace);

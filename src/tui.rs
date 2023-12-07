@@ -64,7 +64,7 @@ impl Tui {
         self.terminal.hide_cursor()?;
         self.terminal.clear()?;
         // A little marker to separate a new run from the previous one
-        debug!("=========================================================================");
+        info!("=========================================================================");
         Ok(())
     }
 
