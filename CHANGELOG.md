@@ -9,6 +9,7 @@ This project tries to follow semantic versioning.
 ### Features
 
 - Scroll up to load older messages
+- Display people name instead of email
 
 ## [0.5.0] - 2023-12-04
 
