@@ -5,6 +5,7 @@
 //! Callbacks to the `App` are made via mutex.
 
 use super::Teams;
+use crate::app::cache::persons::PersonId;
 use crate::app::cache::room::RoomId;
 use crate::app::cache::teams::TeamId;
 use crate::app::cache::MessageId;
@@ -29,6 +30,7 @@ pub(crate) enum AppCmdEvent {
     UpdateTeam(TeamId),
     UpdateMessage(MessageId),
     UpdateChildrenMessages(MessageId, RoomId),
+    UpdatePerson(PersonId),
     // Quit(),
 }
 
@@ -40,19 +42,20 @@ impl Teams<'_> {
         }
         if let Err(error) = match app_cmd_event {
             AppCmdEvent::DeleteMessage(msg_id) => self.delete_message(&msg_id).await,
+            AppCmdEvent::EditMessage(msg_id, room_id, text) => {
+                self.do_edit_message(&msg_id, &room_id, &text).await
+            }
             AppCmdEvent::Initialize() => self.do_initialize().await,
             AppCmdEvent::ListAllRooms() => self.do_list_all_rooms().await,
             AppCmdEvent::ListMessagesInRoom(room_id, before_id) => {
                 self.do_list_messages_in_room(&room_id, before_id).await
             }
             AppCmdEvent::SendMessage(msg_to_send) => self.do_send_message(&msg_to_send).await,
-            AppCmdEvent::UpdateMessage(msg_id) => self.do_update_message(&msg_id).await,
             AppCmdEvent::UpdateChildrenMessages(msg_id, room_id) => {
                 self.do_update_children_messages(&msg_id, &room_id).await
             }
-            AppCmdEvent::EditMessage(msg_id, room_id, text) => {
-                self.do_edit_message(&msg_id, &room_id, &text).await
-            }
+            AppCmdEvent::UpdateMessage(msg_id) => self.do_update_message(&msg_id).await,
+            AppCmdEvent::UpdatePerson(person_id) => self.do_update_person(&person_id).await,
             AppCmdEvent::UpdateRoom(room_id) => self.do_refresh_room(&room_id).await,
             AppCmdEvent::UpdateTeam(team_id) => self.do_update_team(&team_id).await,
             // AppCmdEvent::Quit() => self.do_quit().await,
@@ -249,6 +252,18 @@ impl Teams<'_> {
                 Ok(())
             }
             Err(e) => Err(eyre!("Error retrieving messages in room: {:#?}", e)),
+        }
+    }
+
+    async fn do_update_person(&self, person_id: &PersonId) -> Result<()> {
+        debug!("Getting person with id: {}", person_id);
+        let global_id = GlobalId::new(GlobalIdType::Person, person_id.to_owned()).unwrap();
+        match self.client.get::<webex::Person>(&global_id).await {
+            Ok(webex_person) => {
+                self.app.lock().await.cb_person_updated(webex_person);
+                Ok(())
+            }
+            Err(e) => Err(eyre!("Error retrieving person: {}", e)),
         }
     }
 }

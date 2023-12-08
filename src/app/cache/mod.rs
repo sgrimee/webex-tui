@@ -9,6 +9,7 @@ use color_eyre::{eyre::eyre, Result};
 use webex::{Message, Person};
 
 pub(crate) mod msg_thread;
+pub(crate) mod persons;
 pub(crate) mod room;
 pub(crate) mod room_and_team_title;
 pub(crate) mod room_content;
@@ -18,6 +19,7 @@ pub(crate) mod teams;
 
 use self::room_and_team_title::RoomAndTeamTitle;
 use self::room_content::RoomContent;
+use persons::Persons;
 use room::RoomId;
 use rooms::Rooms;
 use teams::Teams;
@@ -36,12 +38,13 @@ pub(crate) struct Cache {
     rooms_content: HashMap<RoomId, RoomContent>,
     pub(crate) teams: Teams,
     pub(crate) me: Option<webex::Person>,
+    pub(crate) persons: Persons,
 }
 
 impl Cache {
     /// Sets the user of the app, used to filter its own messages.
-    pub(crate) fn set_me(&mut self, me: Person) {
-        self.me = Some(me);
+    pub(crate) fn set_me(&mut self, me: &Person) {
+        self.me = Some(me.clone());
     }
 
     /// Returns true if me is not None, person_id is not None and person_id equals me.

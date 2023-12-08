@@ -91,7 +91,7 @@ fn trim_newline(s: &mut String) {
 }
 
 /// Returns a row with the formatted message and the number of lines.
-fn row_for_message<'a>(msg: Message, width: u16) -> (Row<'a>, usize) {
+fn row_for_message<'a>(state: &AppState, msg: Message, width: u16) -> (Row<'a>, usize) {
     // Offset messages that are part of a conversation
     let (title_indent, content_indent) = match msg.parent_id {
         None => (TITLE_INDENT, CONTENT_INDENT),
@@ -101,11 +101,23 @@ fn row_for_message<'a>(msg: Message, width: u16) -> (Row<'a>, usize) {
     // One line for the author and timestamp
     let mut title_line = Line::default();
     title_line.spans.push(title_indent.into());
-    if let Some(sender_email) = msg.person_email {
-        title_line
-            .spans
-            .push(Span::styled(sender_email, style_for_user(&msg.person_id)));
-    }
+
+    // If the message has a person_id, get the person's display name from the cache.
+    // Otherwise, or if it is not in cache, use the person's email.
+    // If none is available, use "Unknown".
+    let person_opt = msg
+        .person_id
+        .clone()
+        .and_then(|id| state.cache.persons.get(&id));
+    let sender = match (person_opt, msg.person_email) {
+        (Some(person), _) => person.display_name.clone(),
+        (None, Some(email)) => email,
+        _ => String::from("Unknown"),
+    };
+    title_line
+        .spans
+        .push(Span::styled(sender, style_for_user(&msg.person_id)));
+
     // Add message timestamp
     title_line.spans.push(Span::from("  "));
     let mut stamp = String::new();
@@ -177,7 +189,7 @@ pub(crate) fn draw_msg_table<'a>(state: &AppState, rect: &Rect) -> (Table<'a>, u
             .cache
             .messages_in_room(&room.id)
             .map(|msg| {
-                let (row, height) = row_for_message(msg.clone(), rect.width - 2);
+                let (row, height) = row_for_message(state, msg.clone(), rect.width - 2);
                 nb_lines += height;
                 row
             })

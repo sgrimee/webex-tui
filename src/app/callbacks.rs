@@ -23,8 +23,9 @@ impl App<'_> {
 
     /// Saves `me` as the user of the client
     /// This is used to identify when a message was originated by that user.
-    pub(crate) fn cb_set_me(&mut self, person: Person) {
+    pub(crate) fn cb_set_me(&mut self, person: &Person) {
         self.state.cache.set_me(person);
+        self.cb_person_updated(person.to_owned());
     }
 
     /// Callback when a message was sent. Add the message to the room immediately.
@@ -117,6 +118,19 @@ impl App<'_> {
             self.state.cache.rooms.add_requested(room_id.clone());
             self.dispatch_to_teams(AppCmdEvent::UpdateRoom(room_id.to_string()));
         }
+
+        // Identify referenced persons that are not in cache
+        let new_person_ids = HashSet::<&String>::from_iter(
+            messages
+                .iter()
+                .filter_map(|msg| msg.person_id.as_ref())
+                .filter(|person_id| !self.state.cache.persons.exists_or_requested(person_id)),
+        );
+        // Request the person info and add it to the list of requested persons.
+        for person_id in new_person_ids {
+            self.state.cache.persons.add_requested(person_id);
+            self.dispatch_to_teams(AppCmdEvent::UpdatePerson(person_id.to_owned()));
+        }
     }
 
     /// Callback when room information is received.
@@ -133,8 +147,7 @@ impl App<'_> {
             if !self.state.cache.teams.exists_or_requested(&team_id) {
                 debug!(
                     "Requesting team {} identified by room: {}",
-                    team_id,
-                    room_title
+                    team_id, room_title
                 );
                 self.state.cache.teams.add_requested(team_id.clone());
                 self.dispatch_to_teams(AppCmdEvent::UpdateTeam(team_id));
@@ -146,5 +159,11 @@ impl App<'_> {
     /// Saves the team info in the store.
     pub(crate) fn cb_team_updated(&mut self, team: webex::Team) {
         self.state.cache.teams.add(team);
+    }
+
+    /// Callback when person information is received.
+    /// Saves the person info in the store.
+    pub(crate) fn cb_person_updated(&mut self, person: Person) {
+        self.state.cache.persons.insert(person);
     }
 }

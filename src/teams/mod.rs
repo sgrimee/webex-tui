@@ -49,10 +49,10 @@ impl<'a> Teams<'a> {
             .await
         {
             debug!("We are: {}", me.display_name);
-            let mut app = app.lock().await;
-            app.cb_set_me(me);
+            app.lock().await.cb_set_me(&me);
+        } else {
+            error!("Failed to get logged in user");
         }
-
         Self { client, app }
     }
 
