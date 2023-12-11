@@ -231,7 +231,7 @@ mod tests {
     }
 
     #[test]
-    fn test_room_title_and_team_name() {
+    fn test_room_and_team_title() {
         const TEAM_ID: &str = "some_new_team_id";
         const TEAM_NAME: &str = "Team name";
         let mut store = Cache::default();
@@ -288,4 +288,139 @@ mod tests {
             }
         );
     }
+
+    #[test]
+    fn test_delete_message() {
+        let mut store = Cache::default();
+        let room_id = String::from("some_new_room_id") as RoomId;
+        let message1 = make_message("message1", &room_id, None);
+        store.add_message(&message1).unwrap();
+        let message2 = make_message("message2", &room_id, None);
+        store.add_message(&message2).unwrap();
+        let message3 = make_message("message3", &room_id, None);
+        store.add_message(&message3).unwrap();
+        assert_eq!(store.rooms_content[&room_id].len(), 3);
+        store
+            .delete_message(&"message2".to_string(), &room_id)
+            .unwrap();
+        assert_eq!(store.rooms_content[&room_id].len(), 2);
+        assert_eq!(
+            store.rooms_content[&room_id]
+                .messages()
+                .nth(0)
+                .unwrap()
+                .id
+                .as_ref()
+                .unwrap(),
+            "message1"
+        );
+        assert_eq!(
+            store.rooms_content[&room_id]
+                .messages()
+                .nth(1)
+                .unwrap()
+                .id
+                .as_ref()
+                .unwrap(),
+            "message3"
+        );
+        assert_eq!(
+            store.index_of_message_in_room(&String::from("message3") as &MessageId, &room_id),
+            Some(1)
+        )
+    }
+
+    // is_me
+    #[test]
+    fn test_is_me() {
+        let mut store = Cache::default();
+        let me = Person {
+            id: "me".to_string(),
+            ..Default::default()
+        };
+        store.set_me(&me);
+        assert!(store.is_me(&Some("me".to_string())));
+        assert!(!store.is_me(&Some("not me".to_string())));
+        assert!(!store.is_me(&None));
+    }
+
+    // message_exists_in_room
+    #[test]
+    fn test_message_exists_in_room() {
+        let mut store = Cache::default();
+        let room_id = String::from("some_new_room_id") as RoomId;
+        let message1 = make_message("message1", &room_id, None);
+        store.add_message(&message1).unwrap();
+        let message2 = make_message("message2", &room_id, None);
+        store.add_message(&message2).unwrap();
+        let message3 = make_message("message3", &room_id, None);
+        store.add_message(&message3).unwrap();
+        assert!(store.message_exists_in_room(&"message2".to_string(), &room_id));
+        assert!(!store.message_exists_in_room(&"message4".to_string(), &room_id));
+    }
+
+    // messages_in_room
+    #[test]
+    fn test_messages_in_room() {
+        let mut store = Cache::default();
+        let room_id = String::from("some_new_room_id") as RoomId;
+        let message1 = make_message("message1", &room_id, None);
+        store.add_message(&message1).unwrap();
+        let message2 = make_message("message2", &room_id, None);
+        store.add_message(&message2).unwrap();
+        let message3 = make_message("message3", &room_id, None);
+        store.add_message(&message3).unwrap();
+        let mut messages = store.messages_in_room(&room_id);
+        assert_eq!(messages.next().unwrap().id.as_ref().unwrap(), "message1");
+        assert_eq!(messages.next().unwrap().id.as_ref().unwrap(), "message2");
+        assert_eq!(messages.next().unwrap().id.as_ref().unwrap(), "message3");
+    }
+
+    // nb_messages_in_room
+    #[test]
+    fn test_nb_messages_in_room() {
+        let mut store = Cache::default();
+        let room_id = String::from("some_new_room_id") as RoomId;
+        let message1 = make_message("message1", &room_id, None);
+        store.add_message(&message1).unwrap();
+        let message2 = make_message("message2", &room_id, None);
+        store.add_message(&message2).unwrap();
+        let message3 = make_message("message3", &room_id, None);
+        store.add_message(&message3).unwrap();
+        assert_eq!(store.nb_messages_in_room(&room_id), 3);
+    }
+
+    // nth_message_in_room
+    #[test]
+    fn test_nth_message_in_room() {
+        let mut store = Cache::default();
+        let room_id = String::from("some_new_room_id") as RoomId;
+        let message1 = make_message("message1", &room_id, None);
+        store.add_message(&message1).unwrap();
+        let message2 = make_message("message2", &room_id, None);
+        store.add_message(&message2).unwrap();
+        let message3 = make_message("message3", &room_id, None);
+        store.add_message(&message3).unwrap();
+        assert_eq!(
+            store
+                .nth_message_in_room(1, &room_id)
+                .unwrap()
+                .id
+                .as_ref()
+                .unwrap(),
+            "message2"
+        );
+    }
+
+    // room_is_empty
+    #[test]
+    fn test_room_is_empty() {
+        let mut store = Cache::default();
+        let room_id = String::from("some_new_room_id") as RoomId;
+        assert!(store.room_is_empty(&room_id));
+        let message1 = make_message("message1", &room_id, None);
+        store.add_message(&message1).unwrap();
+        assert!(!store.room_is_empty(&room_id));
+    }
+
 }

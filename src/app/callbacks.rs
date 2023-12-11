@@ -69,6 +69,17 @@ impl App<'_> {
             .ok()
             .and_then(|msg| msg.id.clone());
 
+        self.add_messages_to_cache(messages, update_unread, room_id);
+        self.request_missing_parent_messages(messages, room_id);
+        self.state.update_room_selection_with_active_room();
+        self.update_message_selection_in_active_room(room_id, selected_message_id);
+        self.request_missing_room_info(room_id);
+        self.request_missing_persons(messages);
+    }
+
+    /// Adds messages to the cache for a given room, and updates the unread status if requested and
+    /// messages are not from self.
+    fn add_messages_to_cache(&mut self, messages: &[Message], update_unread: bool, room_id: &String) {
         // messages came in with most recent first, reverse before adding them to cache
         for msg in messages.iter().rev() {
             if update_unread && !self.state.cache.is_me(&msg.person_id) {
@@ -78,7 +89,10 @@ impl App<'_> {
                 error!("Error adding received message to store: {}", err);
             }
         }
+    }
 
+    /// Request info on parent messages referenced in the messages that are not in cache.
+    fn request_missing_parent_messages(&mut self, messages: &[Message], room_id: &String) {
         // Identify referenced parent messages that are not in cache
         let new_parent_ids = HashSet::<&MessageId>::from_iter(
             messages
@@ -95,10 +109,10 @@ impl App<'_> {
                 room_id.clone(),
             ));
         }
+    }
 
-        // Maintain the room selection if the room order changes.
-        self.state.update_room_selection_with_active_room();
-
+    /// Updates the message selection in the active room.
+    fn update_message_selection_in_active_room(&mut self, room_id: &String, selected_message_id: Option<String>) {
         // If the room is active, maintain the message selection as we are adding messages.
         if self.state.is_active_room(room_id) {
             if let Some(selected_message_id) = selected_message_id {
@@ -111,14 +125,20 @@ impl App<'_> {
                 }
             }
         }
+    }
 
+    /// Request info on the room referenced in the messages if not in cache.
+    fn request_missing_room_info(&mut self, room_id: &String) {
         // TODO: use events for room updates. He we just request it once.
         // If the room doesn't exist, request room info and add it to the list of requested rooms.
         if !self.state.cache.rooms.room_exists_or_requested(room_id) {
             self.state.cache.rooms.add_requested(room_id.clone());
             self.dispatch_to_teams(AppCmdEvent::UpdateRoom(room_id.to_string()));
         }
+    }
 
+    /// Request info on persons referenced in the messages that are not in cache.
+    fn request_missing_persons(&mut self, messages: &[Message]) {
         // Identify referenced persons that are not in cache
         let new_person_ids = HashSet::<&String>::from_iter(
             messages

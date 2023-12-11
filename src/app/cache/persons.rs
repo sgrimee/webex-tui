@@ -27,3 +27,24 @@ impl Persons {
         self.by_id.contains_key(id) || self.requested.contains(id)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_persons() {
+        let mut persons = Persons::default();
+        let person = WebexPerson {
+            id: "id".to_string(),
+            ..Default::default()
+        };
+        persons.insert(person.clone());
+        assert_eq!(persons.get("id"), Some(&person));
+        assert_eq!(persons.get("id2"), None);
+        assert!(persons.exists_or_requested("id"));
+        assert!(!persons.exists_or_requested("id2"));
+        persons.add_requested("id2");
+        assert!(persons.exists_or_requested("id2"));
+    }
+}
