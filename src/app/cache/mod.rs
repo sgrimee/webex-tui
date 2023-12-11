@@ -307,7 +307,7 @@ mod tests {
         assert_eq!(
             store.rooms_content[&room_id]
                 .messages()
-                .nth(0)
+                .next()
                 .unwrap()
                 .id
                 .as_ref()
@@ -422,5 +422,4 @@ mod tests {
         store.add_message(&message1).unwrap();
         assert!(!store.room_is_empty(&room_id));
     }
-
 }

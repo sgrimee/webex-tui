@@ -36,7 +36,8 @@ tui-textarea = "0.4.0"
 webbrowser = "0.8.11"
 # webex = "0.9.1"
 # webex = { path = "../vendor/webex-rust" }
-webex = { git = "https://github.com/sgrimee/webex-rust.git", rev = "15599c08454b4ed692f5d1b0385d05deeb8d9f33" }
+# webex = { git = "https://github.com/sgrimee/webex-rust.git", rev = "15599c08454b4ed692f5d1b0385d05deeb8d9f33" }
+webex = { git = "https://github.com/sgrimee/webex-rust.git", branch = "42-api_alignment_sgrimee" }
 
 [dev-dependencies]
 rstest = "0.18.2"

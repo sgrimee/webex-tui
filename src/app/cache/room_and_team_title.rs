@@ -24,3 +24,23 @@ impl Default for RoomAndTeamTitle {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_display() {
+        let room_and_team_title = RoomAndTeamTitle {
+            room_title: String::from("Room title"),
+            team_name: None,
+        };
+        assert_eq!(room_and_team_title.to_string(), "Room title");
+
+        let room_and_team_title = RoomAndTeamTitle {
+            room_title: String::from("Room title"),
+            team_name: Some(String::from("Team name")),
+        };
+        assert_eq!(room_and_team_title.to_string(), "Room title (Team name)");
+    }
+}

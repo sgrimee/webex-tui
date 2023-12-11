@@ -33,3 +33,28 @@ impl Teams {
         self.teams_by_id.contains_key(id) || self.requested_teams.contains(id)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_teams() {
+        let mut teams = Teams::default();
+        let team = Team {
+            id: "team_id".to_string(),
+            name: None,
+            created: "2020-01-01T00:00:00.000Z".to_string(),
+            description: None,
+        };
+        teams.add(team.clone());
+        assert_eq!(
+            teams.team_with_id(&team.id).unwrap().id,
+            "team_id".to_string()
+        );
+        assert!(teams.exists_or_requested(&team.id));
+        assert!(!teams.exists_or_requested(&"other_team_id".to_string()));
+        teams.add_requested("other_team_id".to_string());
+        assert!(teams.exists_or_requested(&"other_team_id".to_string()));
+    }
+}

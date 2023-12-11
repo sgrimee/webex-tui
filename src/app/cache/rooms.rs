@@ -105,3 +105,92 @@ impl Rooms {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::cache::room::RoomId;
+    use chrono::{TimeZone, Utc};
+
+    #[test]
+    fn test_update_with_room() {
+        let mut rooms = Rooms::default();
+        let room1 = Room {
+            id: String::from("1") as RoomId,
+            title: Some(String::from("Room 1")),
+            last_activity: Utc.with_ymd_and_hms(2020, 1, 1, 0, 0, 1).unwrap(),
+            ..Default::default()
+        };
+        let room2 = Room {
+            id: String::from("2") as RoomId,
+            title: Some(String::from("Room 2")),
+            last_activity: Utc.with_ymd_and_hms(2020, 1, 2, 0, 0, 1).unwrap(),
+            ..Default::default()
+        };
+        let room3 = Room {
+            id: String::from("3") as RoomId,
+            title: Some(String::from("Room 3")),
+            last_activity: Utc.with_ymd_and_hms(2020, 1, 3, 0, 0, 1).unwrap(),
+            ..Default::default()
+        };
+        rooms.update_with_room(&room1);
+        rooms.update_with_room(&room2);
+        rooms.update_with_room(&room3);
+        assert_eq!(rooms.sorted_rooms[0], room3);
+        assert_eq!(rooms.sorted_rooms[1], room2);
+        assert_eq!(rooms.sorted_rooms[2], room1);
+        let room2_updated = Room {
+            id: String::from("2") as RoomId,
+            title: Some(String::from("Room 2")),
+            last_activity: Utc.with_ymd_and_hms(2020, 1, 4, 0, 0, 1).unwrap(),
+            ..Default::default()
+        };
+        rooms.update_with_room(&room2_updated);
+        assert_eq!(rooms.sorted_rooms[0], room2_updated);
+        assert_eq!(rooms.sorted_rooms[1], room3);
+        assert_eq!(rooms.sorted_rooms[2], room1);
+    }
+
+    #[test]
+    fn test_add_room_sorted() {
+        let mut rooms = Rooms::default();
+        let room1 = Room {
+            id: String::from("1") as RoomId,
+            title: Some(String::from("Room 1")),
+            last_activity: Utc.with_ymd_and_hms(2020, 1, 1, 0, 0, 1).unwrap(),
+            ..Default::default()
+        };
+        let room2 = Room {
+            id: String::from("2") as RoomId,
+            title: Some(String::from("Room 2")),
+            last_activity: Utc.with_ymd_and_hms(2020, 1, 2, 0, 0, 1).unwrap(),
+            ..Default::default()
+        };
+        let room3 = Room {
+            id: String::from("3") as RoomId,
+            title: Some(String::from("Room 3")),
+            last_activity: Utc.with_ymd_and_hms(2020, 1, 3, 0, 0, 1).unwrap(),
+            ..Default::default()
+        };
+        rooms.add_room_sorted(room1);
+        rooms.add_room_sorted(room2);
+        rooms.add_room_sorted(room3);
+        assert_eq!(rooms.sorted_rooms[0].id, "3");
+        assert_eq!(rooms.sorted_rooms[1].id, "2");
+        assert_eq!(rooms.sorted_rooms[2].id, "1");
+    }
+
+    #[test]
+    fn test_room_exists_or_requested() {
+        let mut rooms = Rooms::default();
+        let room1 = Room {
+            id: String::from("1") as RoomId,
+            ..Default::default()
+        };
+        rooms.update_with_room(&room1);
+        rooms.add_requested(String::from("2") as RoomId);
+        assert!(rooms.room_exists_or_requested(&String::from("1") as &RoomId));
+        assert!(rooms.room_exists_or_requested(&String::from("2") as &RoomId));
+        assert!(!rooms.room_exists_or_requested(&String::from("3") as &RoomId));
+    }
+}

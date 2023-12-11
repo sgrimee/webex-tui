@@ -5,7 +5,7 @@ pub(crate) type RoomId = String;
 
 /// `Room` is a wrapper around the webex Room type, adding some extra information.
 
-#[derive(Clone, Default, Debug)]
+#[derive(Clone, Default, Debug, PartialEq, Eq)]
 pub(crate) struct Room {
     pub(crate) id: String,
     pub(crate) title: Option<String>,
@@ -67,7 +67,8 @@ impl From<WebexRoom> for Room {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::TimeZone;
+    use chrono::{Duration, TimeZone};
+    use std::thread;
 
     #[test]
     fn test_room_update_last_activity() {
@@ -88,5 +89,19 @@ mod tests {
             room.last_activity,
             Utc.with_ymd_and_hms(2020, 1, 1, 0, 0, 1).unwrap()
         );
+    }
+
+    #[test]
+    fn test_room_has_activity_since() {
+        let room = Room {
+            id: "id".to_string(),
+            room_type: "group".to_string(),
+            last_activity: Utc::now(),
+            unread: false,
+            ..Default::default()
+        };
+        assert!(room.has_activity_since(Duration::seconds(5)));
+        thread::sleep(std::time::Duration::from_secs(1));
+        assert!(!room.has_activity_since(Duration::seconds(1)));
     }
 }
