@@ -6,6 +6,10 @@ This project tries to follow semantic versioning.
 
 ## [unreleased]
 
+### Documentation
+
+- Readme and Todo updates
+
 ### Features
 
 - Scroll up to load older messages
