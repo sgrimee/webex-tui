@@ -2,22 +2,30 @@
 
 ## Next
 
-- [ ] Display number of unread messages in list
+- [ ] Search for rooms/users
+- [ ] Send messages to a new room/user
 - [ ] Highlight unread messages in room view
 - [ ] webex-rust: handle access token expiration/refresh
-- [ ] webex-rust: retrieve list of all user rooms (needs paging support)
-- [ ] Make the message list view scrollable
-- [ ] Make the rooms list view scrollable
-- [ ] Graceful teardown of each thread
 - [ ] Cache access/refresh token between invocations for faster statup
+- [ ] Cache room/messages data on disk for faster startup
+- [ ] Display reactions to messages
+- [ ] Send reactions to messages
+- [ ] Message attachments
+- [ ] Message forwarding
+- [ ] Display number of unread messages in list
 
 ## Maybe
 
 - [ ] Modal text editor
-- [ ] Make the logs view scrollable
+- [ ] Room sections / favourites
 
 ## Done
 
+- [x] Make the logs view scrollable
+- [x] webex-rust: retrieve list of all user rooms (limited to 1000)
+- [x] Make the message list view scrollable
+- [x] Make the rooms list view scrollable
+- [x] Graceful teardown of each thread
 - [x] Support manual copy of auth URL. Currently hidden by UI.
 - [x] Retrieve past messages when viewing a room
 - [x] Room list filter for unread (since app was launched), and recently updated

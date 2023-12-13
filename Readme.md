@@ -7,21 +7,13 @@ It is work in progress but usable to some extent. Feedback is welcome.
 ## Features
 
 - View a list of rooms
-  - from all user rooms (not all rooms are shown at this time)
-  - that have received a message since launch
-  - that have been updated since some Duration
 - Select a room and send messages to the room
+- Handle message edits, both incoming and outgoing
+- Handle nested conversations within a room
 
 ## Missing features
 
-This is early work in progress. The following will be added:
-
-- Handle message edits, both incoming and outgoing
-- Handle nested conversations within a room
-- Search for rooms/users
-- Send messages to a new room/user
-
-See also the [TODO list](TODO.md).
+This is early work in progress, check the [TODO list](TODO.md).
 
 ## Installing
 
