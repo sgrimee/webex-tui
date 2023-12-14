@@ -30,9 +30,16 @@ pub(crate) enum AppReturn {
     Continue,
 }
 
+/// Priority level for events from the app to the webex thread
+pub(crate) enum Priority {
+    Low,
+    High,
+}
+
 /// `App` contains the state of the application and a tx channel to the `Teams` thread.
 pub(crate) struct App<'a> {
-    app_to_teams_tx: tokio::sync::mpsc::UnboundedSender<AppCmdEvent>,
+    app_to_teams_tx_low: tokio::sync::mpsc::UnboundedSender<AppCmdEvent>,
+    app_to_teams_tx_high: tokio::sync::mpsc::UnboundedSender<AppCmdEvent>,
     pub(crate) state: AppState<'a>,
 }
 
@@ -42,9 +49,13 @@ impl App<'_> {
     /// # Arguments
     ///
     /// * `app_to_teams_tx` - An unbounded channel used to send commands to the `Teams` thread
-    pub(crate) fn new(app_to_teams_tx: tokio::sync::mpsc::UnboundedSender<AppCmdEvent>) -> Self {
+    pub(crate) fn new(
+        app_to_teams_tx_low: tokio::sync::mpsc::UnboundedSender<AppCmdEvent>,
+        app_to_teams_tx_high: tokio::sync::mpsc::UnboundedSender<AppCmdEvent>,
+    ) -> Self {
         Self {
-            app_to_teams_tx,
+            app_to_teams_tx_low,
+            app_to_teams_tx_high,
             state: AppState::default(),
         }
     }
@@ -235,7 +246,10 @@ impl App<'_> {
                 .clone()
                 .ok_or(eyre!("Cannot edit message without id"))?;
             let new_text = lines.join("\n");
-            self.dispatch_to_teams(AppCmdEvent::EditMessage(msg_id, room.id.clone(), new_text));
+            self.dispatch_to_teams(
+                AppCmdEvent::EditMessage(msg_id, room.id.clone(), new_text),
+                &Priority::High,
+            );
         } else {
             let msg_to_send = match self.state.message_editor.response_to() {
                 Some(orig_msg) => {
@@ -251,7 +265,7 @@ impl App<'_> {
                     ..Default::default()
                 },
             };
-            self.dispatch_to_teams(AppCmdEvent::SendMessage(msg_to_send));
+            self.dispatch_to_teams(AppCmdEvent::SendMessage(msg_to_send), &Priority::High);
         }
         debug!("Sending message to room {:?}", room.title);
         self.state.cache.rooms.mark_read(&room.id.clone());
@@ -278,7 +292,7 @@ impl App<'_> {
 
         // Dispatch a delete event and remove the message from the store
         self.state.messages_list.select_previous_message();
-        self.dispatch_to_teams(AppCmdEvent::DeleteMessage(msg_id.clone()));
+        self.dispatch_to_teams(AppCmdEvent::DeleteMessage(msg_id.clone()), &Priority::High);
         self.state.cache.delete_message(&msg_id, &room_id)?;
         Ok(())
     }
@@ -313,24 +327,31 @@ impl App<'_> {
     /// Retrieves the latest messages in the room, only if it is empty
     fn get_messages_if_room_empty(&mut self, id: &RoomId) {
         if self.state.cache.room_is_empty(id) {
-            self.dispatch_to_teams(AppCmdEvent::ListMessagesInRoom(id.clone(), None));
+            self.dispatch_to_teams(
+                AppCmdEvent::ListMessagesInRoom(id.clone(), None),
+                &Priority::High,
+            );
         }
     }
 
     /// Retrieves messages before the first message in the room
     fn get_messages_before_first(&mut self, id: &RoomId) {
         if let Some(first_message) = self.state.cache.messages_in_room(id).next() {
-            self.dispatch_to_teams(AppCmdEvent::ListMessagesInRoom(
-                id.clone(),
-                first_message.id.clone(),
-            ));
+            self.dispatch_to_teams(
+                AppCmdEvent::ListMessagesInRoom(id.clone(), first_message.id.clone()),
+                &Priority::High,
+            );
         }
     }
 
     /// Send a command to the teams thread
     /// Does not block
-    pub(crate) fn dispatch_to_teams(&self, action: AppCmdEvent) {
-        if let Err(e) = self.app_to_teams_tx.send(action) {
+    pub(crate) fn dispatch_to_teams(&self, action: AppCmdEvent, priority: &Priority) {
+        let tx = match priority {
+            Priority::High => &self.app_to_teams_tx_high,
+            Priority::Low => &self.app_to_teams_tx_low,
+        };
+        if let Err(e) = tx.send(action) {
             error!("Error from dispatch {}", e);
         };
     }

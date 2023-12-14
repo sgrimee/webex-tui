@@ -6,7 +6,7 @@ use std::collections::HashSet;
 
 use super::{
     cache::{room::RoomId, MessageId},
-    App,
+    App, Priority,
 };
 use crate::teams::app_handler::AppCmdEvent;
 
@@ -18,7 +18,7 @@ impl App<'_> {
     pub(crate) fn cb_teams_initialized(&mut self) {
         self.state.set_active_pane(None);
         // Some more heavy tasks that we put after init to ensure quick startup
-        self.dispatch_to_teams(AppCmdEvent::ListAllRooms());
+        self.dispatch_to_teams(AppCmdEvent::ListAllRooms(), &Priority::Low);
     }
 
     /// Saves `me` as the user of the client
@@ -79,7 +79,12 @@ impl App<'_> {
 
     /// Adds messages to the cache for a given room, and updates the unread status if requested and
     /// messages are not from self.
-    fn add_messages_to_cache(&mut self, messages: &[Message], update_unread: bool, room_id: &String) {
+    fn add_messages_to_cache(
+        &mut self,
+        messages: &[Message],
+        update_unread: bool,
+        room_id: &String,
+    ) {
         // messages came in with most recent first, reverse before adding them to cache
         for msg in messages.iter().rev() {
             if update_unread && !self.state.cache.is_me(&msg.person_id) {
@@ -102,17 +107,24 @@ impl App<'_> {
         );
         for parent_id in new_parent_ids {
             // get the parent message
-            self.dispatch_to_teams(AppCmdEvent::UpdateMessage(parent_id.clone()));
+            self.dispatch_to_teams(
+                AppCmdEvent::UpdateMessage(parent_id.clone()),
+                &Priority::High,
+            );
             // we have at least one child, ensure we have all its children
-            self.dispatch_to_teams(AppCmdEvent::UpdateChildrenMessages(
-                parent_id.clone(),
-                room_id.clone(),
-            ));
+            self.dispatch_to_teams(
+                AppCmdEvent::UpdateChildrenMessages(parent_id.clone(), room_id.clone()),
+                &Priority::High,
+            );
         }
     }
 
     /// Updates the message selection in the active room.
-    fn update_message_selection_in_active_room(&mut self, room_id: &String, selected_message_id: Option<String>) {
+    fn update_message_selection_in_active_room(
+        &mut self,
+        room_id: &String,
+        selected_message_id: Option<String>,
+    ) {
         // If the room is active, maintain the message selection as we are adding messages.
         if self.state.is_active_room(room_id) {
             if let Some(selected_message_id) = selected_message_id {
@@ -133,7 +145,7 @@ impl App<'_> {
         // If the room doesn't exist, request room info and add it to the list of requested rooms.
         if !self.state.cache.rooms.room_exists_or_requested(room_id) {
             self.state.cache.rooms.add_requested(room_id.clone());
-            self.dispatch_to_teams(AppCmdEvent::UpdateRoom(room_id.to_string()));
+            self.dispatch_to_teams(AppCmdEvent::UpdateRoom(room_id.to_string()), &Priority::Low);
         }
     }
 
@@ -149,7 +161,10 @@ impl App<'_> {
         // Request the person info and add it to the list of requested persons.
         for person_id in new_person_ids {
             self.state.cache.persons.add_requested(person_id);
-            self.dispatch_to_teams(AppCmdEvent::UpdatePerson(person_id.to_owned()));
+            self.dispatch_to_teams(
+                AppCmdEvent::UpdatePerson(person_id.to_owned()),
+                &Priority::Low,
+            );
         }
     }
 
@@ -170,7 +185,7 @@ impl App<'_> {
                     team_id, room_title
                 );
                 self.state.cache.teams.add_requested(team_id.clone());
-                self.dispatch_to_teams(AppCmdEvent::UpdateTeam(team_id));
+                self.dispatch_to_teams(AppCmdEvent::UpdateTeam(team_id), &Priority::Low);
             }
         }
     }

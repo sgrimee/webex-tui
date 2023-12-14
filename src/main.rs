@@ -9,6 +9,7 @@ mod teams;
 mod tui;
 mod ui;
 
+use crate::app::Priority;
 use crate::logger::setup_logger;
 use app::{App, AppReturn};
 use banner::BANNER;
@@ -111,17 +112,25 @@ async fn main() -> Result<()> {
     tui.init()?;
 
     // Setup App and Teams thread
-    let (app_to_teams_tx, app_to_teams_rx) = tokio::sync::mpsc::unbounded_channel::<AppCmdEvent>();
-    let app = Arc::new(tokio::sync::Mutex::new(App::new(app_to_teams_tx.clone())));
+    let (app_to_teams_tx_lowpri, app_to_teams_rx_lowpri) =
+        tokio::sync::mpsc::unbounded_channel::<AppCmdEvent>();
+    let (app_to_teams_tx_highpri, app_to_teams_rx_highpri) =
+        tokio::sync::mpsc::unbounded_channel::<AppCmdEvent>();
+    let app = Arc::new(tokio::sync::Mutex::new(App::new(
+        app_to_teams_tx_lowpri.clone(),
+        app_to_teams_tx_highpri.clone(),
+    )));
     let app_ui = Arc::clone(&app);
     tokio::spawn(async move {
         let mut teams = Teams::new(token, app).await;
-        teams.handle_events(app_to_teams_rx).await;
+        teams
+            .handle_events(app_to_teams_rx_lowpri, app_to_teams_rx_highpri)
+            .await;
     });
 
     {
         let app = app_ui.lock().await;
-        app.dispatch_to_teams(AppCmdEvent::Initialize());
+        app.dispatch_to_teams(AppCmdEvent::Initialize(), &Priority::High);
     }
 
     loop {
