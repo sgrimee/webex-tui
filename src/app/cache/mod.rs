@@ -167,6 +167,15 @@ impl Cache {
             team_name,
         })
     }
+
+    /// Removes all messages in the room.
+    /// Returns the number of messages removed.
+    pub(crate) fn wipe_messages_in_room(&mut self, room_id: &str) -> Result<usize> {
+        match self.rooms_content.get_mut(room_id) {
+            Some(content) => Ok(content.wipe()),
+            None => Err(eyre!("Could not wipe messages, room {} not found", room_id)),
+        }
+    }
 }
 
 #[cfg(test)]

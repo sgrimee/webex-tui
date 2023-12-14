@@ -23,6 +23,8 @@ use log::*;
 use tui_logger::TuiWidgetEvent;
 use tui_textarea::Input;
 
+const NUMBER_OF_MESSAGES_TO_LOAD: u32 = 10;
+
 /// Return status indicating whether the app should exit or not.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum AppReturn {
@@ -328,7 +330,7 @@ impl App<'_> {
     fn get_messages_if_room_empty(&mut self, id: &RoomId) {
         if self.state.cache.room_is_empty(id) {
             self.dispatch_to_teams(
-                AppCmdEvent::ListMessagesInRoom(id.clone(), None),
+                AppCmdEvent::ListMessagesInRoom(id.clone(), None, NUMBER_OF_MESSAGES_TO_LOAD),
                 &Priority::High,
             );
         }
@@ -338,7 +340,11 @@ impl App<'_> {
     fn get_messages_before_first(&mut self, id: &RoomId) {
         if let Some(first_message) = self.state.cache.messages_in_room(id).next() {
             self.dispatch_to_teams(
-                AppCmdEvent::ListMessagesInRoom(id.clone(), first_message.id.clone()),
+                AppCmdEvent::ListMessagesInRoom(
+                    id.clone(),
+                    first_message.id.clone(),
+                    NUMBER_OF_MESSAGES_TO_LOAD,
+                ),
                 &Priority::High,
             );
         }

@@ -202,4 +202,22 @@ impl App<'_> {
     pub(crate) fn cb_person_updated(&mut self, person: Person) {
         self.state.cache.persons.insert(person);
     }
+
+    /// Callback when a message is deleted in a room.
+    pub(crate) fn cb_message_deleted(&mut self, room_id: &RoomId) {
+        // We don't know which message was deleted, so we wipe the room and request the messages again.
+        match self.state.cache.wipe_messages_in_room(room_id) {
+            Ok(num_msg_deleted) => {
+                debug!("Deleted {} messages in room {}", num_msg_deleted, room_id);
+                let num_msg_deleted: u32 = num_msg_deleted.try_into().unwrap_or(100);
+                self.dispatch_to_teams(
+                    AppCmdEvent::ListMessagesInRoom(room_id.to_string(), None, num_msg_deleted),
+                    &Priority::High,
+                );
+            }
+            Err(err) => {
+                error!("Error deleting messages in room {}: {}", room_id, err);
+            }
+        }
+    }
 }

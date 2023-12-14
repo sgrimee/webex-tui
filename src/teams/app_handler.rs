@@ -17,8 +17,6 @@ use webex::{
     RoomListParams, SortRoomsBy,
 };
 
-const NUMBER_OF_MESSAGES_TO_LOAD: u32 = 10;
-
 /// Commands the main `App` can send to the `Teams` thread.
 #[derive(Debug)]
 pub(crate) enum AppCmdEvent {
@@ -26,7 +24,7 @@ pub(crate) enum AppCmdEvent {
     EditMessage(MessageId, RoomId, String),
     Initialize(),
     ListAllRooms(),
-    ListMessagesInRoom(RoomId, Option<MessageId>),
+    ListMessagesInRoom(RoomId, Option<MessageId>, u32),
     SendMessage(MessageOut),
     UpdateRoom(RoomId),
     UpdateTeam(TeamId),
@@ -49,8 +47,9 @@ impl Teams<'_> {
             }
             AppCmdEvent::Initialize() => self.do_initialize().await,
             AppCmdEvent::ListAllRooms() => self.do_list_all_rooms().await,
-            AppCmdEvent::ListMessagesInRoom(room_id, before_id) => {
-                self.do_list_messages_in_room(&room_id, before_id).await
+            AppCmdEvent::ListMessagesInRoom(room_id, before_id, max) => {
+                self.do_list_messages_in_room(&room_id, before_id, max)
+                    .await
             }
             AppCmdEvent::SendMessage(msg_to_send) => self.do_send_message(&msg_to_send).await,
             AppCmdEvent::UpdateChildrenMessages(msg_id, room_id) => {
@@ -233,11 +232,12 @@ impl Teams<'_> {
         &mut self,
         room_id: &RoomId,
         before_id: Option<MessageId>,
+        max: u32,
     ) -> Result<()> {
         debug!("Getting messages in room {}", room_id);
         let gid = GlobalId::new(GlobalIdType::Room, room_id.to_owned()).unwrap();
         let mut params = MessageListParams::new(gid.id());
-        params.max = Some(NUMBER_OF_MESSAGES_TO_LOAD);
+        params.max = Some(max);
         let mut _msg_id = String::new();
         if let Some(before_id) = before_id {
             debug!("Only messages before {}", before_id);

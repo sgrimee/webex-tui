@@ -93,6 +93,14 @@ impl RoomContent {
     pub(crate) fn is_empty(&self) -> bool {
         self.len() == 0
     }
+
+    /// Removes all messages from the room content.
+    /// Returns the number of messages removed.
+    pub(crate) fn wipe(&mut self) -> usize {
+        let nb_messages = self.len();
+        self.threads.clear();
+        nb_messages
+    }
 }
 
 #[cfg(test)]

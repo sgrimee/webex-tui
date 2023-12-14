@@ -4,6 +4,7 @@
 //!
 //! Callbacks to the `App` are made via mutex.
 //!
+
 use log::*;
 use webex::ActivityType::{
     AdaptiveCardSubmit, Highlight, Janus, Locus, Message, Space, StartTyping, Unknown,
@@ -23,7 +24,12 @@ impl Teams<'_> {
     // TODO: add support for Room updated (e.g. rename) events
     pub(crate) async fn handle_webex_event(&mut self, event: Event) {
         match event.activity_type() {
+            Message(Acknowledged) => {
+                trace!("Received unhandled message acknowledged event.");
+            }
             Message(Posted) | Message(Shared) => {
+                trace!("Event: {:#?}", event);
+                trace!("Event global id: {:#?}", event.get_global_id());
                 // The event doesn't contain the message content, go fetch it
                 if let Ok(msg) = self
                     .client
@@ -36,12 +42,25 @@ impl Teams<'_> {
                     app.cb_message_received(&msg, true);
                 }
             }
-            Message(Acknowledged) => {
-                trace!("Received unhandled message activity event.");
-            }
             Message(Deleted) => {
-                trace!("Received unhandled message deleted event.");
-                trace!("Event: {:#?}", event);
+                match event
+                    .data
+                    .activity
+                    .clone()
+                    .and_then(|a| a.target)
+                    .and_then(|t| t.global_id)
+                {
+                    Some(room_id) => {
+                        trace!("Received message deleted event in room {}", room_id);
+                        self.app.lock().await.cb_message_deleted(&room_id);
+                    }
+                    _ => {
+                        error!(
+                            "Received message deleted event without room id: {:#?}",
+                            event
+                        );
+                    }
+                }
             }
             Space(Created) => {
                 trace!("Received unhandled space created event.");
@@ -86,7 +105,7 @@ impl Teams<'_> {
                 trace!("Received unhandled highlight event.");
             }
             Unknown(s) => {
-                debug!("Received unhandled unknown event: {:#?}", s);
+                warn!("Received unhandled unknown event: {:#?}", s);
             }
         }
     }
