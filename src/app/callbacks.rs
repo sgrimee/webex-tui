@@ -17,6 +17,7 @@ impl App<'_> {
     /// Deselects all active panes and initialise the retrieval of all rooms
     pub(crate) fn cb_teams_initialized(&mut self) {
         self.state.set_active_pane(None);
+        self.dispatch_to_teams(AppCmdEvent::WhoAmI(), &Priority::Low);
         // Some more heavy tasks that we put after init to ensure quick startup
         self.dispatch_to_teams(AppCmdEvent::ListAllRooms(), &Priority::Low);
     }

@@ -31,7 +31,7 @@ pub(crate) enum AppCmdEvent {
     UpdateMessage(MessageId),
     UpdateChildrenMessages(MessageId, RoomId),
     UpdatePerson(PersonId),
-    // Quit(),
+    WhoAmI(),
 }
 
 impl Teams<'_> {
@@ -58,7 +58,7 @@ impl Teams<'_> {
             AppCmdEvent::UpdatePerson(person_id) => self.do_update_person(&person_id).await,
             AppCmdEvent::UpdateRoom(room_id) => self.do_refresh_room(&room_id).await,
             AppCmdEvent::UpdateTeam(team_id) => self.do_update_team(&team_id).await,
-            // AppCmdEvent::Quit() => self.do_quit().await,
+            AppCmdEvent::WhoAmI() => self.get_me_user().await,
         } {
             error!("Error handling app event: {}", error);
         }
@@ -264,6 +264,21 @@ impl Teams<'_> {
                 Ok(())
             }
             Err(e) => Err(eyre!("Error retrieving person: {}", e)),
+        }
+    }
+
+    /// Retrieve the logged in user
+    async fn get_me_user(&self) -> Result<()> {
+        trace!("Getting logged in user");
+        let global_id =
+            GlobalId::new_with_cluster_unchecked(GlobalIdType::Person, "me".to_string(), None);
+        match self.client.get::<webex::Person>(&global_id).await {
+            Ok(me) => {
+                debug!("Webex knows us as user: {}", me.display_name);
+                self.app.lock().await.cb_set_me(&me);
+                Ok(())
+            }
+            Err(e) => Err(eyre!("Error retrieving logged in user: {}", e)),
         }
     }
 }

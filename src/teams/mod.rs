@@ -16,7 +16,7 @@ use oauth2::AccessToken;
 use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedReceiver;
 
-use webex::{GlobalId, GlobalIdType, Person, Webex, WebexEventStream};
+use webex::{Webex, WebexEventStream};
 
 /// ClientCredentials obtained when creating the Webex integration
 #[derive(Clone)]
@@ -38,21 +38,6 @@ impl<'a> Teams<'a> {
         app: Arc<tokio::sync::Mutex<App<'a>>>,
     ) -> Teams<'a> {
         let client = get_webex_client(token).await;
-
-        // Retrieve the logged in user
-        if let Ok(me) = client
-            .get::<Person>(&GlobalId::new_with_cluster_unchecked(
-                GlobalIdType::Person,
-                "me".to_string(),
-                None,
-            ))
-            .await
-        {
-            debug!("We are: {}", me.display_name);
-            app.lock().await.cb_set_me(&me);
-        } else {
-            error!("Failed to get logged in user");
-        }
         Self { client, app }
     }
 
