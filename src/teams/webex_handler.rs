@@ -5,9 +5,15 @@
 //! Callbacks to the `App` are made via mutex.
 //!
 use log::*;
-use webex::ActivityType::Message;
+use webex::ActivityType::{
+    AdaptiveCardSubmit, Highlight, Janus, Locus, Message, Space, StartTyping, Unknown,
+};
 use webex::Event;
 use webex::MessageActivity::{Acknowledged, Deleted, Posted, Shared};
+use webex::SpaceActivity::{
+    Changed, Created, Joined, Left, Locked, MeetingScheduled, ModeratorAssigned,
+    ModeratorUnassigned, Unlocked,
+};
 
 use super::Teams;
 
@@ -30,14 +36,57 @@ impl Teams<'_> {
                     app.cb_message_received(&msg, true);
                 }
             }
-            Message(Deleted) => {
-                trace!("Message deletion from remote is not implemented yet");
-            }
             Message(Acknowledged) => {
-                trace!("Acknowledged message activity is not implemented yet");
+                trace!("Received unhandled message activity event.");
             }
-            _ => {
-                debug!("Unhandled webex event type: {:#?}", event.activity_type());
+            Message(Deleted) => {
+                trace!("Received unhandled message deleted event.");
+                trace!("Event: {:#?}", event);
+            }
+            Space(Created) => {
+                trace!("Received unhandled space created event.");
+            }
+            Space(Joined) => {
+                trace!("Received unhandled joined space event.");
+            }
+            Space(Left) => {
+                trace!("Received unhandled left space event.");
+            }
+            Space(Changed) => {
+                trace!("Received unhandled space changed event.");
+            }
+            Space(MeetingScheduled) => {
+                trace!("Received unhandled meeting scheduled event.");
+            }
+            Space(Locked) => {
+                info!("Received unhandled space locked event.");
+            }
+            Space(Unlocked) => {
+                info!("Received unhandled space unlocked event.");
+            }
+            Space(ModeratorAssigned) => {
+                info!("Received unhandled moderator assigned event.");
+            }
+            Space(ModeratorUnassigned) => {
+                info!("Received unhandled moderator unassigned event.");
+            }
+            AdaptiveCardSubmit => {
+                trace!("Received unhandled adaptive card submit event.");
+            }
+            Locus => {
+                trace!("Received unhandled locus event.");
+            }
+            Janus => {
+                trace!("Received unhandled janus event.");
+            }
+            StartTyping => {
+                trace!("Received unhandled start typing event.");
+            }
+            Highlight => {
+                trace!("Received unhandled highlight event.");
+            }
+            Unknown(s) => {
+                debug!("Received unhandled unknown event: {:#?}", s);
             }
         }
     }
