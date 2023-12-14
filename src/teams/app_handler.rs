@@ -17,6 +17,8 @@ use webex::{
     RoomListParams, SortRoomsBy,
 };
 
+const NUMBER_OF_MESSAGES_TO_LOAD: u32 = 10;
+
 /// Commands the main `App` can send to the `Teams` thread.
 #[derive(Debug)]
 pub(crate) enum AppCmdEvent {
@@ -235,7 +237,7 @@ impl Teams<'_> {
         debug!("Getting messages in room {}", room_id);
         let gid = GlobalId::new(GlobalIdType::Room, room_id.to_owned()).unwrap();
         let mut params = MessageListParams::new(gid.id());
-        params.max = Some(3);
+        params.max = Some(NUMBER_OF_MESSAGES_TO_LOAD);
         let mut _msg_id = String::new();
         if let Some(before_id) = before_id {
             debug!("Only messages before {}", before_id);
