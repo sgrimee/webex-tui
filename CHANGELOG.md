@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 This project tries to follow semantic versioning.
 
-## [unreleased]
+## [0.6.0] - 2023-12-15
 
 ### Documentation
 
@@ -14,6 +14,9 @@ This project tries to follow semantic versioning.
 
 - Scroll up to load older messages
 - Display people name instead of email
+- Basic priority queue for app events
+- Support remote deletion of a message
+- Support Space changed/created/joined/left events
 
 ## [0.5.0] - 2023-12-04
 
