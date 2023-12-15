@@ -1023,13 +1023,14 @@ dependencies = [
 
 [[package]]
 name = "html2text"
-version = "0.6.0"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "74cda84f06c1cc83476f79ae8e2e892b626bdadafcb227baec54c918cadc18a0"
+checksum = "1dab6ff4ac7bfa756d09865c004abf44d4f1f5d80d15902cd714c00ae1bf9cc4"
 dependencies = [
  "html5ever",
  "markup5ever",
  "tendril",
+ "thiserror",
  "unicode-width",
  "xml5ever",
 ]
@@ -2829,9 +2830,9 @@ checksum = "e51733f11c9c4f72aa0c160008246859e340b00807569a0da0e7a1079b27ba85"
 
 [[package]]
 name = "unsafe-libyaml"
-version = "0.2.9"
+version = "0.2.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f28467d3e1d3c6586d8f25fa243f544f5800fec42d97032474e17222c2b75cfa"
+checksum = "ab4c90930b95a82d00dc9e9ac071b4991924390d46cbd0dfe566148667605e4b"
 
 [[package]]
 name = "untrusted"
@@ -3049,7 +3050,7 @@ dependencies = [
 
 [[package]]
 name = "webex-tui"
-version = "0.5.0"
+version = "0.6.1"
 dependencies = [
  "chrono",
  "clap",

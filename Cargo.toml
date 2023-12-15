@@ -9,7 +9,7 @@ keywords = ["cisco", "webex", "tui", "cli", "terminal"]
 license = "MIT OR Apache-2.0"
 name = "webex-tui"
 repository = "https://github.com/sgrimee/webex-tui"
-version = "0.6.0"
+version = "0.6.1"
 
 [dependencies]
 chrono = { version = "0.4.31" }
@@ -19,11 +19,9 @@ crossterm = "0.27"
 dirs = "5.0.1"
 enum-iterator = "1.4.1"
 gethostname = "0.4.3"
-html2text = { version = "0.7.0", features = ["ansi_colours"] }
+html2text = "0.7.0"
 itertools = "0.12.0"
 log = "0.4.19"
-# markdown = "0.3.0"
-# mini_markdown = "0.3.5"
 oauth2 = "4.4.1"
 open = "5.0.0"
 ratatui = "0.24.0"
