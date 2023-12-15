@@ -220,4 +220,24 @@ impl App<'_> {
             }
         }
     }
+
+    /// Callback when a room is changed.
+    pub(crate) fn cb_space_changed(&mut self, room_id: &RoomId) {
+        self.dispatch_to_teams(AppCmdEvent::UpdateRoom(room_id.to_string()), &Priority::Low);
+    }
+
+    /// Callback when a room is created by self.
+    pub(crate) fn cb_space_created(&mut self, room_id: &RoomId) {
+        self.dispatch_to_teams(AppCmdEvent::UpdateRoom(room_id.to_string()), &Priority::Low);
+    }
+
+    /// Callback when a room is joined.
+    pub(crate) fn cb_space_joined(&mut self, room_id: &RoomId) {
+        self.dispatch_to_teams(AppCmdEvent::UpdateRoom(room_id.to_string()), &Priority::Low);
+    }
+
+    /// Callback when a room is left.
+    pub(crate) fn cb_space_left(&mut self, room_id: &RoomId) {
+        self.state.cache.remove_room(room_id);
+    }
 }

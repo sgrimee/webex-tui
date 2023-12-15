@@ -104,6 +104,14 @@ impl Rooms {
             RoomsListFilter::Unread => room.unread,
         })
     }
+
+    /// Remove a room completely
+    pub(crate) fn remove_room(&mut self, id: &RoomId) {
+        debug!("Removing room {}", id);
+        self.sorted_rooms.retain(|room| room.id != *id);
+        self.requested_rooms.remove(id);
+    }
+
 }
 
 #[cfg(test)]
@@ -192,5 +200,24 @@ mod tests {
         assert!(rooms.room_exists_or_requested(&String::from("1") as &RoomId));
         assert!(rooms.room_exists_or_requested(&String::from("2") as &RoomId));
         assert!(!rooms.room_exists_or_requested(&String::from("3") as &RoomId));
+    }
+
+    #[test]
+    fn test_remove_room() {
+        let mut rooms = Rooms::default();
+        let room1 = Room {
+            id: String::from("1") as RoomId,
+            ..Default::default()
+        };
+        rooms.update_with_room(&room1);
+        rooms.add_requested(String::from("2") as RoomId);
+        assert_eq!(rooms.sorted_rooms.len(), 1);
+        assert_eq!(rooms.requested_rooms.len(), 1);
+        rooms.remove_room(&String::from("1") as &RoomId);
+        assert_eq!(rooms.sorted_rooms.len(), 0);
+        assert_eq!(rooms.requested_rooms.len(), 1);
+        rooms.remove_room(&String::from("2") as &RoomId);
+        assert_eq!(rooms.sorted_rooms.len(), 0);
+        assert_eq!(rooms.requested_rooms.len(), 0);
     }
 }

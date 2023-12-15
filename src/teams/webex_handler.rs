@@ -5,16 +5,19 @@
 //! Callbacks to the `App` are made via mutex.
 //!
 
+use color_eyre::{eyre::eyre, Result};
 use log::*;
 use webex::ActivityType::{
     AdaptiveCardSubmit, Highlight, Janus, Locus, Message, Space, StartTyping, Unknown,
 };
-use webex::Event;
 use webex::MessageActivity::{Acknowledged, Deleted, Posted, Shared};
 use webex::SpaceActivity::{
-    Changed, Created, Joined, Left, Locked, MeetingScheduled, ModeratorAssigned,
-    ModeratorUnassigned, Unlocked,
+    Changed, Created, Favorite, Joined, Left, Locked, MeetingScheduled, ModeratorAssigned,
+    ModeratorUnassigned, Unfavorite, Unlocked,
 };
+use webex::{Event, GlobalId, GlobalIdType, MessageActivity};
+
+use crate::app::cache::room::RoomId;
 
 use super::Teams;
 
@@ -24,10 +27,33 @@ impl Teams<'_> {
     // TODO: add support for Room updated (e.g. rename) events
     pub(crate) async fn handle_webex_event(&mut self, event: Event) {
         match event.activity_type() {
-            Message(Acknowledged) => {
+            Message(activity) => self.handle_message_event(&activity, &event).await,
+            Space(activity) => self.handle_space_event(&activity, &event).await,
+            AdaptiveCardSubmit => {
+                trace!("Received unhandled adaptive card submit event.");
+            }
+            Locus => { // Call from webex app to webex app
+            }
+            Janus => {}
+            StartTyping => {
+                trace!("Received unhandled start typing event.");
+            }
+            Highlight => {
+                trace!("Received unhandled highlight event.");
+            }
+            Unknown(s) => {
+                warn!("Received unhandled unknown event: {:#?}", s);
+            }
+        }
+    }
+
+    /// Handle a message event.
+    async fn handle_message_event(&mut self, activity: &MessageActivity, event: &Event) {
+        match activity {
+            Acknowledged => {
                 trace!("Received unhandled message acknowledged event.");
             }
-            Message(Posted) | Message(Shared) => {
+            Posted | Shared => {
                 trace!("Event: {:#?}", event);
                 trace!("Event global id: {:#?}", event.get_global_id());
                 // The event doesn't contain the message content, go fetch it
@@ -37,12 +63,11 @@ impl Teams<'_> {
                     .await
                 {
                     trace!("Message: {:#?}", msg);
-                    let mut app = self.app.lock().await;
                     // add message and mark room as unread
-                    app.cb_message_received(&msg, true);
+                    self.app.lock().await.cb_message_received(&msg, true);
                 }
             }
-            Message(Deleted) => {
+            Deleted => {
                 match event
                     .data
                     .activity
@@ -62,51 +87,108 @@ impl Teams<'_> {
                     }
                 }
             }
-            Space(Created) => {
-                trace!("Received unhandled space created event.");
+        }
+    }
+
+    // Handle a space event.
+    async fn handle_space_event(&self, activity: &webex::SpaceActivity, event: &webex::Event) {
+        // get_global_id does not work for space events
+        match activity {
+            Changed => {
+                // get_global_id does not work for this event. TODO: fix upstream
+                match target_room_id(event) {
+                    Ok(room_id) => {
+                        debug!("Space changed event for room id {}", room_id,);
+                        self.app.lock().await.cb_space_changed(&room_id);
+                    }
+                    Err(e) => {
+                        error!("Error getting room id from space event: {}", e);
+                    }
+                }
             }
-            Space(Joined) => {
-                trace!("Received unhandled joined space event.");
+            Created => {
+                if let Some(room_id) = room_id_from_space_created_event(event) {
+                    debug!("Space created event for room id {}", room_id,);
+                    self.app.lock().await.cb_space_created(&room_id);
+                };
             }
-            Space(Left) => {
-                trace!("Received unhandled left space event.");
+            Favorite => {
+                trace!("Unhandled space favorite event.");
             }
-            Space(Changed) => {
-                trace!("Received unhandled space changed event.");
+            Joined => match target_room_id(event) {
+                Ok(room_id) => {
+                    debug!("Joined space event for room id {}", room_id);
+                    self.app.lock().await.cb_space_joined(&room_id);
+                }
+                Err(e) => {
+                    error!("Error getting room id from space event: {}", e);
+                }
+            },
+            Left => {
+                // get_global_id does not work for this event. TODO: fix upstream
+                match target_room_id(event) {
+                    Ok(room_id) => {
+                        debug!("Left space event for room id {}", room_id,);
+                        self.app.lock().await.cb_space_left(&room_id);
+                    }
+                    Err(e) => {
+                        error!("Error getting room id from space event: {}", e);
+                    }
+                }
             }
-            Space(MeetingScheduled) => {
-                trace!("Received unhandled meeting scheduled event.");
+            Locked => {
+                trace!("Unhandled space locked event.");
             }
-            Space(Locked) => {
-                info!("Received unhandled space locked event.");
+            MeetingScheduled => {
+                trace!("Unhandled meeting scheduled event.");
             }
-            Space(Unlocked) => {
-                info!("Received unhandled space unlocked event.");
+            ModeratorAssigned => {
+                trace!("Unhandled moderator assigned event.");
             }
-            Space(ModeratorAssigned) => {
-                info!("Received unhandled moderator assigned event.");
+            ModeratorUnassigned => {
+                trace!("Unhandled moderator unassigned event.");
             }
-            Space(ModeratorUnassigned) => {
-                info!("Received unhandled moderator unassigned event.");
+            Unfavorite => {
+                trace!("Unhandled space unfavorite event.");
             }
-            AdaptiveCardSubmit => {
-                trace!("Received unhandled adaptive card submit event.");
-            }
-            Locus => {
-                trace!("Received unhandled locus event.");
-            }
-            Janus => {
-                trace!("Received unhandled janus event.");
-            }
-            StartTyping => {
-                trace!("Received unhandled start typing event.");
-            }
-            Highlight => {
-                trace!("Received unhandled highlight event.");
-            }
-            Unknown(s) => {
-                warn!("Received unhandled unknown event: {:#?}", s);
+            Unlocked => {
+                trace!("Unhandled space unlocked event.");
             }
         }
     }
+}
+
+fn room_id_from_space_created_event(event: &Event) -> Option<String> {
+    // API weirdness... the event contains an id that is close to the room id,
+    // but it is not the same. It differs from the room id by one character,
+    // always by a value of 2. So we cannot use Event::get_global_id() here.
+    let activity = match event.data.activity {
+        Some(ref activity) => activity,
+        None => {
+            error!("No activity in space created event");
+            return None;
+        }
+    };
+    let mut uuid = activity.clone().id;
+    if uuid.as_bytes()[7] == b'2' {
+        uuid.replace_range(7..8, "0");
+    } else {
+        error!("Space created uuid {uuid} could not be not patched");
+        return None;
+    }
+    let room_id = GlobalId::new_with_cluster_unchecked(GlobalIdType::Room, uuid, None)
+        .id()
+        .to_string() as RoomId;
+    Some(room_id)
+}
+
+fn target_room_id(event: &Event) -> Result<RoomId> {
+    event
+        .data
+        .activity
+        .clone()
+        .and_then(|a| a.target)
+        .and_then(|t| t.global_id)
+        .map(|id| id as RoomId)
+        .ok_or(eyre!("No target room id in event"))
 }

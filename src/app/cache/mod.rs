@@ -176,6 +176,12 @@ impl Cache {
             None => Err(eyre!("Could not wipe messages, room {} not found", room_id)),
         }
     }
+
+    /// Removes a room completely.
+    pub(crate) fn remove_room(&mut self, room_id: &RoomId) {
+        self.rooms_content.remove(room_id);
+        self.rooms.remove_room(room_id);
+    }
 }
 
 #[cfg(test)]

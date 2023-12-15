@@ -3023,7 +3023,7 @@ dependencies = [
 [[package]]
 name = "webex"
 version = "0.9.3"
-source = "git+https://github.com/sgrimee/webex-rust.git?branch=42-api_alignment_sgrimee#e283a35b47d5fabd539c9d329003c5a879538607"
+source = "git+https://github.com/sgrimee/webex-rust.git?rev=23bc8ebe40a411c597f9ccee512fa5b22a4c7887#23bc8ebe40a411c597f9ccee512fa5b22a4c7887"
 dependencies = [
  "async-std",
  "base64 0.21.5",
