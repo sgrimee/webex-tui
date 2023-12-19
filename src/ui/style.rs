@@ -22,7 +22,7 @@ pub(crate) fn line_for_room_and_team_title<'a>(ratt: RoomAndTeamTitle, unread: b
     if let Some(team_name) = ratt.team_name.clone() {
         line.spans.push(Span::styled(
             format!(" ({})", team_name),
-            Style::default().fg(Color::Gray),
+            Style::default().fg(Color::LightCyan),
         ));
     }
     line
