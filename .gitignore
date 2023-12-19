@@ -22,3 +22,4 @@ out.txt
 .direnv
 .envrc
 settings.json
+temp/
