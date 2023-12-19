@@ -24,6 +24,7 @@ use super::rooms_list::RoomsList;
 pub(crate) struct AppState<'a> {
     // App
     pub(crate) actions: Actions,
+    pub(crate) debug: bool,
     pub(crate) is_loading: bool,
 
     // Webex
@@ -148,6 +149,7 @@ impl AppState<'_> {
                     Action::SendMessage,
                     Action::NextPane,
                     Action::PreviousPane,
+                    Action::ToggleDebug,
                     Action::ToggleHelp,
                     Action::ToggleLogs,
                     Action::Quit,
@@ -172,6 +174,7 @@ impl AppState<'_> {
                 actions.extend(vec![
                     Action::NextPane,
                     Action::PreviousPane,
+                    Action::ToggleDebug,
                     Action::ToggleHelp,
                     Action::ToggleLogs,
                     Action::Quit,
@@ -186,6 +189,7 @@ impl AppState<'_> {
                     Action::PreviousRoomFilter,
                     Action::NextPane,
                     Action::PreviousPane,
+                    Action::ToggleDebug,
                     Action::ToggleHelp,
                     Action::ToggleLogs,
                     Action::Quit,
@@ -216,13 +220,19 @@ impl AppState<'_> {
                     Action::LogToggleFilteredTargets,
                     Action::NextPane,
                     Action::PreviousPane,
+                    Action::ToggleDebug,
                     Action::ToggleHelp,
                     Action::ToggleLogs,
                     Action::Quit,
                 ]
             }
             None => {
-                vec![Action::ToggleHelp, Action::ToggleLogs, Action::Quit]
+                vec![
+                    Action::ToggleHelp,
+                    Action::ToggleLogs,
+                    Action::ToggleDebug,
+                    Action::Quit,
+                ]
             }
         };
         self.actions = actions.into();
@@ -299,6 +309,7 @@ impl Default for AppState<'_> {
             actions: vec![Action::Quit, Action::ToggleHelp, Action::ToggleLogs].into(),
             active_pane: None,
             cache: Cache::default(),
+            debug: false,
             is_loading: false,
             last_frame_size: Rect::new(0, 0, 0, 0),
             log_state,

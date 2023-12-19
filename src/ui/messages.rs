@@ -11,6 +11,7 @@ pub(crate) const ACTIVE_ROOM_MIN_WIDTH: u16 = 30;
 pub(crate) const ROOM_MIN_HEIGHT: u16 = 8;
 
 use crate::app::state::{ActivePane, AppState};
+use base64::Engine;
 use html2text::from_read;
 use ratatui::prelude::Rect;
 use webex::Message;
@@ -130,6 +131,11 @@ fn row_for_message<'a>(state: &AppState, msg: Message, width: u16) -> (Row<'a>, 
         .spans
         .push(Span::styled(stamp, Style::new().gray()));
 
+    // Add message id
+    if state.debug {
+        add_uuid_to_line(msg.id, &mut title_line);
+    }
+
     // Message content
     let text_width = (width - CONTENT_RIGHT_MARGIN) as usize;
     let options = textwrap::Options::new(text_width)
@@ -138,11 +144,15 @@ fn row_for_message<'a>(state: &AppState, msg: Message, width: u16) -> (Row<'a>, 
     let mut content = match (msg.html, msg.markdown, msg.text) {
         (None, None, None) => String::from("No content"),
         (Some(html), _, _) => {
-            title_line.spans.push(Span::from(" (HTML)"));
+            if state.debug {
+                title_line.spans.push(Span::from(" (HTML)"));
+            }
             from_read(html.as_bytes(), text_width)
         }
         (_, Some(markdown), _) => {
-            title_line.spans.push(Span::from("  (MD)"));
+            if state.debug {
+                title_line.spans.push(Span::from("  (MD)"));
+            }
             markdown
         }
         (_, _, Some(text)) => text,
@@ -170,6 +180,21 @@ fn row_for_message<'a>(state: &AppState, msg: Message, width: u16) -> (Row<'a>, 
     (row, height)
 }
 
+/// Adds the decoded message uuid to the line.
+fn add_uuid_to_line(id: Option<String>, line: &mut Line<'_>) {
+    id.and_then(|id| {
+        base64::engine::general_purpose::STANDARD_NO_PAD
+            .decode(&id)
+            .ok()
+    })
+    .and_then(|dec| String::from_utf8(dec).ok())
+    .map(|id| id.split('/').nth(4).unwrap().to_string())
+    .map(|id| {
+        line.spans
+            .push(Span::styled(format!(" [{}]", id), Style::new().dark_gray()))
+    });
+}
+
 /// Draws a table containing the formatted messages for the active room.
 /// Also returns the number or messages(rows) in the table and the number of text lines.
 pub(crate) fn draw_msg_table<'a>(state: &AppState, rect: &Rect) -> (Table<'a>, usize, usize) {
@@ -185,6 +210,12 @@ pub(crate) fn draw_msg_table<'a>(state: &AppState, rect: &Rect) -> (Table<'a>, u
             .unwrap_or_default();
         title_line = line_for_room_and_team_title(ratt, room.unread);
 
+        // add the room id to the title if debug is enabled
+        if state.debug {
+            add_uuid_to_line(Some(room.id.clone()), &mut title_line);
+        }
+
+        // get the formatted messages for the room
         rows = state
             .cache
             .messages_in_room(&room.id)

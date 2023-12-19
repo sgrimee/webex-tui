@@ -45,11 +45,11 @@ async fn main() -> Result<()> {
     let matches = command!()
         .before_help(BANNER)
         .after_help(
-          "Your webex Client ID and Client Secret are stored in $HOME/.config/webex-tui/client.yml",
+            "Your webex Client ID and Client Secret are stored in $HOME/.config/webex-tui/client.yml",
         )
         .arg(
             arg!(-d --debug ... "Set default log level to debug")
-             .action(ArgAction::SetTrue)
+            .action(ArgAction::SetTrue)
         )
         .arg(
             arg!(-t --trace <MODULES> "Set trace logging for comma separated module names (see list-modules)")
@@ -119,6 +119,7 @@ async fn main() -> Result<()> {
     let app = Arc::new(tokio::sync::Mutex::new(App::new(
         app_to_teams_tx_lowpri.clone(),
         app_to_teams_tx_highpri.clone(),
+        matches.get_flag("debug")
     )));
     let app_ui = Arc::clone(&app);
     tokio::spawn(async move {

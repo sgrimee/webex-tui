@@ -54,11 +54,15 @@ impl App<'_> {
     pub(crate) fn new(
         app_to_teams_tx_low: tokio::sync::mpsc::UnboundedSender<AppCmdEvent>,
         app_to_teams_tx_high: tokio::sync::mpsc::UnboundedSender<AppCmdEvent>,
+        debug: bool,
     ) -> Self {
         Self {
             app_to_teams_tx_low,
             app_to_teams_tx_high,
-            state: AppState::default(),
+            state: AppState {
+                debug: debug,
+                ..Default::default()
+            },
         }
     }
 
@@ -167,6 +171,9 @@ impl App<'_> {
                     if let Err(e) = self.send_message_buffer() {
                         error!("Could not send message: {}", e);
                     };
+                }
+                Action::ToggleDebug => {
+                    self.state.debug = !self.state.debug;
                 }
                 Action::ToggleLogs => {
                     self.state.show_logs = !self.state.show_logs;
