@@ -33,7 +33,7 @@ mod tests {
     fn test_display() {
         let room_and_team_title = RoomAndTeamTitle {
             room_title: String::from("Room title"),
-            team_name: None,
+            ..Default::default()
         };
         assert_eq!(room_and_team_title.to_string(), "Room title");
 

@@ -269,7 +269,8 @@ mod tests {
             store.room_and_team_title(&String::from("room1")).unwrap(),
             RoomAndTeamTitle {
                 room_title: String::from("room1 title"),
-                team_name: Some(String::from("Team name"))
+                team_name: Some(String::from("Team name")),
+                ..Default::default()
             }
         );
 
@@ -284,7 +285,8 @@ mod tests {
             store.room_and_team_title(&String::from("room2")).unwrap(),
             RoomAndTeamTitle {
                 room_title: String::from("General"),
-                team_name: Some(String::from("Team name"))
+                team_name: Some(String::from("Team name")),
+                ..Default::default()
             }
         );
 
@@ -299,7 +301,7 @@ mod tests {
             store.room_and_team_title(&String::from("room3")).unwrap(),
             RoomAndTeamTitle {
                 room_title: String::from("room3 title"),
-                team_name: None
+                ..Default::default()
             }
         );
     }
