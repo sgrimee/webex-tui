@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 This project tries to follow semantic versioning.
 
+## [unreleased]
+
+### Bug Fixes
+
+- Avoid panic when returned list of messages is empty
+- Resolve key mapping conflict for Debug toggle
+
+### Features
+
+- Debug mode with toggle and visible uuid
+
 ## [0.6.0] - 2023-12-15
 
 ### Documentation
