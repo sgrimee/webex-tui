@@ -20,8 +20,6 @@ use super::Teams;
 
 impl Teams<'_> {
     /// Handle a webex event.
-    /// Currently only supports `Message` events.
-    // TODO: add support for Room updated (e.g. rename) events
     pub(crate) async fn handle_webex_event(&mut self, event: Event) -> Result<()> {
         match event.activity_type() {
             Message(activity) => self.handle_message_event(&activity, &event).await?,

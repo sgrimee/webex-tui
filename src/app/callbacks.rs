@@ -142,7 +142,6 @@ impl App<'_> {
 
     /// Request info on the room referenced in the messages if not in cache.
     fn request_missing_room_info(&mut self, room_id: &String) {
-        // TODO: use events for room updates. He we just request it once.
         // If the room doesn't exist, request room info and add it to the list of requested rooms.
         if !self.state.cache.rooms.room_exists_or_requested(room_id) {
             self.state.cache.rooms.add_requested(room_id.clone());
