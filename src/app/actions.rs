@@ -76,7 +76,7 @@ impl Action {
             Action::Quit => &[Key::Ctrl('c'), Key::Char('q')],
             Action::RespondMessage => &[Key::Char('r')],
             Action::SendMessage => &[],
-            Action::ToggleDebug => &[Key::Char('d')],
+            Action::ToggleDebug => &[Key::Char('t')],
             Action::ToggleHelp => &[Key::Char('?')],
             Action::ToggleLogs => &[Key::Char('l')],
             Action::UnselectMessage => &[Key::Esc],
