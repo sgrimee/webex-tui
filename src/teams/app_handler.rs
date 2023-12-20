@@ -128,17 +128,19 @@ impl Teams<'_> {
         params.parent_id = Some(msg_gid.id());
         match self.client.list_with_params::<Message>(params).await {
             Ok(messages) => {
-                // add messages but do not change the room unread status
-                self.app.lock().await.cb_messages_received_in_room(
-                    &messages[0].room_id.clone().unwrap(),
-                    &messages,
-                    false,
-                );
-                debug!(
-                    "Updated {} children of message: {:?}",
-                    messages.len(),
-                    msg_id
-                );
+                if messages.len() > 0 {
+                    // add messages but do not change the room unread status
+                    self.app.lock().await.cb_messages_received_in_room(
+                        &messages[0].room_id.clone().unwrap(),
+                        &messages,
+                        false,
+                    );
+                    debug!(
+                        "Updated {} children of message: {:?}",
+                        messages.len(),
+                        msg_id
+                    );
+                }
                 Ok(())
             }
             Err(e) => Err(eyre!("Error retrieving children of message: {}", e)),
