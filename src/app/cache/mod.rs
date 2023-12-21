@@ -270,7 +270,6 @@ mod tests {
             RoomAndTeamTitle {
                 room_title: String::from("room1 title"),
                 team_name: Some(String::from("Team name")),
-                ..Default::default()
             }
         );
 
@@ -286,7 +285,6 @@ mod tests {
             RoomAndTeamTitle {
                 room_title: String::from("General"),
                 team_name: Some(String::from("Team name")),
-                ..Default::default()
             }
         );
 

@@ -182,17 +182,18 @@ fn row_for_message<'a>(state: &AppState, msg: Message, width: u16) -> (Row<'a>, 
 
 /// Adds the decoded message uuid to the line.
 fn add_uuid_to_line(id: Option<String>, line: &mut Line<'_>) {
-    id.and_then(|id| {
-        base64::engine::general_purpose::STANDARD_NO_PAD
-            .decode(&id)
-            .ok()
-    })
-    .and_then(|dec| String::from_utf8(dec).ok())
-    .map(|id| id.split('/').nth(4).unwrap().to_string())
-    .map(|id| {
+    if let Some(id) = id
+        .and_then(|id| {
+            base64::engine::general_purpose::STANDARD_NO_PAD
+                .decode(id)
+                .ok()
+        })
+        .and_then(|dec| String::from_utf8(dec).ok())
+        .map(|id| id.split('/').nth(4).unwrap().to_string())
+    {
         line.spans
             .push(Span::styled(format!(" [{}]", id), Style::new().dark_gray()))
-    });
+    }
 }
 
 /// Draws a table containing the formatted messages for the active room.

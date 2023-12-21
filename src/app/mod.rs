@@ -60,7 +60,7 @@ impl App<'_> {
             app_to_teams_tx_low,
             app_to_teams_tx_high,
             state: AppState {
-                debug: debug,
+                debug,
                 ..Default::default()
             },
         }

@@ -128,7 +128,7 @@ impl Teams<'_> {
         params.parent_id = Some(msg_gid.id());
         match self.client.list_with_params::<Message>(params).await {
             Ok(messages) => {
-                if messages.len() > 0 {
+                if !messages.is_empty() {
                     // add messages but do not change the room unread status
                     self.app.lock().await.cb_messages_received_in_room(
                         &messages[0].room_id.clone().unwrap(),
