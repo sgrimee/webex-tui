@@ -12,6 +12,7 @@ use crate::inputs::key::Key;
 pub(crate) enum Action {
     ComposeNewMessage,
     DeleteMessage,
+    DumpRoomContentToFile,
     EditSelectedMessage,
     EndComposeMessage,
     LogExitPageMode,
@@ -49,6 +50,7 @@ impl Action {
     pub(crate) fn keys(&self) -> &[Key] {
         match self {
             Action::DeleteMessage => &[Key::Char('d')],
+            Action::DumpRoomContentToFile => &[Key::Char('D')],
             Action::ComposeNewMessage => &[Key::Enter],
             Action::EditSelectedMessage => &[Key::Char('e')],
             Action::EndComposeMessage => &[Key::Esc],
@@ -89,6 +91,7 @@ impl Display for Action {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let str = match self {
             Action::DeleteMessage => "Delete selected",
+            Action::DumpRoomContentToFile => "Dump room content to file",
             Action::ComposeNewMessage => "New message",
             Action::EditSelectedMessage => "Edit selected",
             Action::EndComposeMessage => "End editing",

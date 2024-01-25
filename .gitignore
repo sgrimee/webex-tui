@@ -15,11 +15,13 @@ result*
 # MSVC Windows builds of rustc generate these, which store debugging information
 *.pdb
 
-secrets*
-data/
-*.log
-out.txt
 .direnv
 .envrc
+*.log
+*.tgz
+data/
+out.txt
+room_*.json
+secrets*
 settings.json
 temp/

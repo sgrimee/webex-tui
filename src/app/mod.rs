@@ -22,8 +22,7 @@ use crossterm::event::KeyEvent;
 use log::*;
 use tui_logger::TuiWidgetEvent;
 use tui_textarea::Input;
-
-const NUMBER_OF_MESSAGES_TO_LOAD: u32 = 10;
+use webex::Message;
 
 /// Return status indicating whether the app should exit or not.
 #[derive(Debug, PartialEq, Eq)]
@@ -55,12 +54,14 @@ impl App<'_> {
         app_to_teams_tx_low: tokio::sync::mpsc::UnboundedSender<AppCmdEvent>,
         app_to_teams_tx_high: tokio::sync::mpsc::UnboundedSender<AppCmdEvent>,
         debug: bool,
+        messages_to_load: u32,
     ) -> Self {
         Self {
             app_to_teams_tx_low,
             app_to_teams_tx_high,
             state: AppState {
                 debug,
+                messages_to_load,
                 ..Default::default()
             },
         }
@@ -85,6 +86,11 @@ impl App<'_> {
                 Action::DeleteMessage => {
                     if let Err(e) = self.delete_selected_message() {
                         error!("Could not delete message: {}", e);
+                    };
+                }
+                Action::DumpRoomContentToFile => {
+                    if let Err(e) = self.dump_room_content_to_file() {
+                        error!("Could not dump room content to file: {}", e);
                     };
                 }
                 Action::ComposeNewMessage => {
@@ -337,7 +343,7 @@ impl App<'_> {
     fn get_messages_if_room_empty(&mut self, id: &RoomId) {
         if self.state.cache.room_is_empty(id) {
             self.dispatch_to_teams(
-                AppCmdEvent::ListMessagesInRoom(id.clone(), None, NUMBER_OF_MESSAGES_TO_LOAD),
+                AppCmdEvent::ListMessagesInRoom(id.clone(), None, self.state.messages_to_load),
                 &Priority::High,
             );
         }
@@ -350,7 +356,7 @@ impl App<'_> {
                 AppCmdEvent::ListMessagesInRoom(
                     id.clone(),
                     first_message.id.clone(),
-                    NUMBER_OF_MESSAGES_TO_LOAD,
+                    self.state.messages_to_load,
                 ),
                 &Priority::High,
             );
@@ -413,5 +419,32 @@ impl App<'_> {
         let num_rooms = self.state.num_of_visible_rooms();
         self.state.rooms_list.select_previous_room(num_rooms);
         self.set_active_room_to_selection();
+    }
+
+    fn dump_room_content_to_file(&self) -> Result<()> {
+        // Write the messages in the room to a json file
+        let room = self
+            .state
+            .active_room()
+            .ok_or(eyre!("Cannot dump room content to file, no room selected."))?;
+        let filename = format!("room_{}.json", room.id);
+        let file = std::fs::File::create(filename)?;
+        // Dump only specific fields of the message
+        let messages: Vec<_> = self
+            .state
+            .cache
+            .messages_in_room(&room.id)
+            .map(|msg| Message {
+                person_email: msg.person_email.clone(),
+                text: msg.text.clone(),
+                html: msg.html.clone(),
+                markdown: msg.markdown.clone(),
+                created: msg.created.clone(),
+                id: msg.id.clone(),
+                ..Default::default()
+            })
+            .collect();
+        serde_json::to_writer_pretty(file, &messages)?;
+        Ok(())
     }
 }

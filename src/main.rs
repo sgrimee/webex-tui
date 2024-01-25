@@ -58,6 +58,12 @@ async fn main() -> Result<()> {
             .action(clap::ArgAction::Append)
         )
         .arg(
+            arg!(-m --messages <NUMBER> "Set the number of messages to retrieve per room")
+            .required(false)
+            .value_parser(value_parser!(u32))
+            .default_value("10")
+        )
+        .arg(
             Arg::new("list-modules")
             .long("list-modules")
             .help("List modules that can be traced")
@@ -119,7 +125,8 @@ async fn main() -> Result<()> {
     let app = Arc::new(tokio::sync::Mutex::new(App::new(
         app_to_teams_tx_lowpri.clone(),
         app_to_teams_tx_highpri.clone(),
-        matches.get_flag("debug")
+        matches.get_flag("debug"),
+        *matches.get_one("messages").unwrap(),
     )));
     let app_ui = Arc::clone(&app);
     tokio::spawn(async move {
