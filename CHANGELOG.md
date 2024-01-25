@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 This project tries to follow semantic versioning.
 
-## [unreleased]
+## [0.7.0] - 2024-01-25
 
 ### Bug Fixes
 
@@ -14,6 +14,7 @@ This project tries to follow semantic versioning.
 ### Features
 
 - Debug mode with toggle and visible uuid
+- Dump room messages to json file
 
 ## [0.6.0] - 2023-12-15
 
