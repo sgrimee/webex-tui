@@ -12,29 +12,29 @@ repository = "https://github.com/sgrimee/webex-tui"
 version = "0.7.0"
 
 [dependencies]
-base64 = "0.21.5"
+base64 = "0.22"
 chrono = { version = "0.4.31" }
 clap = { version = "4.3.19", features = ["cargo"] }
 color-eyre = "0.6.2"
 crossterm = "0.27"
 dirs = "5.0.1"
-enum-iterator = "1.4.1"
+enum-iterator = "2.0.0"
 gethostname = "0.4.3"
 html2text = "0.12.0"
 itertools = "0.12.0"
 log = "0.4.19"
 oauth2 = "4.4.1"
 open = "5.0.0"
-ratatui = "0.24.0"
+ratatui = "0.26.1"
 serde = { version = "1.0.180", features = ["derive"] }
 serde_json = "1.0.111"
 serde_yaml = "0.9.25"
 textwrap = "0.16.0"
 tokio = { version = "1.29.1", features = ["rt", "macros"] }
-tui-logger = "0.10.0"
+tui-logger = "0.11.0"
 tui-textarea = "0.4.0"
 webbrowser = "0.8.11"
-# webex = "0.9.1"
+# webex = "0.9.3"
 # webex = { path = "../vendor/webex-rust" }
 # webex = { git = "https://github.com/sgrimee/webex-rust.git", rev = "3c78e82bef4eaf47311c3ee97858018b1a54c4fb" }
 webex = { git = "https://github.com/sgrimee/webex-rust.git", branch = "42-api_alignment_sgrimee" }

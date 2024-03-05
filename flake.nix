@@ -1,9 +1,12 @@
 {
-  description = "Rust dev environment using oxalica";
+  description = "Rust dev using fenix";
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
-    rust-overlay.url = "github:oxalica/rust-overlay";
+    fenix = {
+      url = "github:nix-community/fenix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     flake-utils = {
       url = "github:numtide/flake-utils";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -13,7 +16,7 @@
   outputs = {
     self,
     nixpkgs,
-    rust-overlay,
+    fenix,
     flake-utils,
     ...
   }:
@@ -22,43 +25,42 @@
         pkgs = import nixpkgs {
           inherit system;
           overlays = [
-            (import rust-overlay)
+            fenix.overlays.default
           ];
         };
+
+        # get Rust version from toolchain file
+        toolchain = with fenix.packages.${system}; fromToolchainFile {
+          file = ./rust-toolchain.toml;
+          sha256 = "sha256-e4mlaJehWBymYxJGgnbuCObVlqMlQSilZ8FljG9zPHY=";
+        };
+
       in {
         devShell = pkgs.mkShell {
+
+          # build environment
           nativeBuildInputs = with pkgs; [
-            (pkgs.rust-bin.stable.latest.complete.override {
-              extensions = ["rust-src" "cargo" "rustc"];
-            })
-            gcc
+            # gcc
             openssl.dev
             pkg-config
+            toolchain
           ];
 
-          RUST_SRC_PATH = "${pkgs.rust-bin.stable.latest.default.override {
-            extensions = ["rust-src"];
-          }}/lib/rustlib/src/rust/library";
-
+          # runtime environment
           buildInputs = with pkgs;
             [
               bacon
               clippy
               git-cliff
               rust-analyzer
+              toolchain
             ]
             ++ lib.optionals pkgs.stdenv.isDarwin [
-              # Additional darwin specific inputs can be set here
-              pkgs.libiconv
-              pkgs.darwin.apple_sdk.frameworks.Security
               pkgs.darwin.apple_sdk.frameworks.CoreServices
+              pkgs.darwin.apple_sdk.frameworks.Security
               pkgs.darwin.apple_sdk.frameworks.SystemConfiguration
+              pkgs.libiconv
             ];
-        };
-
-        defaultPackage = pkgs.mkRustPackage {
-          cargoSha256 = "46652094fc5f1f00761992c876b6712052edd15eefd93b2e309833a30af94a95";
-          src = ./.;
         };
       }
     );

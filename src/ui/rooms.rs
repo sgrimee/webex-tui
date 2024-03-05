@@ -36,9 +36,8 @@ pub(crate) fn draw_rooms_table<'a>(state: &AppState) -> Table<'a> {
             Row::new(vec![Cell::from(line)])
         })
         .collect();
-    Table::new(items)
+    Table::new(items, &[Constraint::Length(ROOMS_LIST_WIDTH)])
         .block(block)
-        .widths(&[Constraint::Length(ROOMS_LIST_WIDTH)])
         .highlight_style(
             Style::default()
                 .bg(Color::Yellow)

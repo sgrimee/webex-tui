@@ -110,44 +110,44 @@ impl App<'_> {
                     self.state.set_active_pane(Some(ActivePane::Messages));
                 }
                 Action::LogExitPageMode => {
-                    self.state.log_state.transition(&TuiWidgetEvent::EscapeKey);
+                    self.state.log_state.transition(TuiWidgetEvent::EscapeKey);
                 }
                 Action::LogFocusSelectedTarget => {
-                    self.state.log_state.transition(&TuiWidgetEvent::FocusKey);
+                    self.state.log_state.transition(TuiWidgetEvent::FocusKey);
                 }
                 Action::LogIncreaseCapturedOneLevel => {
-                    self.state.log_state.transition(&TuiWidgetEvent::PlusKey);
+                    self.state.log_state.transition(TuiWidgetEvent::PlusKey);
                 }
                 Action::LogIncreaseShownOneLevel => {
-                    self.state.log_state.transition(&TuiWidgetEvent::RightKey);
+                    self.state.log_state.transition(TuiWidgetEvent::RightKey);
                 }
                 Action::LogPageDown => {
                     self.state
                         .log_state
-                        .transition(&TuiWidgetEvent::NextPageKey);
+                        .transition(TuiWidgetEvent::NextPageKey);
                 }
                 Action::LogPageUp => {
                     self.state
                         .log_state
-                        .transition(&TuiWidgetEvent::PrevPageKey);
+                        .transition(TuiWidgetEvent::PrevPageKey);
                 }
                 Action::LogReduceCapturedOneLevel => {
-                    self.state.log_state.transition(&TuiWidgetEvent::MinusKey);
+                    self.state.log_state.transition(TuiWidgetEvent::MinusKey);
                 }
                 Action::LogReduceShownOneLevel => {
-                    self.state.log_state.transition(&TuiWidgetEvent::LeftKey);
+                    self.state.log_state.transition(TuiWidgetEvent::LeftKey);
                 }
                 Action::LogSelectNextTarget => {
-                    self.state.log_state.transition(&TuiWidgetEvent::DownKey);
+                    self.state.log_state.transition(TuiWidgetEvent::DownKey);
                 }
                 Action::LogSelectPreviousTarget => {
-                    self.state.log_state.transition(&TuiWidgetEvent::UpKey);
+                    self.state.log_state.transition(TuiWidgetEvent::UpKey);
                 }
                 Action::LogToggleFilteredTargets => {
-                    self.state.log_state.transition(&TuiWidgetEvent::SpaceKey);
+                    self.state.log_state.transition(TuiWidgetEvent::SpaceKey);
                 }
                 Action::LogToggleTargetSelector => {
-                    self.state.log_state.transition(&TuiWidgetEvent::HideKey);
+                    self.state.log_state.transition(TuiWidgetEvent::HideKey);
                 }
                 Action::MarkRead => {
                     self.state.mark_active_read();

@@ -20,35 +20,33 @@ impl RoomsList {
     /// Switches the rooms list table to the next filtering mode.
     /// Does not update the active room.
     pub(crate) fn next_filter(&mut self, store: &Cache) {
-        if let Some(new_mode) = next_cycle(&self.filter) {
-            debug!("Rooms list filter set to {:?}", new_mode);
-            self.filter = new_mode;
-            // Reset selection when we change filter
-            let num_rooms = store
-                .rooms
-                .rooms_filtered_by(self.filter())
-                .collect::<Vec<_>>()
-                .len();
-            let selected = if num_rooms == 0 { None } else { Some(0) };
-            self.table_state.select(selected);
-        }
+        let new_mode = next_cycle(&self.filter);
+        debug!("Rooms list filter set to {:?}", new_mode);
+        self.filter = new_mode;
+        // Reset selection when we change filter
+        let num_rooms = store
+            .rooms
+            .rooms_filtered_by(self.filter())
+            .collect::<Vec<_>>()
+            .len();
+        let selected = if num_rooms == 0 { None } else { Some(0) };
+        self.table_state.select(selected);
     }
 
     /// Switches the rooms list table to the previous filtering mode.
     /// Does not update the active room.
     pub(crate) fn previous_filter(&mut self, store: &Cache) {
-        if let Some(new_mode) = previous_cycle(&self.filter) {
-            debug!("Rooms list mode set to {:?}", new_mode);
-            self.filter = new_mode;
-            // Reset selection when we change filter
-            let num_rooms = store
-                .rooms
-                .rooms_filtered_by(self.filter())
-                .collect::<Vec<_>>()
-                .len();
-            let selected = if num_rooms == 0 { None } else { Some(0) };
-            self.table_state.select(selected);
-        }
+        let new_mode = previous_cycle(&self.filter);
+        debug!("Rooms list mode set to {:?}", new_mode);
+        self.filter = new_mode;
+        // Reset selection when we change filter
+        let num_rooms = store
+            .rooms
+            .rooms_filtered_by(self.filter())
+            .collect::<Vec<_>>()
+            .len();
+        let selected = if num_rooms == 0 { None } else { Some(0) };
+        self.table_state.select(selected);
     }
 
     /// Returns the id of the selected room if there is one.

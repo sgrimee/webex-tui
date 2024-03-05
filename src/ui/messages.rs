@@ -242,9 +242,8 @@ pub(crate) fn draw_msg_table<'a>(state: &AppState, rect: &Rect) -> (Table<'a>, u
         .title(title_line);
 
     (
-        Table::new(rows)
+        Table::new(rows, &[Constraint::Percentage(100)])
             .block(block)
-            .widths(&[Constraint::Percentage(100)])
             .column_spacing(1)
             .highlight_style(Style::default().add_modifier(Modifier::REVERSED)),
         nb_rows,

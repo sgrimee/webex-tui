@@ -39,16 +39,18 @@ pub(crate) fn draw_help(actions: &Actions) -> Table {
         }
     }
 
-    Table::new(rows)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_type(BorderType::Rounded)
-                .title("Help"),
-        )
-        .widths(&[
+    Table::new(
+        rows,
+        &[
             Constraint::Length(HELP_KEY_WIDTH),
             Constraint::Min(HELP_ACTION_WIDTH),
-        ])
-        .column_spacing(1)
+        ],
+    )
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .title("Help"),
+    )
+    .column_spacing(1)
 }

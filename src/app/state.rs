@@ -44,7 +44,7 @@ pub(crate) struct AppState<'a> {
 
 /// The active pane is used by the UI to draw attention to what
 /// key mappings are in use
-#[derive(Clone, Debug, PartialEq, Sequence, Default)]
+#[derive(Clone, Debug, Default, PartialEq, Sequence)]
 pub(crate) enum ActivePane {
     #[default]
     /// The list of rooms
@@ -246,14 +246,14 @@ impl AppState<'_> {
         match self.active_pane() {
             None => self.set_active_pane(Some(ActivePane::default())),
             Some(active_pane) => {
-                let mut next_pane = next_cycle(active_pane).unwrap_or_default();
+                let mut next_pane = next_cycle(active_pane);
                 // Skip the message compose pane
                 if next_pane == ActivePane::Compose {
-                    next_pane = next_cycle(&next_pane).unwrap_or_default();
+                    next_pane = next_cycle(&next_pane);
                 };
                 // Skip the logs pane if not enabled
                 if next_pane == ActivePane::Logs && !self.show_logs {
-                    next_pane = next_cycle(&next_pane).unwrap_or_default();
+                    next_pane = next_cycle(&next_pane);
                 };
                 self.set_active_pane(Some(next_pane))
             }
@@ -266,14 +266,14 @@ impl AppState<'_> {
         match self.active_pane() {
             None => self.set_active_pane(Some(ActivePane::default())),
             Some(active_pane) => {
-                let mut previous_pane = previous_cycle(active_pane).unwrap_or_default();
+                let mut previous_pane = previous_cycle(active_pane);
                 // Skip the message compose pane
                 if previous_pane == ActivePane::Compose {
-                    previous_pane = previous_cycle(&previous_pane).unwrap_or_default();
+                    previous_pane = previous_cycle(&previous_pane);
                 };
                 // Skip the logs pane if not enabled
                 if previous_pane == ActivePane::Logs && !self.show_logs {
-                    previous_pane = previous_cycle(&previous_pane).unwrap_or_default();
+                    previous_pane = previous_cycle(&previous_pane);
                 };
                 self.set_active_pane(Some(previous_pane))
             }
@@ -306,7 +306,7 @@ impl AppState<'_> {
 impl Default for AppState<'_> {
     fn default() -> Self {
         let mut log_state = TuiWidgetState::default();
-        log_state.transition(&tui_logger::TuiWidgetEvent::HideKey);
+        log_state.transition(tui_logger::TuiWidgetEvent::HideKey);
         AppState {
             actions: vec![Action::Quit, Action::ToggleHelp, Action::ToggleLogs].into(),
             active_pane: None,
