@@ -20,7 +20,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Generate a changelog
-        uses: orhun/git-cliff-action@v2
+        uses: orhun/git-cliff-action@v3
         id: git-cliff
         with:
           config: cliff.toml
@@ -32,7 +32,7 @@ jobs:
         run: cat "${{ steps.git-cliff.outputs.changelog }}"
 
       - name: write changelog to repo
-        uses: stefanzweifel/git-auto-commit-action@v4
+        uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: Update CHANGELOG
 
