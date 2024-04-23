@@ -117,6 +117,7 @@ This project tries to follow semantic versioning.
 
 ### Features
 
+- Tab selection of active pane
 - Messsage selection WIP
 - Skip Compose pane on Tab
 - Delete a message
@@ -127,10 +128,6 @@ This project tries to follow semantic versioning.
 ### Bug Fixes
 
 - Continue retrieving Teams if one does not have a name. fix #17
-
-### Features
-
-- Tab selection of active pane
 
 ## [0.2.3] - 2023-10-23
 
