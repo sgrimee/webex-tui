@@ -4,8 +4,8 @@
 
 use log::*;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
-use ratatui::terminal::Frame;
 use ratatui::widgets::{Scrollbar, ScrollbarOrientation};
+use ratatui::Frame;
 
 mod help;
 mod logs;
@@ -114,7 +114,7 @@ pub(crate) fn render(rect: &mut Frame, state: &mut AppState) {
 
     // Message input
     let editor = draw_message_editor(state);
-    rect.render_widget(editor.widget(), room_rows[1]);
+    rect.render_widget(&editor, room_rows[1]);
 }
 
 /// Logs warnings when terminal size constraints are not respected.

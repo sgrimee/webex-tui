@@ -30,17 +30,15 @@
         };
 
         # get Rust version from toolchain file
-        toolchain = with fenix.packages.${system}; fromToolchainFile {
-          file = ./rust-toolchain.toml;
-          sha256 = "sha256-e4mlaJehWBymYxJGgnbuCObVlqMlQSilZ8FljG9zPHY=";
-        };
-
+        toolchain = with fenix.packages.${system};
+          fromToolchainFile {
+            file = ./rust-toolchain.toml;
+            sha256 = "sha256-opUgs6ckUQCyDxcB9Wy51pqhd0MPGHUVbwRKKPGiwZU=";
+          };
       in {
         devShell = pkgs.mkShell {
-
           # build environment
           nativeBuildInputs = with pkgs; [
-            # gcc
             openssl.dev
             pkg-config
             toolchain
@@ -50,6 +48,7 @@
           buildInputs = with pkgs;
             [
               bacon
+              cargo-udeps
               clippy
               git-cliff
               rust-analyzer

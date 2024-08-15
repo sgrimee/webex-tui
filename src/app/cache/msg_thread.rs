@@ -38,7 +38,7 @@ impl MsgThread {
         // This is because incoming message updates do not have the parent_id set correctly.
         if let Some(index) = self.messages.iter().position(|x| x.id == msg.id) {
             let mut msg = msg.clone();
-            msg.parent_id = self.messages[index].parent_id.clone();
+            msg.parent_id.clone_from(&self.messages[index].parent_id);
             self.messages[index] = msg;
             return Ok(true);
         }

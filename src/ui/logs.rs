@@ -1,12 +1,9 @@
 //! Panel showing log messages
 
-use ratatui::{
-    style::{Color, Style},
-    widgets::BorderType,
-};
-use tui_logger::{TuiLoggerLevelOutput, TuiLoggerSmartWidget};
-
 use crate::app::state::{ActivePane, AppState};
+use ratatui::prelude::*;
+use ratatui::widgets::*;
+use tui_logger::{TuiLoggerLevelOutput, TuiLoggerSmartWidget};
 
 pub(crate) const LOG_BLOCK_PERCENTAGE: u16 = 40;
 
@@ -31,6 +28,6 @@ pub(crate) fn draw_logs<'a>(state: &AppState) -> TuiLoggerSmartWidget<'a> {
         .output_file(true)
         .output_line(true)
         .state(&state.log_state)
-        .border_type(BorderType::Rounded)
-        .border_style(border_style)
+    .border_type(BorderType::Rounded)
+    .border_style(border_style)
 }
