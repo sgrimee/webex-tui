@@ -25,11 +25,11 @@ use title::{draw_title, TITLE_BLOCK_HEIGHT};
 
 /// Render all blocks.
 pub(crate) fn render(rect: &mut Frame, state: &mut AppState) {
-    let size = rect.size();
+    let area = rect.area();
     // Check size constraints when the size changes
-    if size != state.last_frame_size {
-        check_size(&size, state);
-        state.last_frame_size = size;
+    if area != state.last_frame_size {
+        check_size(&area, state);
+        state.last_frame_size = area;
     }
 
     let mut app_constraints = vec![
@@ -44,7 +44,7 @@ pub(crate) fn render(rect: &mut Frame, state: &mut AppState) {
     let app_rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints(app_constraints)
-        .split(size);
+        .split(area);
 
     // Title
     let title = draw_title(state);
