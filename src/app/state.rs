@@ -20,7 +20,7 @@ use super::rooms_list::RoomsList;
 /// - whether `editing_mode` is enabled or not
 /// - whether a background thread `is_loading`
 /// - a `Cache` for Webex messages and rooms
-/// and other UI state
+///   and other UI state
 pub(crate) struct AppState<'a> {
     // App
     pub(crate) actions: Actions,
@@ -110,8 +110,6 @@ impl AppState<'_> {
             }
         }
     }
-
-    /// Reset the message list selection to the
 
     /// Mark the active room as being read.
     /// Only local storage for now, this is not synced between multiple clients,

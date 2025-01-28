@@ -45,7 +45,7 @@ pub(crate) enum Key {
 }
 
 impl Key {
-    /// If exit
+    // If exit
     // pub(crate) fn is_exit(&self) -> bool {
     //     matches!(self, Key::Ctrl('c'))
     // }

@@ -83,7 +83,7 @@ impl Cache {
     pub(crate) fn messages_in_room<'a>(
         &'a self,
         id: &RoomId,
-    ) -> Box<dyn Iterator<Item = &Message> + 'a> {
+    ) -> Box<dyn Iterator<Item = &'a Message> + 'a> {
         match self.rooms_content.get(id) {
             Some(content) => Box::new(content.messages()),
             None => Box::new(::std::iter::empty()),

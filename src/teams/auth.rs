@@ -47,7 +47,7 @@ the BROWSER environment variable, or open the following url manually (on this co
         .request_async(http_client)
         .await?;
 
-    return Ok(token_res.access_token().clone());
+    Ok(token_res.access_token().clone())
 }
 
 /// Returns a client with given `ClientCredentials`.

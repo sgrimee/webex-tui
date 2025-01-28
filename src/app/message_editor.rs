@@ -13,7 +13,7 @@ pub(crate) struct MessageEditor<'a> {
     editing_of: Option<Message>,
 }
 
-impl<'a> MessageEditor<'a> {
+impl MessageEditor<'_> {
     /// Returns the text in the editor.
     pub(crate) fn lines(&self) -> &[String] {
         self.textarea.lines()
