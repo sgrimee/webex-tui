@@ -38,9 +38,9 @@ webex = "0.10.0"
 
 # Strongly coupled dependencies
 crossterm = "0.28.1"
-ratatui = "0.28.1"     # 0.28 not compatible with tui-logger 0.11
-tui-logger = "0.13.2"
-tui-textarea = "0.6.1"
+ratatui = "0.29.0"     # 0.28 not compatible with tui-logger 0.11
+tui-logger = "0.14.1"
+tui-textarea = "0.7.0"
 
 [dev-dependencies]
 rstest = "0.24.0"

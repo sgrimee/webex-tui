@@ -245,7 +245,7 @@ pub(crate) fn draw_msg_table<'a>(state: &AppState, rect: &Rect) -> (Table<'a>, u
         Table::new(rows, &[Constraint::Percentage(100)])
             .block(block)
             .column_spacing(1)
-            .highlight_style(Style::default().add_modifier(Modifier::REVERSED)),
+            .row_highlight_style(Style::default().add_modifier(Modifier::REVERSED)),
         nb_rows,
         nb_lines,
     )
