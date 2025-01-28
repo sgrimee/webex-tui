@@ -147,7 +147,7 @@ fn row_for_message<'a>(state: &AppState, msg: Message, width: u16) -> (Row<'a>, 
             if state.debug {
                 title_line.spans.push(Span::from(" (HTML)"));
             }
-            from_read(html.as_bytes(), text_width)
+            from_read(html.as_bytes(), text_width).unwrap_or_else(|_| String::from("Failed to parse HTML"))
         }
         (_, Some(markdown), _) => {
             if state.debug {
