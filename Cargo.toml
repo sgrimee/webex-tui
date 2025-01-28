@@ -9,7 +9,7 @@ keywords = ["cisco", "webex", "tui", "cli", "terminal"]
 license = "MIT OR Apache-2.0"
 name = "webex-tui"
 repository = "https://github.com/sgrimee/webex-tui"
-version = "0.7.3"
+version = "0.7.4"
 
 [dependencies]
 base64 = "0.22"
