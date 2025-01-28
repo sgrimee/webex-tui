@@ -147,7 +147,7 @@ fn row_for_message<'a>(state: &AppState, msg: Message, width: u16) -> (Row<'a>, 
             if state.debug {
                 title_line.spans.push(Span::from(" (HTML)"));
             }
-            from_read(html.as_bytes(), text_width)
+            from_read(html.as_bytes(), text_width).unwrap_or_else(|_| String::from("Failed to parse HTML"))
         }
         (_, Some(markdown), _) => {
             if state.debug {
@@ -245,7 +245,7 @@ pub(crate) fn draw_msg_table<'a>(state: &AppState, rect: &Rect) -> (Table<'a>, u
         Table::new(rows, &[Constraint::Percentage(100)])
             .block(block)
             .column_spacing(1)
-            .highlight_style(Style::default().add_modifier(Modifier::REVERSED)),
+            .row_highlight_style(Style::default().add_modifier(Modifier::REVERSED)),
         nb_rows,
         nb_lines,
     )
