@@ -7,11 +7,10 @@
 use super::ClientCredentials;
 use color_eyre::eyre::{eyre, Result};
 use oauth2::basic::BasicClient;
-use oauth2::reqwest::async_http_client as http_client;
 use oauth2::url::Url;
 use oauth2::{
-    AccessToken, AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, RedirectUrl, Scope,
-    TokenResponse, TokenUrl,
+    reqwest, AccessToken, AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken,
+    PkceCodeChallenge, RedirectUrl, Scope, TokenResponse, TokenUrl,
 };
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
@@ -19,12 +18,34 @@ use std::net::TcpStream;
 
 /// Create and authorize a client with the given `ClientCredentials`.
 /// A browser is opened for user authentication.
+/// Returns the `AccessToken` for the client.
+/// Blocks until the user has authenticated.
 pub(crate) async fn get_integration_token(credentials: ClientCredentials) -> Result<AccessToken> {
-    let client = create_basic_client(credentials)?;
+    let client = BasicClient::new(ClientId::new(credentials.client_id))
+        .set_client_secret(ClientSecret::new(credentials.client_secret))
+        .set_auth_uri(
+            AuthUrl::new("https://webexapis.com/v1/authorize".to_string())
+                .expect("Invalid auth uri"),
+        )
+        .set_token_uri(
+            TokenUrl::new("https://webexapis.com/v1/access_token".to_string())
+                .expect("Invalid token uri"),
+        )
+        .set_redirect_uri(
+            RedirectUrl::new("http://localhost:8080".to_string()).expect("Invalid redirect url"),
+        );
 
-    let (auth_url, csrf_state) = get_authorize_url(&client)?;
+    // Generate a PKCE challenge.
+    let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
 
-    if open_web_browser(&auth_url).is_err() {
+    // Generate the full authorization URL.
+    let (auth_url, csrf_token) = client
+        .authorize_url(CsrfToken::new_random)
+        .add_scope(Scope::new("spark:all".to_string()))
+        .set_pkce_challenge(pkce_challenge)
+        .url();
+
+    if webbrowser::open(auth_url.as_str()).is_err() {
         let msg = format!("We were unable to open a browser. You may quit with Ctrl+C and try again after setting 
 the BROWSER environment variable, or open the following url manually (on this computer):\n{}\n",
         auth_url
@@ -37,49 +58,25 @@ the BROWSER environment variable, or open the following url manually (on this co
     let (code, state) = parse_authorization_response(&mut stream)?;
     send_success_response(&mut stream)?;
 
-    if state.secret() != csrf_state.secret() {
+    if state.secret() != csrf_token.secret() {
         return Err(eyre!(
             "Invalid CSRF authorization code received on callback"
         ));
     }
-    let token_res = client
+
+    let http_client = reqwest::ClientBuilder::new()
+        // Following redirects opens the client up to SSRF vulnerabilities.
+        // .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .expect("Client should build");
+
+    let token_result = client
         .exchange_code(code)
-        .request_async(http_client)
+        .set_pkce_verifier(pkce_verifier)
+        .request_async(&http_client)
         .await?;
 
-    Ok(token_res.access_token().clone())
-}
-
-/// Returns a client with given `ClientCredentials`.
-fn create_basic_client(credentials: ClientCredentials) -> Result<BasicClient> {
-    let client = BasicClient::new(
-        ClientId::new(credentials.client_id),
-        Some(ClientSecret::new(credentials.client_secret)),
-        AuthUrl::new("http://webexapis.com/v1/authorize".to_string())?,
-        Some(TokenUrl::new(
-            "https://webexapis.com/v1/access_token".to_string(),
-        )?),
-    )
-    .set_redirect_uri(
-        RedirectUrl::new("http://localhost:8080".to_string()).expect("Invalid redirect url"),
-    );
-
-    Ok(client)
-}
-
-/// Returns the `Url` the user must visit, and the `CsrfToken` for callback validation.
-fn get_authorize_url(client: &BasicClient) -> Result<(Url, CsrfToken)> {
-    let (auth_url, csrf_state) = client
-        .authorize_url(CsrfToken::new_random)
-        .add_scope(Scope::new("spark:all".to_string()))
-        .url();
-
-    Ok((auth_url, csrf_state))
-}
-
-fn open_web_browser(auth_url: &Url) -> Result<()> {
-    webbrowser::open(auth_url.as_str())?;
-    Ok(())
+    Ok(token_result.access_token().clone())
 }
 
 /// Listen on local port for OAuth callback and return the TCP stream
