@@ -37,10 +37,10 @@ webex = "0.10.0"
 # webex = { git = "https://github.com/Nabushika/webex-rust.git", branch = "master"}
 
 # Strongly coupled dependencies
-crossterm = "0.28"
-ratatui = "0.28"       # 0.28 not compatible with tui-logger 0.11
-tui-logger = "0.12"
-tui-textarea = "0.6.1" # 0.6 requires ratatui 0.28
+crossterm = "0.28.1"
+ratatui = "0.28.1"     # 0.28 not compatible with tui-logger 0.11
+tui-logger = "0.13.2"
+tui-textarea = "0.6.1"
 
 [dev-dependencies]
 rstest = "0.24.0"
