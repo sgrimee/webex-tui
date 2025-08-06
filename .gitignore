@@ -25,3 +25,4 @@ room_*.json
 secrets*
 settings.json
 temp/
+.claude/settings.local.json
