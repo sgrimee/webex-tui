@@ -73,6 +73,9 @@ impl App<'_> {
         if self.state.message_editor.is_composing() {
             trace!("Keyevent: {:?}", key_event);
             self.process_editing_key(key_event)
+        } else if self.state.active_pane() == &Some(ActivePane::Search) {
+            trace!("Search keyevent: {:?}", key_event);
+            self.process_search_key(key_event)
         } else {
             self.do_action(Key::from(key_event))
         }
@@ -209,6 +212,16 @@ impl App<'_> {
                 Action::UnselectMessage => {
                     self.state.messages_list.deselect();
                 }
+                Action::StartRoomSearch => {
+                    self.state.rooms_list.set_search_query(Some(String::new()));
+                    self.state.set_active_pane(Some(ActivePane::Search));
+                }
+                Action::EndRoomSearch => {
+                    self.state.rooms_list.set_search_query(None);
+                    self.state.set_active_pane(Some(ActivePane::Rooms));
+                    // Reset room selection to match the active room after search
+                    self.state.update_room_selection_with_active_room();
+                }
             }
         } else {
             warn!("No action associated with {} in this mode", key);
@@ -233,6 +246,62 @@ impl App<'_> {
                 };
             }
             _ => _ = self.state.message_editor.input(Input::from(key_event)),
+        }
+        AppReturn::Continue
+    }
+
+    // Handle a key while in search mode
+    fn process_search_key(&mut self, key_event: KeyEvent) -> AppReturn {
+        let key: Key = key_event.into();
+        match key {
+            Key::Ctrl('c') => return AppReturn::Exit,
+            Key::Esc => {
+                // End search mode
+                return self.do_action(Key::Esc);
+            }
+            Key::Enter => {
+                // Select the highlighted room and exit search mode
+                self.set_active_room_to_selection();
+                self.state.rooms_list.set_search_query(None);
+                self.state.set_active_pane(Some(ActivePane::Messages));
+            }
+            Key::Up => {
+                // Navigate search results
+                let num_rooms = self.state.num_of_visible_rooms();
+                self.state.rooms_list.select_previous_room(num_rooms);
+            }
+            Key::Down => {
+                // Navigate search results
+                let num_rooms = self.state.num_of_visible_rooms();
+                self.state.rooms_list.select_next_room(num_rooms);
+            }
+            Key::Backspace => {
+                // Remove last character from search query
+                if let Some(query) = self.state.rooms_list.search_query() {
+                    let mut new_query = query.clone();
+                    new_query.pop();
+                    self.state.rooms_list.set_search_query(Some(new_query));
+                    // Reset selection when search changes
+                    let num_rooms = self.state.num_of_visible_rooms();
+                    let selected = if num_rooms == 0 { None } else { Some(0) };
+                    self.state.rooms_list.table_state_mut().select(selected);
+                }
+            }
+            Key::Char(c) => {
+                // Add character to search query
+                let query = self.state.rooms_list.search_query()
+                    .map(|q| format!("{}{}", q, c))
+                    .unwrap_or_else(|| c.to_string());
+                self.state.rooms_list.set_search_query(Some(query));
+                // Reset selection when search changes
+                let num_rooms = self.state.num_of_visible_rooms();
+                let selected = if num_rooms == 0 { None } else { Some(0) };
+                self.state.rooms_list.table_state_mut().select(selected);
+            }
+            _ => {
+                // Handle other actions like NextPane, etc.
+                return self.do_action(key);
+            }
         }
         AppReturn::Continue
     }

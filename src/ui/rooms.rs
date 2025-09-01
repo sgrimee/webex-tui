@@ -13,20 +13,26 @@ pub(crate) const ROOMS_LIST_WIDTH: u16 = 32;
 
 /// Draws the list of rooms as per selected filtering mode.
 pub(crate) fn draw_rooms_table<'a>(state: &AppState) -> Table<'a> {
-    // highlight pane if it is active
+    // highlight pane if it is active or in search mode
     let border_style = match state.active_pane() {
-        Some(ActivePane::Rooms) => Style::default().fg(Color::Cyan),
+        Some(ActivePane::Rooms) | Some(ActivePane::Search) => Style::default().fg(Color::Cyan),
         _ => Style::default(),
     };
+    
+    // Build title based on current mode
+    let title = if let Some(query) = state.rooms_list.search_query() {
+        format!("Search: {}", query)
+    } else {
+        format!("Filter: {:?}", state.rooms_list.filter())
+    };
+    
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .border_style(border_style)
-        .title(format!("Filter: {:?}", state.rooms_list.filter()));
+        .title(title);
     let items: Vec<_> = state
-        .cache
-        .rooms
-        .rooms_filtered_by(state.rooms_list.filter())
+        .visible_rooms()
         .map(|room| {
             let ratt = state
                 .cache
