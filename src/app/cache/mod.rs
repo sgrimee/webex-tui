@@ -193,7 +193,7 @@ impl Cache {
         let matcher = SkimMatcherV2::default();
         let mut scored_rooms: Vec<_> = self
             .rooms
-            .sorted_rooms
+            .sorted_rooms()
             .iter()
             .filter_map(|room| {
                 let room_and_team_title = self.room_and_team_title(&room.id).ok()?;

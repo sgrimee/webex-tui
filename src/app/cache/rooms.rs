@@ -112,6 +112,11 @@ impl Rooms {
         self.requested_rooms.remove(id);
     }
 
+    /// Returns a reference to the sorted rooms list
+    pub(crate) fn sorted_rooms(&self) -> &Vec<Room> {
+        &self.sorted_rooms
+    }
+
 }
 
 #[cfg(test)]
