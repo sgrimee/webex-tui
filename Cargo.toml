@@ -18,6 +18,7 @@ clap = { version = "4.3.19", features = ["cargo"] }
 color-eyre = "0.6.2"
 dirs = "6.0.0"
 enum-iterator = "2.0.0"
+fuzzy-matcher = "0.3"
 gethostname = "0.5"
 html2text = "0.13.6"
 itertools = "0.14.0"

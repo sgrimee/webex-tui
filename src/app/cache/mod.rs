@@ -6,6 +6,7 @@ use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
 use color_eyre::{eyre::eyre, Result};
+use fuzzy_matcher::{skim::SkimMatcherV2, FuzzyMatcher};
 use webex::{Message, Person};
 
 pub(crate) mod msg_thread;
@@ -181,6 +182,32 @@ impl Cache {
     pub(crate) fn remove_room(&mut self, room_id: &RoomId) {
         self.rooms_content.remove(room_id);
         self.rooms.remove_room(room_id);
+    }
+
+    /// Returns an iterator over rooms that match the search query using fuzzy matching.
+    /// Searches both room titles and team names.
+    pub(crate) fn rooms_matching_search<'a>(
+        &'a self,
+        query: &'a str,
+    ) -> impl Iterator<Item = (&'a room::Room, i64)> {
+        let matcher = SkimMatcherV2::default();
+        let mut scored_rooms: Vec<_> = self
+            .rooms
+            .sorted_rooms
+            .iter()
+            .filter_map(|room| {
+                let room_and_team_title = self.room_and_team_title(&room.id).ok()?;
+                let search_text = format!("{} {}", 
+                    room_and_team_title.room_title,
+                    room_and_team_title.team_name.unwrap_or_default()
+                );
+                matcher.fuzzy_match(&search_text, query).map(|score| (room, score))
+            })
+            .collect();
+        
+        // Sort by score (highest first)
+        scored_rooms.sort_by(|a, b| b.1.cmp(&a.1));
+        scored_rooms.into_iter()
     }
 }
 

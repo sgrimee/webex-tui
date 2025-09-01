@@ -55,6 +55,8 @@ pub(crate) enum ActivePane {
     Compose,
     /// Configurable logs output
     Logs,
+    /// Room search mode
+    Search,
 }
 
 impl AppState<'_> {
@@ -76,8 +78,19 @@ impl AppState<'_> {
     }
 
     /// Returns an iterator over all visible rooms with the current filter.
-    pub(crate) fn visible_rooms(&self) -> impl Iterator<Item = &Room> {
-        self.cache.rooms.rooms_filtered_by(self.rooms_list.filter())
+    pub(crate) fn visible_rooms(&self) -> Box<dyn Iterator<Item = &Room> + '_> {
+        if let Some(query) = self.rooms_list.search_query() {
+            if !query.trim().is_empty() {
+                // Return search results (just the rooms, ignoring scores)
+                Box::new(self.cache.rooms_matching_search(query).map(|(room, _score)| room))
+            } else {
+                // Empty query - show all rooms with current filter
+                Box::new(self.cache.rooms.rooms_filtered_by(self.rooms_list.filter()))
+            }
+        } else {
+            // No search active - use normal filtering
+            Box::new(self.cache.rooms.rooms_filtered_by(self.rooms_list.filter()))
+        }
     }
 
     /// Returns the number of visible rooms with the current filter.
@@ -187,6 +200,7 @@ impl AppState<'_> {
                     Action::PreviousRoom,
                     Action::NextRoomFilter,
                     Action::PreviousRoomFilter,
+                    Action::StartRoomSearch,
                     Action::NextPane,
                     Action::PreviousPane,
                     Action::ToggleDebug,
@@ -226,6 +240,19 @@ impl AppState<'_> {
                     Action::Quit,
                 ]
             }
+            Some(ActivePane::Search) => {
+                vec![
+                    Action::NextRoom,
+                    Action::PreviousRoom,
+                    Action::EndRoomSearch,
+                    Action::NextPane,
+                    Action::PreviousPane,
+                    Action::ToggleDebug,
+                    Action::ToggleHelp,
+                    Action::ToggleLogs,
+                    Action::Quit,
+                ]
+            }
             None => {
                 vec![
                     Action::ToggleHelp,
@@ -249,6 +276,10 @@ impl AppState<'_> {
                 if next_pane == ActivePane::Compose {
                     next_pane = next_cycle(&next_pane);
                 };
+                // Skip the search pane
+                if next_pane == ActivePane::Search {
+                    next_pane = next_cycle(&next_pane);
+                };
                 // Skip the logs pane if not enabled
                 if next_pane == ActivePane::Logs && !self.show_logs {
                     next_pane = next_cycle(&next_pane);
@@ -267,6 +298,10 @@ impl AppState<'_> {
                 let mut previous_pane = previous_cycle(active_pane);
                 // Skip the message compose pane
                 if previous_pane == ActivePane::Compose {
+                    previous_pane = previous_cycle(&previous_pane);
+                };
+                // Skip the search pane
+                if previous_pane == ActivePane::Search {
                     previous_pane = previous_cycle(&previous_pane);
                 };
                 // Skip the logs pane if not enabled

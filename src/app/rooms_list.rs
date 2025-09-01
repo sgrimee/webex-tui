@@ -14,6 +14,7 @@ pub(crate) struct RoomsList {
     filter: RoomsListFilter,
     table_state: TableState,
     active_room_id: Option<RoomId>,
+    search_query: Option<String>,
 }
 
 impl RoomsList {
@@ -126,5 +127,17 @@ impl RoomsList {
 
     pub(crate) fn set_active_room_id(&mut self, active_room_id: Option<RoomId>) {
         self.active_room_id = active_room_id;
+    }
+
+    pub(crate) fn search_query(&self) -> Option<&String> {
+        self.search_query.as_ref()
+    }
+
+    pub(crate) fn set_search_query(&mut self, query: Option<String>) {
+        self.search_query = query;
+    }
+
+    pub(crate) fn is_searching(&self) -> bool {
+        self.search_query.is_some()
     }
 }
