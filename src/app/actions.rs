@@ -44,6 +44,7 @@ pub(crate) enum Action {
     ToggleDebug,
     ToggleHelp,
     ToggleLogs,
+    ToggleRooms,
     UnselectMessage,
 }
 
@@ -85,6 +86,7 @@ impl Action {
             Action::ToggleDebug => &[Key::Char('t')],
             Action::ToggleHelp => &[Key::Char('?')],
             Action::ToggleLogs => &[Key::Char('l')],
+            Action::ToggleRooms => &[Key::Char('R')],
             Action::UnselectMessage => &[Key::Esc],
         }
     }
@@ -128,6 +130,7 @@ impl Display for Action {
             Action::ToggleDebug => "Toggle debug",
             Action::ToggleHelp => "Toggle help",
             Action::ToggleLogs => "Toggle logs",
+            Action::ToggleRooms => "Toggle rooms panel",
             Action::UnselectMessage => "Unselect message",
         };
         write!(f, "{}", str)

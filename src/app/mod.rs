@@ -193,6 +193,12 @@ impl App<'_> {
                 Action::ToggleHelp => {
                     self.state.show_help = !self.state.show_help;
                 }
+                Action::ToggleRooms => {
+                    self.state.show_rooms = !self.state.show_rooms;
+                    if !self.state.show_rooms && self.state.active_pane == Some(ActivePane::Rooms) {
+                        self.state.next_active_pane();
+                    }
+                }
                 Action::NextMessage => {
                     self.state.messages_list.select_next_message();
                 }

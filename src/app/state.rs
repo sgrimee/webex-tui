@@ -40,6 +40,7 @@ pub(crate) struct AppState<'a> {
     pub(crate) rooms_list: RoomsList,
     pub(crate) show_help: bool,
     pub(crate) show_logs: bool,
+    pub(crate) show_rooms: bool,
 }
 
 /// The active pane is used by the UI to draw attention to what
@@ -164,6 +165,7 @@ impl AppState<'_> {
                     Action::ToggleDebug,
                     Action::ToggleHelp,
                     Action::ToggleLogs,
+                    Action::ToggleRooms,
                     Action::Quit,
                 ]
             }
@@ -190,6 +192,7 @@ impl AppState<'_> {
                     Action::ToggleDebug,
                     Action::ToggleHelp,
                     Action::ToggleLogs,
+                    Action::ToggleRooms,
                     Action::Quit,
                 ]);
                 actions
@@ -206,6 +209,7 @@ impl AppState<'_> {
                     Action::ToggleDebug,
                     Action::ToggleHelp,
                     Action::ToggleLogs,
+                    Action::ToggleRooms,
                     Action::Quit,
                 ];
                 let selection_actions = vec![
@@ -237,6 +241,7 @@ impl AppState<'_> {
                     Action::ToggleDebug,
                     Action::ToggleHelp,
                     Action::ToggleLogs,
+                    Action::ToggleRooms,
                     Action::Quit,
                 ]
             }
@@ -250,6 +255,7 @@ impl AppState<'_> {
                     Action::ToggleDebug,
                     Action::ToggleHelp,
                     Action::ToggleLogs,
+                    Action::ToggleRooms,
                     Action::Quit,
                 ]
             }
@@ -257,6 +263,7 @@ impl AppState<'_> {
                 vec![
                     Action::ToggleHelp,
                     Action::ToggleLogs,
+                    Action::ToggleRooms,
                     Action::ToggleDebug,
                     Action::Quit,
                 ]
@@ -284,6 +291,10 @@ impl AppState<'_> {
                 if next_pane == ActivePane::Logs && !self.show_logs {
                     next_pane = next_cycle(&next_pane);
                 };
+                // Skip the rooms pane if not enabled
+                if next_pane == ActivePane::Rooms && !self.show_rooms {
+                    next_pane = next_cycle(&next_pane);
+                };
                 self.set_active_pane(Some(next_pane))
             }
         }
@@ -306,6 +317,10 @@ impl AppState<'_> {
                 };
                 // Skip the logs pane if not enabled
                 if previous_pane == ActivePane::Logs && !self.show_logs {
+                    previous_pane = previous_cycle(&previous_pane);
+                };
+                // Skip the rooms pane if not enabled
+                if previous_pane == ActivePane::Rooms && !self.show_rooms {
                     previous_pane = previous_cycle(&previous_pane);
                 };
                 self.set_active_pane(Some(previous_pane))
@@ -341,7 +356,7 @@ impl Default for AppState<'_> {
         let mut log_state = TuiWidgetState::default();
         log_state.transition(tui_logger::TuiWidgetEvent::HideKey);
         AppState {
-            actions: vec![Action::Quit, Action::ToggleHelp, Action::ToggleLogs].into(),
+            actions: vec![Action::Quit, Action::ToggleHelp, Action::ToggleLogs, Action::ToggleRooms].into(),
             active_pane: None,
             cache: Cache::default(),
             debug: false,
@@ -354,6 +369,7 @@ impl Default for AppState<'_> {
             rooms_list: RoomsList::default(),
             show_help: true,
             show_logs: false,
+            show_rooms: true,
         }
     }
 }

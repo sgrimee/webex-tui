@@ -51,12 +51,22 @@ pub(crate) fn render(rect: &mut Frame, state: &mut AppState) {
     rect.render_widget(title, app_rows[0]);
 
     // Body: left panel, active room + message input, help
-    let mut body_constraints = vec![
-        Constraint::Length(ROOMS_LIST_WIDTH),
-        Constraint::Min(ACTIVE_ROOM_MIN_WIDTH),
-    ];
+    let mut body_constraints = vec![];
+    let mut rooms_column_index = None;
+    let mut messages_column_index = 0;
+    let mut help_column_index = None;
+    
+    if state.show_rooms {
+        body_constraints.push(Constraint::Length(ROOMS_LIST_WIDTH));
+        rooms_column_index = Some(body_constraints.len() - 1);
+    }
+    
+    body_constraints.push(Constraint::Min(ACTIVE_ROOM_MIN_WIDTH));
+    messages_column_index = body_constraints.len() - 1;
+    
     if state.show_help {
         body_constraints.push(Constraint::Length(HELP_WIDTH));
+        help_column_index = Some(body_constraints.len() - 1);
     }
 
     let body_columns = Layout::default()
@@ -64,10 +74,12 @@ pub(crate) fn render(rect: &mut Frame, state: &mut AppState) {
         .constraints(body_constraints)
         .split(app_rows[1]);
 
-    // Rooms list
-    let rooms_table = draw_rooms_table(state);
-    let room_table_state = state.rooms_list.table_state_mut();
-    rect.render_stateful_widget(rooms_table, body_columns[0], room_table_state);
+    // Rooms list (only if show_rooms is true)
+    if let Some(rooms_idx) = rooms_column_index {
+        let rooms_table = draw_rooms_table(state);
+        let room_table_state = state.rooms_list.table_state_mut();
+        rect.render_stateful_widget(rooms_table, body_columns[rooms_idx], room_table_state);
+    }
 
     // Room and message edit
     let room_constraints = vec![
@@ -77,7 +89,7 @@ pub(crate) fn render(rect: &mut Frame, state: &mut AppState) {
     let room_rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints(room_constraints)
-        .split(body_columns[1]);
+        .split(body_columns[messages_column_index]);
 
     // Messages list
     let messages_area = room_rows[0];
@@ -101,9 +113,9 @@ pub(crate) fn render(rect: &mut Frame, state: &mut AppState) {
     );
 
     // Help
-    if state.show_help {
+    if let Some(help_idx) = help_column_index {
         let help = draw_help(&state.actions);
-        rect.render_widget(help, body_columns[2]);
+        rect.render_widget(help, body_columns[help_idx]);
     }
 
     // Logs
@@ -119,7 +131,10 @@ pub(crate) fn render(rect: &mut Frame, state: &mut AppState) {
 
 /// Logs warnings when terminal size constraints are not respected.
 fn check_size(rect: &Rect, state: &AppState) {
-    let mut min_width = ROOMS_LIST_WIDTH + ACTIVE_ROOM_MIN_WIDTH;
+    let mut min_width = ACTIVE_ROOM_MIN_WIDTH;
+    if state.show_rooms {
+        min_width += ROOMS_LIST_WIDTH;
+    }
     if state.show_help {
         min_width += HELP_WIDTH
     };
