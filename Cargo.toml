@@ -9,39 +9,39 @@ keywords = ["cisco", "webex", "tui", "cli", "terminal"]
 license = "MIT OR Apache-2.0"
 name = "webex-tui"
 repository = "https://github.com/sgrimee/webex-tui"
-version = "0.7.6"
+version = "0.7.7"
 
 [dependencies]
 base64 = "0.22"
-chrono = { version = "0.4.31" }
-clap = { version = "4.3.19", features = ["cargo"] }
-color-eyre = "0.6.2"
-dirs = "6.0.0"
-enum-iterator = "2.0.0"
+chrono = "0.4"
+clap = { version = "4", features = ["cargo"] }
+color-eyre = "0.6"
+dirs = "6"
+enum-iterator = "2"
 fuzzy-matcher = "0.3"
 gethostname = "0.5"
-html2text = "0.13.6"
-itertools = "0.14.0"
-log = "0.4.19"
-oauth2 = "5.0.0"
-open = "5.0.0"
-serde = { version = "1.0.180", features = ["derive"] }
-serde_json = "1.0.111"
-serde_yaml = "0.9.25"
+html2text = "0.15"
+itertools = "0.14"
+log = "0.4"
+oauth2 = "5"
+open = "5"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
 textwrap = "0.16"
-tokio = { version = "1.43.1", features = ["rt", "macros"] }
-webbrowser = "1.0.1"
-webex = "0.10.0"
+tokio = { version = "1", features = ["rt", "macros"] }
+webbrowser = "1"
+webex = "0.10"
 # webex = { path = "../vendor/webex-rust" }
 # webex = { git = "https://github.com/sgrimee/webex-rust.git", rev = "3c78e82bef4eaf47311c3ee97858018b1a54c4fb" }
 # webex = { git = "https://github.com/sgrimee/webex-rust.git", branch = "42-api_alignment_sgrimee" }
 # webex = { git = "https://github.com/Nabushika/webex-rust.git", branch = "master"}
 
-# Strongly coupled dependencies
-crossterm = "0.28.1"
-ratatui = "0.29.0"     # 0.28 not compatible with tui-logger 0.11
-tui-logger = "0.14.1"
-tui-textarea = "0.7.0"
+# UI dependencies - allow latest compatible versions
+crossterm = "0.28"
+ratatui = "0.29"
+tui-logger = "0.14"
+tui-textarea = "0.7"
 
 [dev-dependencies]
-rstest = "0.24.0"
+rstest = "0.24"

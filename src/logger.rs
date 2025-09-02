@@ -2,7 +2,7 @@
 
 use log::LevelFilter;
 use std::{collections::HashMap, path::PathBuf};
-use tui_logger::{init_logger, set_default_level};
+use tui_logger::{init_logger, set_default_level, TuiLoggerFile};
 
 /// Configures the logger with levels per module.
 /// `default_level` is the default log level for all modules. Using Trace
@@ -40,7 +40,8 @@ pub(crate) fn setup_logger(
 
     // set the log file
     if let Some(logfile) = logfile {
-        let _ = tui_logger::set_log_file(&logfile.to_string_lossy());
+        let log_file_config = TuiLoggerFile::new(&logfile.to_string_lossy());
+        tui_logger::set_log_file(log_file_config);
     }
 }
 

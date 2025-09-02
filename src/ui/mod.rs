@@ -53,7 +53,6 @@ pub(crate) fn render(rect: &mut Frame, state: &mut AppState) {
     // Body: left panel, active room + message input, help
     let mut body_constraints = vec![];
     let mut rooms_column_index = None;
-    let messages_column_index;
     let mut help_column_index = None;
     
     if state.show_rooms {
@@ -62,7 +61,7 @@ pub(crate) fn render(rect: &mut Frame, state: &mut AppState) {
     }
     
     body_constraints.push(Constraint::Min(ACTIVE_ROOM_MIN_WIDTH));
-    messages_column_index = body_constraints.len() - 1;
+    let messages_column_index = body_constraints.len() - 1;
     
     if state.show_help {
         body_constraints.push(Constraint::Length(HELP_WIDTH));

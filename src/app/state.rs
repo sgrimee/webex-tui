@@ -353,7 +353,7 @@ impl AppState<'_> {
 
 impl Default for AppState<'_> {
     fn default() -> Self {
-        let mut log_state = TuiWidgetState::default();
+        let log_state = TuiWidgetState::default();
         log_state.transition(tui_logger::TuiWidgetEvent::HideKey);
         AppState {
             actions: vec![Action::Quit, Action::ToggleHelp, Action::ToggleLogs, Action::ToggleRooms].into(),
