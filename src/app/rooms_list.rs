@@ -137,7 +137,5 @@ impl RoomsList {
         self.search_query = query;
     }
 
-    pub(crate) fn is_searching(&self) -> bool {
-        self.search_query.is_some()
-    }
+
 }

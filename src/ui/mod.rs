@@ -53,7 +53,7 @@ pub(crate) fn render(rect: &mut Frame, state: &mut AppState) {
     // Body: left panel, active room + message input, help
     let mut body_constraints = vec![];
     let mut rooms_column_index = None;
-    let mut messages_column_index = 0;
+    let messages_column_index;
     let mut help_column_index = None;
     
     if state.show_rooms {
