@@ -1,20 +1,6 @@
 # Todo
 
-## Next
-
-- [ ] Search for rooms/users
-- [ ] Send messages to a new room/user
-- [ ] Highlight unread messages in room view
-- [ ] webex-rust: handle access token expiration/refresh
-- [ ] Cache access/refresh token between invocations for faster statup
-- [ ] Cache room/messages data on disk for faster startup
-- [ ] Display reactions to messages
-- [ ] Send reactions to messages
-- [ ] Message attachments
-- [ ] Message forwarding
-- [ ] Display number of unread messages in list
-
-## Maybe
+See [issues](https://github.com/sgrimee/webex-tui/issues).
 
 - [ ] Modal text editor
 - [ ] Room sections / favourites
