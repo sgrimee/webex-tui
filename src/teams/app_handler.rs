@@ -31,6 +31,7 @@ pub(crate) enum AppCmdEvent {
     UpdateMessage(MessageId),
     UpdateChildrenMessages(MessageId, RoomId),
     UpdatePerson(PersonId),
+    LeaveRoom(RoomId),
     WhoAmI(),
 }
 
@@ -59,6 +60,7 @@ impl Teams<'_> {
             AppCmdEvent::UpdatePerson(person_id) => self.do_update_person(&person_id).await,
             AppCmdEvent::UpdateRoom(room_id) => self.do_refresh_room(&room_id).await,
             AppCmdEvent::UpdateTeam(team_id) => self.do_update_team(&team_id).await,
+            AppCmdEvent::LeaveRoom(room_id) => self.do_leave_room(&room_id).await,
             AppCmdEvent::WhoAmI() => self.get_me_user().await,
         } {
             error!("Error handling app event: {}", error);
@@ -283,6 +285,22 @@ impl Teams<'_> {
                 Ok(())
             }
             Err(e) => Err(eyre!("Error retrieving logged in user: {}", e)),
+        }
+    }
+
+    /// Leave a room by deleting our membership
+    async fn do_leave_room(&mut self, room_id: &RoomId) -> Result<()> {
+        let global_id = GlobalId::new(GlobalIdType::Room, room_id.to_owned()).unwrap();
+        debug!("Leaving room with local id {} and global id: {:?}", room_id, global_id);
+        
+        match self.client.leave_room(&global_id).await {
+            Ok(_) => {
+                debug!("Successfully left room: {}", room_id);
+                // Remove the room from the cache
+                self.app.lock().await.cb_space_left(room_id);
+                Ok(())
+            }
+            Err(e) => Err(eyre!("Error leaving room: {}", e)),
         }
     }
 }

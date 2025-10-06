@@ -228,6 +228,30 @@ impl App<'_> {
                     // Reset room selection to match the active room after search
                     self.state.update_room_selection_with_active_room();
                 }
+                Action::ToggleRoomSelection => {
+                    // Collect room info first to avoid borrowing conflicts
+                    let room_ids: Vec<_> = self.state.visible_rooms().map(|r| r.id.clone()).collect();
+                    let visible_rooms: Vec<_> = room_ids.iter()
+                        .filter_map(|id| self.state.cache.rooms.room_with_id(id))
+                        .collect();
+                    self.state.rooms_list.toggle_current_room_selection(&visible_rooms);
+                }
+                Action::SelectAllVisibleRooms => {
+                    // Collect room info first to avoid borrowing conflicts  
+                    let room_ids: Vec<_> = self.state.visible_rooms().map(|r| r.id.clone()).collect();
+                    let visible_rooms: Vec<_> = room_ids.iter()
+                        .filter_map(|id| self.state.cache.rooms.room_with_id(id))
+                        .collect();
+                    self.state.rooms_list.select_all_visible_rooms(&visible_rooms);
+                }
+                Action::ClearRoomSelections => {
+                    self.state.rooms_list.clear_room_selections();
+                }
+                Action::DeleteSelectedRooms => {
+                    if let Err(e) = self.delete_selected_rooms() {
+                        error!("Could not delete selected rooms: {}", e);
+                    }
+                }
             }
         } else {
             warn!("No action associated with {} in this mode", key);
@@ -520,6 +544,24 @@ impl App<'_> {
             })
             .collect();
         serde_json::to_writer_pretty(file, &messages)?;
+        Ok(())
+    }
+
+    /// Delete all selected rooms by leaving them
+    fn delete_selected_rooms(&mut self) -> Result<()> {
+        let selected_room_ids = self.state.rooms_list.selected_room_ids();
+        if selected_room_ids.is_empty() {
+            return Err(eyre!("No rooms selected for deletion"));
+        }
+
+        // Send leave room commands for all selected rooms
+        for room_id in selected_room_ids {
+            debug!("Sending leave room command for room: {}", room_id);
+            self.dispatch_to_teams(AppCmdEvent::LeaveRoom(room_id), &Priority::High);
+        }
+
+        // Clear selections after sending the commands
+        self.state.rooms_list.clear_room_selections();
         Ok(())
     }
 }
