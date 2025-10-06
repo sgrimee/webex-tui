@@ -3260,7 +3260,7 @@ dependencies = [
 
 [[package]]
 name = "webex-tui"
-version = "0.7.7"
+version = "0.8.0"
 dependencies = [
  "base64",
  "chrono",
@@ -3281,7 +3281,9 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
+ "tempfile",
  "textwrap",
+ "thiserror 1.0.69",
  "tokio",
  "tui-logger",
  "tui-textarea",

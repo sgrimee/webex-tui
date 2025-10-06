@@ -14,6 +14,10 @@ const DEFAULT_PORT: u16 = 8080;
 const FILE_NAME: &str = "client.yml";
 const CONFIG_DIR: &str = ".config";
 const APP_CONFIG_DIR: &str = "webex-tui";
+
+fn default_theme_name() -> String {
+    "default".to_string()
+}
 // const TOKEN_CACHE_FILE: &str = ".webex_token_cache.json";
 
 #[derive(Default, Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -22,6 +26,9 @@ pub(crate) struct ClientConfig {
     pub(crate) client_secret: String,
     // FIXME: port should be defined in `user_config` not in here
     pub(crate) port: Option<u16>,
+    /// Theme name to load from ~/.config/webex-tui/themes/
+    #[serde(default = "default_theme_name")]
+    pub(crate) theme: String,
 }
 
 struct ConfigPaths {
@@ -35,6 +42,7 @@ impl ClientConfig {
             client_id: "".to_string(),
             client_secret: "".to_string(),
             port: None,
+            theme: default_theme_name(),
         }
     }
 
@@ -80,6 +88,7 @@ impl ClientConfig {
             self.client_id = config_yml.client_id;
             self.client_secret = config_yml.client_secret;
             self.port = config_yml.port;
+            self.theme = config_yml.theme;
 
             Ok(())
         } else {
@@ -124,6 +133,7 @@ impl ClientConfig {
                 client_id,
                 client_secret,
                 port: Some(port),
+                theme: default_theme_name(),
             };
 
             let content_yml = serde_yaml::to_string(&config_yml)?;
@@ -134,6 +144,7 @@ impl ClientConfig {
             self.client_id = config_yml.client_id;
             self.client_secret = config_yml.client_secret;
             self.port = config_yml.port;
+            self.theme = config_yml.theme;
 
             Ok(())
         }

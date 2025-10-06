@@ -3,7 +3,7 @@
 //! Panel with application title.
 
 use ratatui::layout::Alignment;
-use ratatui::style::{Color, Style};
+use ratatui::style::Style;
 use ratatui::widgets::block::{Block, BorderType};
 use ratatui::widgets::{Borders, Paragraph};
 
@@ -18,12 +18,12 @@ pub(crate) fn draw_title<'a>(state: &AppState) -> Paragraph<'a> {
         false => "webex-tui",
     };
     Paragraph::new(title)
-        .style(Style::default().fg(Color::LightCyan))
+        .style(Style::default().fg(state.theme.roles.title()))
         .alignment(Alignment::Center)
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .style(Style::default().fg(Color::White))
+                .style(Style::default().fg(state.theme.roles.border()))
                 .border_type(BorderType::Rounded),
         )
 }

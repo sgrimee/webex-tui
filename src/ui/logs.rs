@@ -11,16 +11,16 @@ pub(crate) const LOG_BLOCK_PERCENTAGE: u16 = 40;
 pub(crate) fn draw_logs<'a>(state: &AppState) -> TuiLoggerSmartWidget<'a> {
     // Highlight pane if active
     let border_style = match state.active_pane() {
-        Some(ActivePane::Logs) => Style::default().fg(Color::Cyan),
-        _ => Style::default(),
+        Some(ActivePane::Logs) => Style::default().fg(state.theme.roles.border_active()),
+        _ => Style::default().fg(state.theme.roles.border()),
     };
 
     TuiLoggerSmartWidget::default()
-        .style_error(Style::default().fg(Color::Red))
-        .style_warn(Style::default().fg(Color::Yellow))
-        .style_info(Style::default().fg(Color::Blue))
-        .style_debug(Style::default().fg(Color::Green))
-        .style_trace(Style::default().fg(Color::Gray))
+        .style_error(Style::default().fg(state.theme.roles.log_error()))
+        .style_warn(Style::default().fg(state.theme.roles.log_warn()))
+        .style_info(Style::default().fg(state.theme.roles.log_info()))
+        .style_debug(Style::default().fg(state.theme.roles.log_debug()))
+        .style_trace(Style::default().fg(state.theme.roles.log_trace()))
         .output_separator(' ')
         .output_timestamp(Some("%H:%M:%S".to_string()))
         .output_level(Some(TuiLoggerLevelOutput::Long))

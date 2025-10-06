@@ -14,6 +14,7 @@ use super::cache::Cache;
 use super::message_editor::MessageEditor;
 use super::messages_list::MessagesList;
 use super::rooms_list::RoomsList;
+use crate::theme::Theme;
 
 /// State of the application, including
 /// - available `actions`` in the current context
@@ -30,6 +31,9 @@ pub(crate) struct AppState<'a> {
 
     // Webex
     pub(crate) cache: Cache,
+
+    // Theme
+    pub(crate) theme: Theme,
 
     // UI
     pub(crate) active_pane: Option<ActivePane>,
@@ -353,6 +357,12 @@ impl AppState<'_> {
         let message = self.selected_message()?;
         Ok(self.cache.is_me(&message.person_id))
     }
+
+    /// Set the theme for the application
+    #[allow(dead_code)]
+    pub(crate) fn set_theme(&mut self, theme: Theme) {
+        self.theme = theme;
+    }
 }
 
 impl Default for AppState<'_> {
@@ -363,6 +373,7 @@ impl Default for AppState<'_> {
             actions: vec![Action::Quit, Action::ToggleHelp, Action::ToggleLogs, Action::ToggleRooms].into(),
             active_pane: None,
             cache: Cache::default(),
+            theme: Theme::default(),
             debug: false,
             is_loading: false,
             last_frame_size: Rect::new(0, 0, 0, 0),

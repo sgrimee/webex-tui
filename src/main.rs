@@ -6,6 +6,7 @@ mod config;
 mod inputs;
 mod logger;
 mod teams;
+mod theme;
 mod tui;
 mod ui;
 
@@ -23,20 +24,18 @@ use teams::app_handler::AppCmdEvent;
 use teams::auth::get_integration_token;
 use teams::ClientCredentials;
 use teams::Teams;
+use theme::load_theme;
 use tui::Tui;
 
 use color_eyre::eyre::Result;
 use std::sync::Arc;
 
-/// Retrieve credentials from config file, interactively guiding the user
+/// Retrieve config from config file, interactively guiding the user
 /// to create a Webex integration if needed.
-fn get_credentials() -> Result<ClientCredentials> {
+fn get_config() -> Result<ClientConfig> {
     let mut client_config = ClientConfig::new();
     client_config.load_config()?;
-    Ok(ClientCredentials {
-        client_id: client_config.client_id,
-        client_secret: client_config.client_secret,
-    })
+    Ok(client_config)
 }
 
 #[tokio::main]
@@ -105,7 +104,14 @@ async fn main() -> Result<()> {
     println!("Starting webex-tui, version {}.", env!("CARGO_PKG_VERSION"));
 
     // Read configuration or prompt for integration details
-    let credentials = get_credentials()?;
+    let config = get_config()?;
+    let credentials = ClientCredentials {
+        client_id: config.client_id,
+        client_secret: config.client_secret,
+    };
+    
+    // Load theme
+    let theme = load_theme(&config.theme);
 
     // Start authentication via web browser
     println!("Opening a browser and waiting for authentication.");
@@ -127,6 +133,7 @@ async fn main() -> Result<()> {
         app_to_teams_tx_highpri.clone(),
         matches.get_flag("debug"),
         *matches.get_one("messages").unwrap(),
+        theme,
     )));
     let app_ui = Arc::clone(&app);
     tokio::spawn(async move {

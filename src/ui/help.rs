@@ -17,9 +17,9 @@ pub(crate) const HELP_WIDTH: u16 = HELP_KEY_WIDTH + HELP_ACTION_WIDTH;
 /// Draw the help panel as a `Table` containing available keys and
 /// their associated `Action`
 /// Argument `actions`: list of actions currently available
-pub(crate) fn draw_help(actions: &Actions) -> Table {
-    let key_style = Style::default().fg(Color::LightCyan);
-    let help_style = Style::default().fg(Color::Gray);
+pub(crate) fn draw_help(actions: &Actions, accent_color: Color, muted_color: Color) -> Table {
+    let key_style = Style::default().fg(accent_color);
+    let help_style = Style::default().fg(muted_color);
 
     let mut rows = vec![];
     for action in actions.actions().iter() {

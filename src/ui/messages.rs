@@ -18,7 +18,7 @@ use webex::Message;
 
 use chrono::{DateTime, Local, Utc};
 use ratatui::layout::Constraint;
-use ratatui::style::{Color, Modifier, Style, Stylize};
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::block::{Block, BorderType};
 use ratatui::widgets::{Borders, Cell, Row, Table};
@@ -30,27 +30,12 @@ use super::style::line_for_room_and_team_title;
 
 /// Assigns a color/style to each message sender, spreading over the palette
 /// while ensuring each user always gets the same style for consistency.
-fn style_for_user(id: &Option<String>) -> Style {
-    let colors = [
-        Color::Red,
-        Color::Green,
-        Color::Yellow,
-        Color::Blue,
-        Color::Magenta,
-        Color::Cyan,
-        Color::Gray,
-        Color::LightRed,
-        Color::LightGreen,
-        Color::LightYellow,
-        Color::LightBlue,
-        Color::LightMagenta,
-        Color::LightCyan,
-    ];
+fn style_for_user(id: &Option<String>, user_colors: &[Color]) -> Style {
     match id {
         Some(id) => {
-            let upper = colors.len() as u64;
+            let upper = user_colors.len() as u64;
             let index = hash_string_to_number(id, upper) as usize;
-            Style::default().fg(colors[index])
+            Style::default().fg(user_colors[index])
         }
         None => Style::default().add_modifier(Modifier::REVERSED),
     }
@@ -117,7 +102,7 @@ fn row_for_message<'a>(state: &AppState, msg: Message, width: u16) -> (Row<'a>, 
     };
     title_line
         .spans
-        .push(Span::styled(sender, style_for_user(&msg.person_id)));
+        .push(Span::styled(sender, style_for_user(&msg.person_id, &state.theme.user_colors())));
 
     // Add message timestamp
     title_line.spans.push(Span::from("  "));
@@ -129,7 +114,7 @@ fn row_for_message<'a>(state: &AppState, msg: Message, width: u16) -> (Row<'a>, 
     }
     title_line
         .spans
-        .push(Span::styled(stamp, Style::new().gray()));
+        .push(Span::styled(stamp, Style::default().fg(state.theme.roles.msg_timestamp())));
 
     // Add message id
     if state.debug {
@@ -192,7 +177,7 @@ fn add_uuid_to_line(id: Option<String>, line: &mut Line<'_>) {
         .map(|id| id.split('/').nth(4).unwrap().to_string())
     {
         line.spans
-            .push(Span::styled(format!(" [{}]", id), Style::new().dark_gray()))
+            .push(Span::styled(format!(" [{}]", id), Style::default().fg(Color::DarkGray)))
     }
 }
 
@@ -209,7 +194,12 @@ pub(crate) fn draw_msg_table<'a>(state: &AppState, rect: &Rect) -> (Table<'a>, u
             .cache
             .room_and_team_title(&room.id)
             .unwrap_or_default();
-        title_line = line_for_room_and_team_title(ratt, room.unread);
+        title_line = line_for_room_and_team_title(
+            ratt, 
+            room.unread, 
+            state.theme.roles.room_unread(),
+            state.theme.roles.room_team()
+        );
 
         // add the room id to the title if debug is enabled
         if state.debug {
@@ -231,8 +221,8 @@ pub(crate) fn draw_msg_table<'a>(state: &AppState, rect: &Rect) -> (Table<'a>, u
 
     // Highlight pane if active
     let border_style = match state.active_pane() {
-        Some(ActivePane::Messages) => Style::default().fg(Color::Cyan),
-        _ => Style::default(),
+        Some(ActivePane::Messages) => Style::default().fg(state.theme.roles.border_active()),
+        _ => Style::default().fg(state.theme.roles.border()),
     };
 
     let block = Block::default()

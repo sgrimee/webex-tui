@@ -3,7 +3,7 @@
 //! Panel with a text editor used to type messages.
 
 use ratatui::{
-    style::{Color, Style},
+    style::Style,
     text::Span,
     widgets::{Block, BorderType, Borders},
 };
@@ -18,7 +18,7 @@ pub(crate) fn draw_message_editor<'a>(state: &'a AppState<'a>) -> TextArea<'a> {
     // Update title when in editing mode
     let hint = Span::styled(
         " Enter: send, Alt-Enter: new line, Esc: cancel.",
-        Style::default().fg(Color::Gray),
+        Style::default().fg(state.theme.roles.hint()),
     );
     let title = if state.message_editor.is_composing() {
         if let Some(orig_msg) = state.message_editor.response_to() {
@@ -32,7 +32,7 @@ pub(crate) fn draw_message_editor<'a>(state: &'a AppState<'a>) -> TextArea<'a> {
                             .clone()
                             .unwrap_or("unknown sender".to_string())
                     ),
-                    Style::default().fg(Color::Yellow),
+                    Style::default().fg(state.theme.roles.compose_status()),
                 ),
                 hint,
             ]
@@ -47,14 +47,14 @@ pub(crate) fn draw_message_editor<'a>(state: &'a AppState<'a>) -> TextArea<'a> {
                             .clone()
                             .unwrap_or("unknown sender".to_string())
                     ),
-                    Style::default().fg(Color::Yellow),
+                    Style::default().fg(state.theme.roles.compose_status()),
                 ),
                 hint,
             ]
         } else {
             // Composing a new message
             vec![
-                Span::styled("Type your new message.", Style::default().fg(Color::Yellow)),
+                Span::styled("Type your new message.", Style::default().fg(state.theme.roles.compose_status())),
                 hint,
             ]
         }
@@ -68,8 +68,8 @@ pub(crate) fn draw_message_editor<'a>(state: &'a AppState<'a>) -> TextArea<'a> {
 
     // Highlight pane if active
     let border_style = match state.active_pane() {
-        Some(ActivePane::Compose) => Style::default().fg(Color::Cyan),
-        _ => Style::default(),
+        Some(ActivePane::Compose) => Style::default().fg(state.theme.roles.border_active()),
+        _ => Style::default().fg(state.theme.roles.border()),
     };
 
     let mut textarea = state.message_editor.textarea().clone();

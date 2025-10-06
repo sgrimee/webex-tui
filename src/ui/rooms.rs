@@ -3,7 +3,7 @@
 use crate::app::state::{ActivePane, AppState};
 
 use ratatui::layout::Constraint;
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::widgets::block::{Block, BorderType};
 use ratatui::widgets::{Borders, Cell, Row, Table};
 
@@ -15,8 +15,8 @@ pub(crate) const ROOMS_LIST_WIDTH: u16 = 32;
 pub(crate) fn draw_rooms_table<'a>(state: &AppState) -> Table<'a> {
     // highlight pane if it is active or in search mode
     let border_style = match state.active_pane() {
-        Some(ActivePane::Rooms) | Some(ActivePane::Search) => Style::default().fg(Color::Cyan),
-        _ => Style::default(),
+        Some(ActivePane::Rooms) | Some(ActivePane::Search) => Style::default().fg(state.theme.roles.border_active()),
+        _ => Style::default().fg(state.theme.roles.border()),
     };
     
     // Build title based on current mode
@@ -44,7 +44,12 @@ pub(crate) fn draw_rooms_table<'a>(state: &AppState) -> Table<'a> {
                 .cache
                 .room_and_team_title(&room.id)
                 .unwrap_or_default();
-            let line = line_for_room_and_team_title(ratt, room.unread);
+            let line = line_for_room_and_team_title(
+                ratt, 
+                room.unread, 
+                state.theme.roles.room_unread(),
+                state.theme.roles.room_team()
+            );
             
             // Add selection indicator
             let selection_indicator = if state.rooms_list.is_room_selected(&room.id) {
@@ -61,8 +66,8 @@ pub(crate) fn draw_rooms_table<'a>(state: &AppState) -> Table<'a> {
         .block(block)
         .row_highlight_style(
             Style::default()
-                .bg(Color::Yellow)
-                .fg(Color::Black)
+                .bg(state.theme.roles.selection_bg())
+                .fg(state.theme.roles.selection_fg())
                 .add_modifier(Modifier::BOLD),
         )
 }

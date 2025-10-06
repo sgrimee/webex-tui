@@ -113,7 +113,7 @@ pub(crate) fn render(rect: &mut Frame, state: &mut AppState) {
 
     // Help
     if let Some(help_idx) = help_column_index {
-        let help = draw_help(&state.actions);
+        let help = draw_help(&state.actions, state.theme.roles.accent(), state.theme.roles.text_muted());
         rect.render_widget(help, body_columns[help_idx]);
     }
 

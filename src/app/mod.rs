@@ -15,6 +15,7 @@ use crate::app::actions::Action;
 use crate::app::state::ActivePane;
 use crate::inputs::key::Key;
 use crate::teams::app_handler::AppCmdEvent;
+use crate::theme::Theme;
 use cache::room::RoomId;
 
 use color_eyre::{eyre::eyre, Result};
@@ -55,6 +56,7 @@ impl App<'_> {
         app_to_teams_tx_high: tokio::sync::mpsc::UnboundedSender<AppCmdEvent>,
         debug: bool,
         messages_to_load: u32,
+        theme: Theme,
     ) -> Self {
         Self {
             app_to_teams_tx_low,
@@ -62,6 +64,7 @@ impl App<'_> {
             state: AppState {
                 debug,
                 messages_to_load,
+                theme,
                 ..Default::default()
             },
         }
