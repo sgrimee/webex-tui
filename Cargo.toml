@@ -29,10 +29,10 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_yaml = "0.9"
 textwrap = "0.16"
-tokio = { version = "1", features = ["rt", "macros"] }
-webbrowser = "1"
-webex = "0.10"
-# webex = { path = "../vendor/webex-rust" }
+tokio = { version = "1.43.1", features = ["rt", "macros"] }
+webbrowser = "1.0.1"
+# webex = "0.10.0"
+webex = { git = "https://github.com/sgrimee/webex-rust.git", rev = "e1137f747775b11425eb2c9b390701ffba848057" }
 # webex = { git = "https://github.com/sgrimee/webex-rust.git", rev = "3c78e82bef4eaf47311c3ee97858018b1a54c4fb" }
 # webex = { git = "https://github.com/sgrimee/webex-rust.git", branch = "42-api_alignment_sgrimee" }
 # webex = { git = "https://github.com/Nabushika/webex-rust.git", branch = "master"}
