@@ -45,6 +45,10 @@ pub(crate) enum Action {
     ToggleHelp,
     ToggleLogs,
     ToggleRooms,
+    ToggleRoomSelection,
+    SelectAllVisibleRooms,
+    ClearRoomSelections,
+    DeleteSelectedRooms,
     UnselectMessage,
 }
 
@@ -87,6 +91,10 @@ impl Action {
             Action::ToggleHelp => &[Key::Char('?')],
             Action::ToggleLogs => &[Key::Char('l')],
             Action::ToggleRooms => &[Key::Char('R')],
+            Action::ToggleRoomSelection => &[Key::Char(' ')],
+            Action::SelectAllVisibleRooms => &[Key::Char('A')],
+            Action::ClearRoomSelections => &[Key::Char('C')],
+            Action::DeleteSelectedRooms => &[Key::Char('X')],
             Action::UnselectMessage => &[Key::Esc],
         }
     }
@@ -131,6 +139,10 @@ impl Display for Action {
             Action::ToggleHelp => "Toggle help",
             Action::ToggleLogs => "Toggle logs",
             Action::ToggleRooms => "Toggle rooms panel",
+            Action::ToggleRoomSelection => "Toggle room selection",
+            Action::SelectAllVisibleRooms => "Select all visible rooms",
+            Action::ClearRoomSelections => "Clear room selections",
+            Action::DeleteSelectedRooms => "Delete selected rooms",
             Action::UnselectMessage => "Unselect message",
         };
         write!(f, "{}", str)

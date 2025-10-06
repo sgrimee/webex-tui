@@ -29,8 +29,14 @@ pub(crate) fn draw_rooms_table<'a>(state: &AppState) -> Table<'a> {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(border_style)
-        .title(title);
+        .title({
+            let selected_count = state.rooms_list.selected_room_count();
+            if selected_count > 0 {
+                format!("Filter: {:?} ({} selected)", state.rooms_list.filter(), selected_count)
+            } else {
+                title
+            }
+        });
     let items: Vec<_> = state
         .visible_rooms()
         .map(|room| {
@@ -39,7 +45,16 @@ pub(crate) fn draw_rooms_table<'a>(state: &AppState) -> Table<'a> {
                 .room_and_team_title(&room.id)
                 .unwrap_or_default();
             let line = line_for_room_and_team_title(ratt, room.unread);
-            Row::new(vec![Cell::from(line)])
+            
+            // Add selection indicator
+            let selection_indicator = if state.rooms_list.is_room_selected(&room.id) {
+                "☑ "
+            } else {
+                "☐ "
+            };
+            
+            let cell_content = format!("{}{}", selection_indicator, line);
+            Row::new(vec![Cell::from(cell_content)])
         })
         .collect();
     Table::new(items, &[Constraint::Length(ROOMS_LIST_WIDTH)])

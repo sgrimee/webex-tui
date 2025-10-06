@@ -8,6 +8,7 @@ use super::cache::Cache;
 use enum_iterator::{next_cycle, previous_cycle};
 use log::*;
 use ratatui::widgets::TableState;
+use std::collections::HashSet;
 
 #[derive(Default)]
 pub(crate) struct RoomsList {
@@ -15,6 +16,7 @@ pub(crate) struct RoomsList {
     table_state: TableState,
     active_room_id: Option<RoomId>,
     search_query: Option<String>,
+    selected_rooms: HashSet<RoomId>,
 }
 
 impl RoomsList {
@@ -137,5 +139,46 @@ impl RoomsList {
         self.search_query = query;
     }
 
+    /// Toggle selection of a room
+    pub(crate) fn toggle_room_selection(&mut self, room_id: &RoomId) {
+        if self.selected_rooms.contains(room_id) {
+            self.selected_rooms.remove(room_id);
+        } else {
+            self.selected_rooms.insert(room_id.clone());
+        }
+    }
 
+    /// Check if a room is selected
+    pub(crate) fn is_room_selected(&self, room_id: &RoomId) -> bool {
+        self.selected_rooms.contains(room_id)
+    }
+
+    /// Get all selected room IDs
+    pub(crate) fn selected_room_ids(&self) -> Vec<RoomId> {
+        self.selected_rooms.iter().cloned().collect()
+    }
+
+    /// Clear all room selections
+    pub(crate) fn clear_room_selections(&mut self) {
+        self.selected_rooms.clear();
+    }
+
+    /// Select all visible rooms
+    pub(crate) fn select_all_visible_rooms(&mut self, rooms: &[&Room]) {
+        for room in rooms {
+            self.selected_rooms.insert(room.id.clone());
+        }
+    }
+
+    /// Get the number of selected rooms
+    pub(crate) fn selected_room_count(&self) -> usize {
+        self.selected_rooms.len()
+    }
+
+    /// Toggle selection of the currently highlighted room
+    pub(crate) fn toggle_current_room_selection(&mut self, rooms: &[&Room]) {
+        if let Some(room_id) = self.id_of_selected(rooms) {
+            self.toggle_room_selection(&room_id);
+        }
+    }
 }
