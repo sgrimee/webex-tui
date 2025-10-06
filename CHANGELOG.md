@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 This project tries to follow semantic versioning.
 
+## [0.7.6] - 2025-10-06
+
+### Features
+
+- Multi-room selection (toggle, select all, clear, batch delete/leave)
+- Inactive rooms filter (shows rooms idle ≥ 365 days)
+
+### Changes
+
+- Logger updated to new `tui_logger` file API
+- Rust toolchain bumped to 1.88; dependency refresh
+- Use webex-rust git dependency for leave_room support
+
 ## [0.7.0] - 2024-01-25
 
 ### Bug Fixes
