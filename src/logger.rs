@@ -40,8 +40,8 @@ pub(crate) fn setup_logger(
 
     // set the log file
     if let Some(logfile) = logfile {
-        let log_file_config = TuiLoggerFile::new(&logfile.to_string_lossy());
-        tui_logger::set_log_file(log_file_config);
+        let log_file = TuiLoggerFile::new(&logfile.to_string_lossy());
+        let _ = tui_logger::set_log_file(log_file);
     }
 }
 
