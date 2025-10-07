@@ -29,6 +29,7 @@ pub(crate) fn draw_rooms_table<'a>(state: &AppState) -> Table<'a> {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
+        .border_style(border_style)
         .title({
             let selected_count = state.rooms_list.selected_room_count();
             if selected_count > 0 {
