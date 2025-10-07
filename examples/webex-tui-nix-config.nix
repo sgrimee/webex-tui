@@ -13,8 +13,7 @@
   programs.webex-tui = {
     enable = true;
     
-    # Basic settings
-    port = 8080;
+    # User preferences
     theme = "dracula";
     messages_to_load = 20;
     debug = false;

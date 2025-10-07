@@ -17,6 +17,8 @@ use banner::BANNER;
 use clap::{arg, command, value_parser};
 use clap::{Arg, ArgAction};
 use config::{ClientConfig, UserConfig};
+
+const DEFAULT_PORT: u16 = 8080;
 use inputs::handler::Event;
 use log::LevelFilter;
 use std::path::PathBuf;
@@ -107,8 +109,8 @@ async fn main() -> Result<()> {
     let client_config = get_config()?;
     let user_config = UserConfig::load();
     
-    // Get port before moving client_config
-    let port = user_config.get_port(&client_config);
+    // Get port from client config (for OAuth redirect)
+    let port = client_config.port.unwrap_or(DEFAULT_PORT);
     
     let credentials = ClientCredentials {
         client_id: client_config.client_id,

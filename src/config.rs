@@ -3,8 +3,10 @@
 // credits: iRigellute/spotify-tui
 
 use color_eyre::eyre::{eyre, Error, Result};
+use log::{info, warn};
 use serde::{Deserialize, Serialize};
 use std::{
+    env,
     fs,
     io::{stdin, Write},
     path::{Path, PathBuf},
@@ -12,8 +14,17 @@ use std::{
 
 const DEFAULT_PORT: u16 = 8080;
 const FILE_NAME: &str = "client.yml";
+const USER_FILE_NAME: &str = "config.yml";
 const CONFIG_DIR: &str = ".config";
 const APP_CONFIG_DIR: &str = "webex-tui";
+
+fn default_theme_name() -> String {
+    "default".to_string()
+}
+
+fn default_messages_to_load() -> u32 {
+    10
+}
 // const TOKEN_CACHE_FILE: &str = ".webex_token_cache.json";
 
 #[derive(Default, Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -22,6 +33,30 @@ pub(crate) struct ClientConfig {
     pub(crate) client_secret: String,
     // FIXME: port should be defined in `user_config` not in here
     pub(crate) port: Option<u16>,
+}
+
+/// User preferences configuration (managed by nix/user)
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub(crate) struct UserConfig {
+    /// Theme name to load from themes directory
+    #[serde(default = "default_theme_name")]
+    pub(crate) theme: String,
+    /// Number of messages to load per room
+    #[serde(default = "default_messages_to_load")]
+    pub(crate) messages_to_load: u32,
+    /// Enable debug logging by default
+    #[serde(default)]
+    pub(crate) debug: bool,
+}
+
+impl Default for UserConfig {
+    fn default() -> Self {
+        Self {
+            theme: default_theme_name(),
+            messages_to_load: default_messages_to_load(),
+            debug: false,
+        }
+    }
 }
 
 struct ConfigPaths {
@@ -190,4 +225,40 @@ impl ClientConfig {
             Ok(())
         }
     }
+}
+
+impl UserConfig {
+    /// Load user configuration with fallback methods
+    pub(crate) fn load() -> Self {
+        // Try environment variable first (nix can set this)
+        if let Ok(config_path) = env::var("WEBEX_TUI_CONFIG") {
+            info!("Loading user config from WEBEX_TUI_CONFIG: {}", config_path);
+            if let Ok(config) = Self::load_from_file(&std::path::Path::new(&config_path)) {
+                return config;
+            }
+            warn!("Failed to load config from WEBEX_TUI_CONFIG, trying default location");
+        }
+
+        // Try standard location
+        if let Some(home) = dirs::home_dir() {
+            let config_path = home.join(CONFIG_DIR).join(APP_CONFIG_DIR).join(USER_FILE_NAME);
+            info!("Loading user config from: {}", config_path.display());
+            if let Ok(config) = Self::load_from_file(&config_path) {
+                return config;
+            }
+        }
+
+        // Use defaults if no config found
+        info!("No user config found, using defaults");
+        Self::default()
+    }
+
+    /// Load configuration from a specific file
+    fn load_from_file(path: &Path) -> color_eyre::Result<Self> {
+        let content = fs::read_to_string(path)?;
+        let config: UserConfig = serde_yaml::from_str(&content)?;
+        Ok(config)
+    }
+
+
 }

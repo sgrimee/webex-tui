@@ -6,21 +6,19 @@ webex-tui uses a dual configuration system that separates authentication credent
 
 ### 1. Client Configuration (`client.yml`)
 **Location**: `~/.config/webex-tui/client.yml`  
-**Purpose**: Authentication credentials (managed by sops/secrets)  
+**Purpose**: Authentication credentials and OAuth settings (managed by sops/secrets)  
 **Contents**:
 ```yaml
 client_id: "your-webex-integration-client-id"
 client_secret: "your-webex-integration-client-secret"
+port: 8080  # OAuth2 redirect port (optional, defaults to 8080)
 ```
 
 ### 2. User Configuration (`config.yml`)
 **Location**: `~/.config/webex-tui/config.yml`  
-**Purpose**: User preferences and settings  
+**Purpose**: User preferences and UI settings  
 **Contents**:
 ```yaml
-# OAuth2 redirect port (default: 8080)
-port: 8080
-
 # Theme to use (default: "default")
 theme: "dracula"
 
@@ -38,7 +36,6 @@ debug: true
 Create `~/.config/webex-tui/config.yml` manually:
 
 ```yaml
-port: 8080
 theme: "dracula"
 messages_to_load: 15
 debug: false
@@ -64,7 +61,6 @@ For NixOS or home-manager users, use the provided nix module:
   
   programs.webex-tui = {
     enable = true;
-    port = 8080;
     theme = "dracula";
     messages_to_load = 20;
     debug = false;
@@ -145,7 +141,7 @@ If you have a `client.yml` with user preferences, they will continue to work wit
 
 Example migration:
 
-**Old `client.yml`**:
+**Old `client.yml`** (if it had user preferences mixed in):
 ```yaml
 client_id: "abc123..."
 client_secret: "def456..."
@@ -153,15 +149,15 @@ port: 8080
 theme: "dracula"
 ```
 
-**New `client.yml`**:
+**New `client.yml`** (authentication and OAuth only):
 ```yaml
 client_id: "abc123..."
 client_secret: "def456..."
+port: 8080  # OAuth redirect port (keep here as it's tied to integration setup)
 ```
 
-**New `config.yml`**:
+**New `config.yml`** (user preferences only):
 ```yaml
-port: 8080
 theme: "dracula"
 ```
 

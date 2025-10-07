@@ -12,18 +12,12 @@ let
   
   # Convert nix config to YAML format
   configFile = pkgs.writeText "webex-tui-config.yml" (generators.toYAML {} {
-    inherit (cfg) port theme messages_to_load debug;
+    inherit (cfg) theme messages_to_load debug;
   });
   
 in {
   options.programs.webex-tui = {
     enable = mkEnableOption "webex-tui configuration";
-
-    port = mkOption {
-      type = types.int;
-      default = 8080;
-      description = "OAuth2 redirect port for authentication";
-    };
 
     theme = mkOption {
       type = types.str;
