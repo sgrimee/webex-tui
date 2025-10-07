@@ -16,7 +16,7 @@ use app::{App, AppReturn};
 use banner::BANNER;
 use clap::{arg, command, value_parser};
 use clap::{Arg, ArgAction};
-use config::ClientConfig;
+use config::{ClientConfig, UserConfig};
 use inputs::handler::Event;
 use log::LevelFilter;
 use std::path::PathBuf;
@@ -103,19 +103,24 @@ async fn main() -> Result<()> {
     println!("{}", BANNER);
     println!("Starting webex-tui, version {}.", env!("CARGO_PKG_VERSION"));
 
-    // Read configuration or prompt for integration details
-    let config = get_config()?;
+    // Read configurations
+    let client_config = get_config()?;
+    let user_config = UserConfig::load();
+    
+    // Get port before moving client_config
+    let port = user_config.get_port(&client_config);
+    
     let credentials = ClientCredentials {
-        client_id: config.client_id,
-        client_secret: config.client_secret,
+        client_id: client_config.client_id,
+        client_secret: client_config.client_secret,
     };
     
-    // Load theme
-    let theme = load_theme(&config.theme);
+    // Load theme from user config
+    let theme = load_theme(&user_config.theme);
 
     // Start authentication via web browser
     println!("Opening a browser and waiting for authentication.");
-    let token = get_integration_token(credentials)
+    let token = get_integration_token(credentials, port)
         .await
         .expect("Need token to continue");
 
@@ -128,11 +133,15 @@ async fn main() -> Result<()> {
         tokio::sync::mpsc::unbounded_channel::<AppCmdEvent>();
     let (app_to_teams_tx_highpri, app_to_teams_rx_highpri) =
         tokio::sync::mpsc::unbounded_channel::<AppCmdEvent>();
+    // CLI args override config values
+    let debug = matches.get_flag("debug") || user_config.debug;
+    let messages_to_load = *matches.get_one("messages").unwrap_or(&user_config.messages_to_load);
+    
     let app = Arc::new(tokio::sync::Mutex::new(App::new(
         app_to_teams_tx_lowpri.clone(),
         app_to_teams_tx_highpri.clone(),
-        matches.get_flag("debug"),
-        *matches.get_one("messages").unwrap(),
+        debug,
+        messages_to_load,
         theme,
     )));
     let app_ui = Arc::clone(&app);

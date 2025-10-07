@@ -1,0 +1,14 @@
+# Example user configuration for webex-tui
+# Place this file at ~/.config/webex-tui/config.yml
+
+# OAuth2 redirect port (default: 8080)
+port: 8080
+
+# Theme to use (default: "default")
+theme: "dracula"
+
+# Number of messages to load per room (default: 10)  
+messages_to_load: 20
+
+# Enable debug logging (default: false)
+debug: false

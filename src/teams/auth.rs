@@ -18,9 +18,8 @@ use std::net::TcpStream;
 
 /// Create and authorize a client with the given `ClientCredentials`.
 /// A browser is opened for user authentication.
-/// Returns the `AccessToken` for the client.
-/// Blocks until the user has authenticated.
-pub(crate) async fn get_integration_token(credentials: ClientCredentials) -> Result<AccessToken> {
+/// Returns a token, or an error if any authentication step fail.
+pub(crate) async fn get_integration_token(credentials: ClientCredentials, port: u16) -> Result<AccessToken> {
     let client = BasicClient::new(ClientId::new(credentials.client_id))
         .set_client_secret(ClientSecret::new(credentials.client_secret))
         .set_auth_uri(
@@ -32,7 +31,7 @@ pub(crate) async fn get_integration_token(credentials: ClientCredentials) -> Res
                 .expect("Invalid token uri"),
         )
         .set_redirect_uri(
-            RedirectUrl::new("http://localhost:8080".to_string()).expect("Invalid redirect url"),
+            RedirectUrl::new(format!("http://localhost:{}", port)).expect("Invalid redirect url"),
         );
 
     // Generate a PKCE challenge.
@@ -53,7 +52,7 @@ the BROWSER environment variable, or open the following url manually (on this co
         println!("{}", msg);
     }
 
-    let mut stream = await_authorization_callback().await?;
+    let mut stream = await_authorization_callback(port).await?;
 
     let (code, state) = parse_authorization_response(&mut stream)?;
     send_success_response(&mut stream)?;
@@ -80,8 +79,8 @@ the BROWSER environment variable, or open the following url manually (on this co
 }
 
 /// Listen on local port for OAuth callback and return the TCP stream
-async fn await_authorization_callback() -> Result<TcpStream> {
-    let listener = TcpListener::bind("127.0.0.1:8080")?;
+async fn await_authorization_callback(port: u16) -> Result<TcpStream> {
+    let listener = TcpListener::bind(format!("127.0.0.1:{}", port))?;
     let stream = listener.incoming().flatten().next().unwrap();
     Ok(stream)
 }

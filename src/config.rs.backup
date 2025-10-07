@@ -3,18 +3,32 @@
 // credits: iRigellute/spotify-tui
 
 use color_eyre::eyre::{eyre, Error, Result};
+use log::{info, warn};
 use serde::{Deserialize, Serialize};
 use std::{
+    env,
     fs,
     io::{stdin, Write},
     path::{Path, PathBuf},
 };
 
 const DEFAULT_PORT: u16 = 8080;
-const FILE_NAME: &str = "client.yml";
+const CLIENT_FILE_NAME: &str = "client.yml";
+const USER_FILE_NAME: &str = "config.yml";
 const CONFIG_DIR: &str = ".config";
 const APP_CONFIG_DIR: &str = "webex-tui";
-// const TOKEN_CACHE_FILE: &str = ".webex_token_cache.json";
+
+fn default_theme_name() -> String {
+    "default".to_string()
+}
+
+fn default_messages_to_load() -> u32 {
+    10
+}
+
+fn default_port() -> u16 {
+    DEFAULT_PORT
+}
 
 #[derive(Default, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub(crate) struct ClientConfig {
@@ -24,9 +38,38 @@ pub(crate) struct ClientConfig {
     pub(crate) port: Option<u16>,
 }
 
+/// User preferences configuration (managed by nix/user)
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub(crate) struct UserConfig {
+    /// OAuth2 redirect port
+    #[serde(default = "default_port")]
+    pub(crate) port: u16,
+    /// Theme name to load from themes directory
+    #[serde(default = "default_theme_name")]
+    pub(crate) theme: String,
+    /// Number of messages to load per room
+    #[serde(default = "default_messages_to_load")]
+    pub(crate) messages_to_load: u32,
+    /// Enable debug logging by default
+    #[serde(default)]
+    pub(crate) debug: bool,
+}
+
+impl Default for UserConfig {
+    fn default() -> Self {
+        Self {
+            port: default_port(),
+            theme: default_theme_name(),
+            messages_to_load: default_messages_to_load(),
+            debug: false,
+        }
+    }
+}
+
 struct ConfigPaths {
-    pub(crate) config_file_path: PathBuf,
-    // pub(crate) token_cache_path: PathBuf,
+    pub(crate) client_config_path: PathBuf,
+    pub(crate) user_config_path: PathBuf,
+    pub(crate) app_config_dir: PathBuf,
 }
 
 impl ClientConfig {
@@ -54,12 +97,13 @@ impl ClientConfig {
                     fs::create_dir(&app_config_dir)?;
                 }
 
-                let config_file_path = &app_config_dir.join(FILE_NAME);
-                // let token_cache_path = &app_config_dir.join(TOKEN_CACHE_FILE);
+                let client_config_path = app_config_dir.join(CLIENT_FILE_NAME);
+                let user_config_path = app_config_dir.join(USER_FILE_NAME);
 
                 let paths = ConfigPaths {
-                    config_file_path: config_file_path.to_path_buf(),
-                    // token_cache_path: token_cache_path.to_path_buf(),
+                    client_config_path,
+                    user_config_path,
+                    app_config_dir,
                 };
 
                 Ok(paths)
@@ -73,8 +117,8 @@ impl ClientConfig {
     /// and save them to the configuration file.
     pub(crate) fn load_config(&mut self) -> Result<()> {
         let paths = self.get_or_build_paths()?;
-        if paths.config_file_path.exists() {
-            let config_string = fs::read_to_string(&paths.config_file_path)?;
+        if paths.client_config_path.exists() {
+            let config_string = fs::read_to_string(&paths.client_config_path)?;
             let config_yml: ClientConfig = serde_yaml::from_str(&config_string)?;
 
             self.client_id = config_yml.client_id;
@@ -84,8 +128,8 @@ impl ClientConfig {
             Ok(())
         } else {
             println!(
-                "Config will be saved to {}",
-                paths.config_file_path.display()
+                "Client config will be saved to {}",
+                paths.client_config_path.display()
             );
 
             println!("\nHow to get setup:\n");
@@ -128,7 +172,7 @@ impl ClientConfig {
 
             let content_yml = serde_yaml::to_string(&config_yml)?;
 
-            let mut new_config = fs::File::create(&paths.config_file_path)?;
+            let mut new_config = fs::File::create(&paths.client_config_path)?;
             write!(new_config, "{}", content_yml)?;
 
             self.client_id = config_yml.client_id;
@@ -165,6 +209,85 @@ impl ClientConfig {
                         )));
                     }
                 }
+            };
+        }
+    }
+
+impl UserConfig {
+    /// Load user configuration with multiple fallback methods:
+    /// 1. Environment variable WEBEX_TUI_CONFIG pointing to a file
+    /// 2. Nix-generated config file at ~/.config/webex-tui/config.yml
+    /// 3. Default values if no config found
+    pub(crate) fn load() -> Self {
+        // Try environment variable first (nix can set this)
+        if let Ok(config_path) = env::var("WEBEX_TUI_CONFIG") {
+            info!("Loading user config from WEBEX_TUI_CONFIG: {}", config_path);
+            if let Ok(config) = Self::load_from_file(Path::new(&config_path)) {
+                return config;
+            }
+            warn!("Failed to load config from WEBEX_TUI_CONFIG, trying default location");
+        }
+
+        // Try standard location
+        if let Some(home) = dirs::home_dir() {
+            let config_path = home
+                .join(CONFIG_DIR)
+                .join(APP_CONFIG_DIR)
+                .join(USER_FILE_NAME);
+            
+            info!("Loading user config from: {}", config_path.display());
+            if let Ok(config) = Self::load_from_file(&config_path) {
+                return config;
+            }
+        }
+
+        // Use defaults if no config found
+        info!("No user config found, using defaults");
+        Self::default()
+    }
+
+    /// Load configuration from a specific file
+    fn load_from_file(path: &Path) -> Result<Self> {
+        let content = fs::read_to_string(path)?;
+        let config: UserConfig = serde_yaml::from_str(&content)?;
+        Ok(config)
+    }
+
+    /// Get the OAuth2 redirect port, with backwards compatibility for legacy client.yml
+    pub(crate) fn get_port(&self, _client_config: &ClientConfig) -> u16 {
+        // For backwards compatibility, check if client.yml has a port
+        if let Ok(paths) = self.get_paths() {
+            if let Ok(content) = fs::read_to_string(&paths.client_config_path) {
+                if let Ok(legacy_config) = serde_yaml::from_str::<serde_yaml::Value>(&content) {
+                    if let Some(port) = legacy_config.get("port").and_then(|p| p.as_u64()) {
+                        warn!("Using port from legacy client.yml ({}). Consider moving to config.yml", port);
+                        return port as u16;
+                    }
+                }
+            }
+        }
+        self.port
+    }
+
+    fn get_paths(&self) -> Result<ConfigPaths> {
+        match dirs::home_dir() {
+            Some(home) => {
+                let path = Path::new(&home);
+                let home_config_dir = path.join(CONFIG_DIR);
+                let app_config_dir = home_config_dir.join(APP_CONFIG_DIR);
+                let client_config_path = app_config_dir.join(CLIENT_FILE_NAME);
+                let user_config_path = app_config_dir.join(USER_FILE_NAME);
+
+                Ok(ConfigPaths {
+                    client_config_path,
+                    user_config_path,
+                    app_config_dir,
+                })
+            }
+            None => Err(eyre!("No $HOME directory found")),
+        }
+    }
+}
             };
         }
     }
