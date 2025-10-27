@@ -120,8 +120,8 @@ async fn main() -> Result<()> {
     // Load theme from user config
     let theme = load_theme(&user_config.theme);
 
-    // Start authentication via web browser
-    println!("Opening a browser and waiting for authentication.");
+    // Start authentication (cached or browser-based)
+    println!("Authenticating to Webex...");
     let token = get_integration_token(credentials, port)
         .await
         .expect("Need token to continue");
