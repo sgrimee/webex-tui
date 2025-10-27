@@ -6,6 +6,7 @@
 pub(crate) mod app_handler;
 pub(crate) mod auth;
 mod client;
+pub(crate) mod token_cache;
 mod webex_handler;
 
 use self::{app_handler::AppCmdEvent, client::get_webex_client};

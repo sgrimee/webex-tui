@@ -4,8 +4,10 @@
 //!
 //! Inspired by `https://github.com/Nabushika/webexterm`
 
+use super::token_cache::{load_token_cache, save_token_cache, clear_token_cache, TokenCache};
 use super::ClientCredentials;
 use color_eyre::eyre::{eyre, Result};
+use log::*;
 use oauth2::basic::BasicClient;
 use oauth2::url::Url;
 use oauth2::{
@@ -16,10 +18,47 @@ use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
 use std::net::TcpStream;
 
+/// Get an integration token, using cached token if available and valid,
+/// otherwise falling back to browser authentication.
+pub(crate) async fn get_integration_token_cached(credentials: ClientCredentials, port: u16) -> Result<AccessToken> {
+    // First, try to load and use cached token
+    match load_token_cache() {
+        Ok(cache) => {
+            if cache.is_likely_valid() {
+                info!("Using cached authentication token");
+                return Ok(cache.to_access_token());
+            } else {
+                info!("Cached token expired or invalid, clearing cache");
+                if let Err(e) = clear_token_cache() {
+                    warn!("Failed to clear expired token cache: {}", e);
+                }
+            }
+        }
+        Err(e) => {
+            debug!("No valid cached token found: {}", e);
+        }
+    }
+
+    // No valid cached token, perform browser authentication
+    info!("No valid cached token, starting browser authentication");
+    let token = get_integration_token_browser(credentials, port).await?;
+    
+    // Cache the new token for future use
+    let cache = TokenCache::new(token.clone(), None, None);
+    if let Err(e) = save_token_cache(&cache) {
+        warn!("Failed to cache authentication token: {}", e);
+        // Don't fail the authentication if caching fails
+    } else {
+        info!("Authentication token cached successfully");
+    }
+    
+    Ok(token)
+}
+
 /// Create and authorize a client with the given `ClientCredentials`.
 /// A browser is opened for user authentication.
 /// Returns a token, or an error if any authentication step fail.
-pub(crate) async fn get_integration_token(credentials: ClientCredentials, port: u16) -> Result<AccessToken> {
+async fn get_integration_token_browser(credentials: ClientCredentials, port: u16) -> Result<AccessToken> {
     let client = BasicClient::new(ClientId::new(credentials.client_id))
         .set_client_secret(ClientSecret::new(credentials.client_secret))
         .set_auth_uri(
@@ -76,6 +115,16 @@ the BROWSER environment variable, or open the following url manually (on this co
         .await?;
 
     Ok(token_result.access_token().clone())
+}
+
+/// Clear cached tokens (useful for logout or when authentication fails)
+pub(crate) fn clear_cached_tokens() -> Result<()> {
+    clear_token_cache()
+}
+
+/// Backward compatibility alias for the cached authentication function
+pub(crate) async fn get_integration_token(credentials: ClientCredentials, port: u16) -> Result<AccessToken> {
+    get_integration_token_cached(credentials, port).await
 }
 
 /// Listen on local port for OAuth callback and return the TCP stream
