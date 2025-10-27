@@ -255,6 +255,7 @@ impl App<'_> {
                         error!("Could not delete selected rooms: {}", e);
                     }
                 }
+
             }
         } else {
             warn!("No action associated with {} in this mode", key);
