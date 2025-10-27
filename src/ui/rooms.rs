@@ -21,9 +21,19 @@ pub(crate) fn draw_rooms_table<'a>(state: &AppState) -> Table<'a> {
     
     // Build title based on current mode
     let title = if let Some(query) = state.rooms_list.search_query() {
-        format!("Search: {}", query)
+        let selected_count = state.rooms_list.selected_room_count();
+        if selected_count > 0 {
+            format!("Search: {} ({} selected)", query, selected_count)
+        } else {
+            format!("Search: {}", query)
+        }
     } else {
-        format!("Filter: {:?}", state.rooms_list.filter())
+        let selected_count = state.rooms_list.selected_room_count();
+        if selected_count > 0 {
+            format!("Filter: {:?} ({} selected)", state.rooms_list.filter(), selected_count)
+        } else {
+            format!("Filter: {:?}", state.rooms_list.filter())
+        }
     };
     
     let block = Block::default()
