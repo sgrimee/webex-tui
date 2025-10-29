@@ -251,6 +251,7 @@ impl App<'_> {
                     self.state.rooms_list.clear_room_selections();
                 }
                 Action::DeleteSelectedRooms => {
+                    debug!("User triggered DeleteSelectedRooms action");
                     if let Err(e) = self.delete_selected_rooms() {
                         error!("Could not delete selected rooms: {}", e);
                     }
@@ -554,18 +555,28 @@ impl App<'_> {
     /// Delete all selected rooms by leaving them
     fn delete_selected_rooms(&mut self) -> Result<()> {
         let selected_room_ids = self.state.rooms_list.selected_room_ids();
+        debug!("Selected room IDs for deletion: {:?}", selected_room_ids);
+        
         if selected_room_ids.is_empty() {
+            debug!("No rooms selected for deletion");
             return Err(eyre!("No rooms selected for deletion"));
         }
 
         // Send leave room commands for all selected rooms
-        for room_id in selected_room_ids {
+        for room_id in selected_room_ids.clone() {
             debug!("Sending leave room command for room: {}", room_id);
+            // Also log the room title if available
+            if let Some(room) = self.state.cache.rooms.room_with_id(&room_id) {
+                if let Some(title) = &room.title {
+                    debug!("Room title: {}", title);
+                }
+            }
             self.dispatch_to_teams(AppCmdEvent::LeaveRoom(room_id), &Priority::High);
         }
 
         // Clear selections after sending the commands
         self.state.rooms_list.clear_room_selections();
+        debug!("Cleared room selections, sent {} leave commands", selected_room_ids.len());
         Ok(())
     }
 }
