@@ -227,6 +227,13 @@ impl App<'_> {
 
     /// Callback when a room is left.
     pub(crate) fn cb_space_left(&mut self, room_id: &RoomId) {
+        debug!("Callback: space left for room ID: {}", room_id);
+        if let Some(room) = self.state.cache.rooms.room_with_id(room_id) {
+            if let Some(title) = &room.title {
+                debug!("Removing room from cache: {}", title);
+            }
+        }
         self.state.cache.remove_room(room_id);
+        debug!("Room removed from cache");
     }
 }
