@@ -291,16 +291,31 @@ impl Teams<'_> {
     /// Leave a room by deleting our membership
     async fn do_leave_room(&mut self, room_id: &RoomId) -> Result<()> {
         let global_id = GlobalId::new(GlobalIdType::Room, room_id.to_owned()).unwrap();
+        debug!("=== STARTING LEAVE ROOM PROCESS ===");
         debug!("Leaving room with local id {} and global id: {:?}", room_id, global_id);
         
+        // Get room title for better logging
+        let room_title = {
+            let app = self.app.lock().await;
+            app.state.cache.rooms.room_with_id(room_id).and_then(|r| r.title.clone()).unwrap_or_else(|| "Unknown".to_string())
+        };
+        debug!("Room title: {}", room_title);
+        
+        debug!("About to call client.leave_room...");
         match self.client.leave_room(&global_id).await {
             Ok(_) => {
-                debug!("Successfully left room: {}", room_id);
+                debug!("✅ Successfully left room: {} ({})", room_title, room_id);
                 // Remove the room from the cache
+                debug!("Calling cb_space_left callback...");
                 self.app.lock().await.cb_space_left(room_id);
+                debug!("=== LEAVE ROOM PROCESS COMPLETED ===");
                 Ok(())
             }
-            Err(e) => Err(eyre!("Error leaving room: {}", e)),
+            Err(e) => {
+                error!("❌ Error leaving room {} ({}): {}", room_title, room_id, e);
+                debug!("=== LEAVE ROOM PROCESS FAILED ===");
+                Err(eyre!("Error leaving room: {}", e))
+            }
         }
     }
 }
