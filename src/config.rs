@@ -47,6 +47,7 @@ pub(crate) struct UserConfig {
     /// Enable debug logging by default
     #[serde(default)]
     pub(crate) debug: bool,
+
 }
 
 impl Default for UserConfig {
@@ -258,6 +259,25 @@ impl UserConfig {
         let content = fs::read_to_string(path)?;
         let config: UserConfig = serde_yaml::from_str(&content)?;
         Ok(config)
+    }
+
+    /// Save user configuration to the standard location
+    pub(crate) fn save(&self) -> color_eyre::Result<()> {
+        if let Some(home) = dirs::home_dir() {
+            let config_dir = home.join(CONFIG_DIR).join(APP_CONFIG_DIR);
+            
+            // Create directories if they don't exist
+            if !config_dir.exists() {
+                fs::create_dir_all(&config_dir)?;
+            }
+            
+            let config_path = config_dir.join(USER_FILE_NAME);
+            let content = serde_yaml::to_string(self)?;
+            fs::write(config_path, content)?;
+            Ok(())
+        } else {
+            Err(eyre!("Could not determine home directory"))
+        }
     }
 
 
