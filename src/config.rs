@@ -262,6 +262,7 @@ impl UserConfig {
     }
 
     /// Save user configuration to the standard location
+    #[allow(dead_code)]
     pub(crate) fn save(&self) -> color_eyre::Result<()> {
         if let Some(home) = dirs::home_dir() {
             let config_dir = home.join(CONFIG_DIR).join(APP_CONFIG_DIR);

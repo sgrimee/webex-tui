@@ -69,6 +69,7 @@ impl TokenCache {
     }
 
     /// Convert back to OAuth RefreshToken if available
+    #[allow(dead_code)]
     pub fn to_refresh_token(&self) -> Option<RefreshToken> {
         self.refresh_token
             .as_ref()
