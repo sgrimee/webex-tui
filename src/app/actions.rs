@@ -50,6 +50,7 @@ pub(crate) enum Action {
     ClearRoomSelections,
     DeleteSelectedRooms,
     UnselectMessage,
+    CopyMessage,
 }
 
 impl Action {
@@ -96,6 +97,7 @@ impl Action {
             Action::ClearRoomSelections => &[Key::Char('C')],
             Action::DeleteSelectedRooms => &[Key::Char('X')],
             Action::UnselectMessage => &[Key::Esc],
+            Action::CopyMessage => &[Key::Char('y')],
         }
     }
 }
@@ -144,6 +146,7 @@ impl Display for Action {
             Action::ClearRoomSelections => "Clear room selections",
             Action::DeleteSelectedRooms => "Delete selected rooms",
             Action::UnselectMessage => "Unselect message",
+            Action::CopyMessage => "Copy message",
         };
         write!(f, "{}", str)
     }

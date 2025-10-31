@@ -184,6 +184,7 @@ impl AppState<'_> {
                 if self.messages_list.has_selection() {
                     actions.push(Action::RespondMessage);
                     actions.push(Action::UnselectMessage);
+                    actions.push(Action::CopyMessage);
                     if self.selected_message_is_from_me().unwrap_or_default() {
                         actions.push(Action::EditSelectedMessage);
                         actions.push(Action::DeleteMessage);
