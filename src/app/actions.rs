@@ -11,6 +11,7 @@ use crate::inputs::key::Key;
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Sequence)]
 pub(crate) enum Action {
     ComposeNewMessage,
+    CopyMessage,
     DeleteMessage,
     DumpRoomContentToFile,
     EditSelectedMessage,
@@ -56,6 +57,7 @@ impl Action {
     /// Return a slice with the key(s) associated to the action.
     pub(crate) fn keys(&self) -> &[Key] {
         match self {
+            Action::CopyMessage => &[Key::Char('y')],
             Action::DeleteMessage => &[Key::Char('d')],
             Action::DumpRoomContentToFile => &[Key::Char('D')],
             Action::ComposeNewMessage => &[Key::Enter],
@@ -104,6 +106,7 @@ impl Action {
 impl Display for Action {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let str = match self {
+            Action::CopyMessage => "Copy message",
             Action::DeleteMessage => "Delete selected",
             Action::DumpRoomContentToFile => "Dump room content to file",
             Action::ComposeNewMessage => "New message",
