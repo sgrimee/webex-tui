@@ -250,6 +250,11 @@ impl App<'_> {
                 Action::ClearRoomSelections => {
                     self.state.rooms_list.clear_room_selections();
                 }
+                Action::CopyMessage => {
+                    if let Err(e) = self.copy_selected_message() {
+                        error!("Could not copy message: {}", e);
+                    };
+                }
                 Action::DeleteSelectedRooms => {
                     debug!("User triggered DeleteSelectedRooms action");
                     if let Err(e) = self.delete_selected_rooms() {
@@ -413,6 +418,34 @@ impl App<'_> {
         self.state.messages_list.select_previous_message();
         self.dispatch_to_teams(AppCmdEvent::DeleteMessage(msg_id.clone()), &Priority::High);
         self.state.cache.delete_message(&msg_id, &room_id)?;
+        Ok(())
+    }
+
+    /// Copies the selected message content to clipboard
+    fn copy_selected_message(&mut self) -> Result<()> {
+        use arboard::Clipboard;
+
+        let message = self.state.selected_message()?;
+
+        // Extract text in priority order: text > markdown > html (converted)
+        let content = match (&message.text, &message.markdown, &message.html) {
+            (Some(text), _, _) => text.clone(),
+            (None, Some(md), _) => md.clone(),
+            (None, None, Some(html)) => {
+                // Use html2text to convert HTML to plain text
+                html2text::from_read(html.as_bytes(), usize::MAX)
+                    .unwrap_or_else(|_| html.clone())
+            }
+            _ => return Err(eyre!("Message has no content")),
+        };
+
+        let mut clipboard = Clipboard::new()
+            .map_err(|e| eyre!("Failed to access clipboard: {}", e))?;
+        clipboard
+            .set_text(content)
+            .map_err(|e| eyre!("Failed to set clipboard content: {}", e))?;
+
+        info!("Message copied to clipboard");
         Ok(())
     }
 
