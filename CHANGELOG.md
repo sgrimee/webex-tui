@@ -9,14 +9,8 @@ This project tries to follow semantic versioning.
 ### Features
 
 - **Token caching**: OAuth tokens are now cached between sessions for faster startup
-  - Secure disk storage with platform-appropriate directories and file permissions
-  - Smart token validation with expiration checking  
-  - Graceful fallback to browser authentication when cache is invalid
-  - Significantly improves startup time for returning users
-
-### Bug Fixes
-
-- Fixed syntax error in app module (extra closing brace)
+- **Multi-room selection**: Enable multi-room selection with visual indicators
+- **Batch operations**: Implement batch leave via LeaveRoom command for selected rooms
 
 ## [0.7.6] - 2025-10-06
 
