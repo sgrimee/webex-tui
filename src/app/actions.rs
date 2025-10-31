@@ -48,6 +48,7 @@ pub(crate) enum Action {
     ToggleRoomSelection,
     SelectAllVisibleRooms,
     ClearRoomSelections,
+    CopyMessage,
     DeleteSelectedRooms,
     UnselectMessage,
 }
@@ -94,6 +95,7 @@ impl Action {
             Action::ToggleRoomSelection => &[Key::Char(' ')],
             Action::SelectAllVisibleRooms => &[Key::Char('A')],
             Action::ClearRoomSelections => &[Key::Char('C')],
+            Action::CopyMessage => &[Key::Char('y')],
             Action::DeleteSelectedRooms => &[Key::Char('X')],
             Action::UnselectMessage => &[Key::Esc],
         }
@@ -142,6 +144,7 @@ impl Display for Action {
             Action::ToggleRoomSelection => "Toggle room selection",
             Action::SelectAllVisibleRooms => "Select all visible rooms",
             Action::ClearRoomSelections => "Clear room selections",
+            Action::CopyMessage => "Copy message",
             Action::DeleteSelectedRooms => "Delete selected rooms",
             Action::UnselectMessage => "Unselect message",
         };

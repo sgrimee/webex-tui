@@ -182,6 +182,7 @@ impl AppState<'_> {
                     actions.extend(vec![Action::NextMessage, Action::PreviousMessage]);
                 }
                 if self.messages_list.has_selection() {
+                    actions.push(Action::CopyMessage);
                     actions.push(Action::RespondMessage);
                     actions.push(Action::UnselectMessage);
                     if self.selected_message_is_from_me().unwrap_or_default() {
