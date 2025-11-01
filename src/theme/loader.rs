@@ -2,7 +2,7 @@
 
 use super::models::Theme;
 use color_eyre::Result;
-use log::{warn, debug, info};
+use log::{debug, info, warn};
 use std::fs;
 use std::path::PathBuf;
 
@@ -14,7 +14,7 @@ pub fn load_theme(theme_name: &str) -> Theme {
             theme
         }
         Err(e) => {
-            warn!("Failed to load theme '{}': {}. Using default theme.", theme_name, e);
+            warn!("Failed to load theme '{theme_name}': {e}. Using default theme.");
             Theme::default()
         }
     }
@@ -23,61 +23,68 @@ pub fn load_theme(theme_name: &str) -> Theme {
 /// Attempt to load a theme file, returning errors for handling
 fn try_load_theme(theme_name: &str) -> Result<Theme> {
     let theme_path = get_theme_path(theme_name)?;
-    
+
     debug!("Loading theme from: {}", theme_path.display());
-    
+
     let content = fs::read_to_string(&theme_path)?;
     let mut theme: Theme = serde_yaml::from_str(&content)?;
-    
+
     // Ensure the theme name matches (in case it's different in the file)
     if theme.name.is_empty() {
         theme.name = theme_name.to_string();
     }
-    
+
     // Validate user_colors array size to prevent memory issues
     if theme.user_colors.len() > 64 {
-        warn!("Theme '{}' has too many user_colors ({}), truncating to 64", theme.name, theme.user_colors.len());
+        warn!(
+            "Theme '{}' has too many user_colors ({}), truncating to 64",
+            theme.name,
+            theme.user_colors.len()
+        );
         theme.user_colors.truncate(64);
     }
-    
+
     // If no user colors specified, use defaults
     if theme.user_colors.is_empty() {
         warn!("Theme '{}' has no user_colors, using defaults", theme.name);
         theme.user_colors = Theme::default().user_colors;
     }
-    
+
     Ok(theme)
 }
 
 /// Get the path to a theme file
 fn get_theme_path(theme_name: &str) -> Result<PathBuf> {
-    let home_dir = dirs::home_dir()
-        .ok_or_else(|| color_eyre::eyre::eyre!("Could not find home directory"))?;
-    
+    let home_dir =
+        dirs::home_dir().ok_or_else(|| color_eyre::eyre::eyre!("Could not find home directory"))?;
+
     let theme_dir = home_dir.join(".config").join("webex-tui").join("themes");
-    let theme_file = format!("{}.yml", theme_name);
+    let theme_file = format!("{theme_name}.yml");
     let theme_path = theme_dir.join(theme_file);
-    
+
     if !theme_path.exists() {
-        return Err(color_eyre::eyre::eyre!("Theme file not found: {}", theme_path.display()));
+        return Err(color_eyre::eyre::eyre!(
+            "Theme file not found: {}",
+            theme_path.display()
+        ));
     }
-    
+
     Ok(theme_path)
 }
 
 /// Create the themes directory if it doesn't exist
 #[allow(dead_code)]
 pub fn ensure_themes_directory() -> Result<PathBuf> {
-    let home_dir = dirs::home_dir()
-        .ok_or_else(|| color_eyre::eyre::eyre!("Could not find home directory"))?;
-    
+    let home_dir =
+        dirs::home_dir().ok_or_else(|| color_eyre::eyre::eyre!("Could not find home directory"))?;
+
     let theme_dir = home_dir.join(".config").join("webex-tui").join("themes");
-    
+
     if !theme_dir.exists() {
         fs::create_dir_all(&theme_dir)?;
         debug!("Created themes directory: {}", theme_dir.display());
     }
-    
+
     Ok(theme_dir)
 }
 
@@ -88,24 +95,24 @@ pub fn list_available_themes() -> Result<Vec<String>> {
         Some(home) => home.join(".config").join("webex-tui").join("themes"),
         None => return Ok(vec![]),
     };
-    
+
     if !theme_dir.exists() {
         return Ok(vec![]);
     }
-    
+
     let mut themes = Vec::new();
-    
+
     for entry in fs::read_dir(theme_dir)? {
         let entry = entry?;
         let path = entry.path();
-        
+
         if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("yml") {
             if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
                 themes.push(stem.to_string());
             }
         }
     }
-    
+
     themes.sort();
     Ok(themes)
 }
@@ -113,7 +120,6 @@ pub fn list_available_themes() -> Result<Vec<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
 
     #[test]
     fn test_load_default_theme() {

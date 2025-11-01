@@ -42,12 +42,12 @@ impl EventHandler {
                         crossterm::event::read().unwrap()
                     {
                         if let Err(err) = event_tx.send(Event::Input(key_event)).await {
-                            error!("Could not send terminal event to main thread!, {}", err);
+                            error!("Could not send terminal event to main thread!, {err}");
                         }
                     }
                 }
                 if let Err(err) = event_tx.send(Event::Tick).await {
-                    error!("Could not send tick to main thread!, {}", err);
+                    error!("Could not send tick to main thread!, {err}");
                 }
                 if event_stop_capture.load(Ordering::Relaxed) {
                     break;

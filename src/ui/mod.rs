@@ -54,15 +54,15 @@ pub(crate) fn render(rect: &mut Frame, state: &mut AppState) {
     let mut body_constraints = vec![];
     let mut rooms_column_index = None;
     let mut help_column_index = None;
-    
+
     if state.show_rooms {
         body_constraints.push(Constraint::Length(ROOMS_LIST_WIDTH));
         rooms_column_index = Some(body_constraints.len() - 1);
     }
-    
+
     body_constraints.push(Constraint::Min(ACTIVE_ROOM_MIN_WIDTH));
     let messages_column_index = body_constraints.len() - 1;
-    
+
     if state.show_help {
         body_constraints.push(Constraint::Length(HELP_WIDTH));
         help_column_index = Some(body_constraints.len() - 1);
@@ -113,7 +113,11 @@ pub(crate) fn render(rect: &mut Frame, state: &mut AppState) {
 
     // Help
     if let Some(help_idx) = help_column_index {
-        let help = draw_help(&state.actions, state.theme.roles.accent(), state.theme.roles.text_muted());
+        let help = draw_help(
+            &state.actions,
+            state.theme.roles.accent(),
+            state.theme.roles.text_muted(),
+        );
         rect.render_widget(help, body_columns[help_idx]);
     }
 

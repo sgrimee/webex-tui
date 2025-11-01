@@ -6,8 +6,7 @@ use color_eyre::eyre::{eyre, Error, Result};
 use log::{info, warn};
 use serde::{Deserialize, Serialize};
 use std::{
-    env,
-    fs,
+    env, fs,
     io::{stdin, Write},
     path::{Path, PathBuf},
 };
@@ -47,7 +46,6 @@ pub(crate) struct UserConfig {
     /// Enable debug logging by default
     #[serde(default)]
     pub(crate) debug: bool,
-
 }
 
 impl Default for UserConfig {
@@ -132,10 +130,7 @@ impl ClientConfig {
                 "Set the integration name to webex-tui",
                 "Pick any icon",
                 "Add a description of 10+ characters (for example sgrimee/webex-tui)",
-                &format!(
-                    "Add `http://localhost:{}` to the Redirect URI(s)",
-                    DEFAULT_PORT
-                ),
+                &format!("Add `http://localhost:{DEFAULT_PORT}` to the Redirect URI(s)"),
                 "Under `Scopes`, check `spark:all`",
                 "At the bottom, click `Add Integration`",
                 "Enter the `Client ID` and `Client Secret` you will get below.",
@@ -144,7 +139,7 @@ impl ClientConfig {
 
             let mut number = 1;
             for item in instructions.iter() {
-                println!("  {}. {}", number, item);
+                println!("  {number}. {item}");
                 number += 1;
             }
 
@@ -165,7 +160,7 @@ impl ClientConfig {
             let content_yml = serde_yaml::to_string(&config_yml)?;
 
             let mut new_config = fs::File::create(&paths.config_file_path)?;
-            write!(new_config, "{}", content_yml)?;
+            write!(new_config, "{content_yml}")?;
 
             self.client_id = config_yml.client_id;
             self.client_secret = config_yml.client_secret;
@@ -185,20 +180,19 @@ impl ClientConfig {
         const MAX_RETRIES: u8 = 5;
         let mut num_retries = 0;
         loop {
-            println!("\nEnter your {}: ", type_label);
+            println!("\nEnter your {type_label}: ");
             stdin().read_line(&mut client_key)?;
             client_key = client_key.trim().to_string();
             match ClientConfig::validate_client_key(&client_key, expected_length) {
                 Ok(_) => return Ok(client_key),
                 Err(error_string) => {
-                    println!("{}", error_string);
+                    println!("{error_string}");
                     client_key.clear();
                     num_retries += 1;
                     if num_retries == MAX_RETRIES {
-                        return Err(Error::from(std::io::Error::new(
-                            std::io::ErrorKind::Other,
-                            format!("Maximum retries ({}) exceeded.", MAX_RETRIES),
-                        )));
+                        return Err(Error::from(std::io::Error::other(format!(
+                            "Maximum retries ({MAX_RETRIES}) exceeded."
+                        ))));
                     }
                 }
             };
@@ -233,8 +227,8 @@ impl UserConfig {
     pub(crate) fn load() -> Self {
         // Try environment variable first (nix can set this)
         if let Ok(config_path) = env::var("WEBEX_TUI_CONFIG") {
-            info!("Loading user config from WEBEX_TUI_CONFIG: {}", config_path);
-            if let Ok(config) = Self::load_from_file(&std::path::Path::new(&config_path)) {
+            info!("Loading user config from WEBEX_TUI_CONFIG: {config_path}");
+            if let Ok(config) = Self::load_from_file(std::path::Path::new(&config_path)) {
                 return config;
             }
             warn!("Failed to load config from WEBEX_TUI_CONFIG, trying default location");
@@ -242,7 +236,10 @@ impl UserConfig {
 
         // Try standard location
         if let Some(home) = dirs::home_dir() {
-            let config_path = home.join(CONFIG_DIR).join(APP_CONFIG_DIR).join(USER_FILE_NAME);
+            let config_path = home
+                .join(CONFIG_DIR)
+                .join(APP_CONFIG_DIR)
+                .join(USER_FILE_NAME);
             info!("Loading user config from: {}", config_path.display());
             if let Ok(config) = Self::load_from_file(&config_path) {
                 return config;
@@ -266,12 +263,12 @@ impl UserConfig {
     pub(crate) fn save(&self) -> color_eyre::Result<()> {
         if let Some(home) = dirs::home_dir() {
             let config_dir = home.join(CONFIG_DIR).join(APP_CONFIG_DIR);
-            
+
             // Create directories if they don't exist
             if !config_dir.exists() {
                 fs::create_dir_all(&config_dir)?;
             }
-            
+
             let config_path = config_dir.join(USER_FILE_NAME);
             let content = serde_yaml::to_string(self)?;
             fs::write(config_path, content)?;
@@ -280,6 +277,4 @@ impl UserConfig {
             Err(eyre!("Could not determine home directory"))
         }
     }
-
-
 }

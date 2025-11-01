@@ -70,7 +70,7 @@ impl Rooms {
 
     /// Mark a room as unread.
     pub(crate) fn mark_unread(&mut self, id: &RoomId) {
-        debug!("Marking room {} unread", id);
+        debug!("Marking room {id} unread");
         for room in &mut self.sorted_rooms {
             if room.id == *id {
                 room.unread = true;
@@ -81,7 +81,7 @@ impl Rooms {
 
     /// Mark a room as read.
     pub(crate) fn mark_read(&mut self, id: &RoomId) {
-        debug!("Marking room {} read", id);
+        debug!("Marking room {id} read");
         for room in &mut self.sorted_rooms {
             if room.id == *id {
                 room.unread = false;
@@ -108,7 +108,7 @@ impl Rooms {
 
     /// Remove a room completely
     pub(crate) fn remove_room(&mut self, id: &RoomId) {
-        debug!("Removing room {}", id);
+        debug!("Removing room {id}");
         self.sorted_rooms.retain(|room| room.id != *id);
         self.requested_rooms.remove(id);
     }
@@ -117,7 +117,6 @@ impl Rooms {
     pub(crate) fn sorted_rooms(&self) -> &Vec<Room> {
         &self.sorted_rooms
     }
-
 }
 
 #[cfg(test)]

@@ -41,7 +41,6 @@ impl MessagesList {
             self.table_state.select(Some(index));
         }
     }
-    
 
     /// Selects the next message in the list and updates the table_state.
     pub(crate) fn select_next_message(&mut self) {

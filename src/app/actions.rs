@@ -148,7 +148,7 @@ impl Display for Action {
             Action::DeleteSelectedRooms => "Delete selected rooms",
             Action::UnselectMessage => "Unselect message",
         };
-        write!(f, "{}", str)
+        write!(f, "{str}")
     }
 }
 
@@ -200,7 +200,7 @@ impl From<Vec<Action>> for Actions {
                     .map(Action::to_string)
                     .collect::<Vec<_>>()
                     .join(", ");
-                format!("Conflict key {} with actions {}", key, actions)
+                format!("Conflict key {key} with actions {actions}")
             })
             .collect::<Vec<_>>();
         if !errors.is_empty() {

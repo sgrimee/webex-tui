@@ -100,9 +100,10 @@ fn row_for_message<'a>(state: &AppState, msg: Message, width: u16) -> (Row<'a>, 
         (None, Some(email)) => email,
         _ => String::from("Unknown"),
     };
-    title_line
-        .spans
-        .push(Span::styled(sender, style_for_user(&msg.person_id, &state.theme.user_colors())));
+    title_line.spans.push(Span::styled(
+        sender,
+        style_for_user(&msg.person_id, &state.theme.user_colors()),
+    ));
 
     // Add message timestamp
     title_line.spans.push(Span::from("  "));
@@ -112,9 +113,10 @@ fn row_for_message<'a>(state: &AppState, msg: Message, width: u16) -> (Row<'a>, 
     } else if let Some(created) = &msg.created {
         stamp = human_timestamp(created);
     }
-    title_line
-        .spans
-        .push(Span::styled(stamp, Style::default().fg(state.theme.roles.msg_timestamp())));
+    title_line.spans.push(Span::styled(
+        stamp,
+        Style::default().fg(state.theme.roles.msg_timestamp()),
+    ));
 
     // Add message id
     if state.debug {
@@ -132,7 +134,8 @@ fn row_for_message<'a>(state: &AppState, msg: Message, width: u16) -> (Row<'a>, 
             if state.debug {
                 title_line.spans.push(Span::from(" (HTML)"));
             }
-            from_read(html.as_bytes(), text_width).unwrap_or_else(|_| String::from("Failed to parse HTML"))
+            from_read(html.as_bytes(), text_width)
+                .unwrap_or_else(|_| String::from("Failed to parse HTML"))
         }
         (_, Some(markdown), _) => {
             if state.debug {
@@ -176,8 +179,10 @@ fn add_uuid_to_line(id: Option<String>, line: &mut Line<'_>) {
         .and_then(|dec| String::from_utf8(dec).ok())
         .map(|id| id.split('/').nth(4).unwrap().to_string())
     {
-        line.spans
-            .push(Span::styled(format!(" [{}]", id), Style::default().fg(Color::DarkGray)))
+        line.spans.push(Span::styled(
+            format!(" [{id}]"),
+            Style::default().fg(Color::DarkGray),
+        ))
     }
 }
 
@@ -195,10 +200,10 @@ pub(crate) fn draw_msg_table<'a>(state: &AppState, rect: &Rect) -> (Table<'a>, u
             .room_and_team_title(&room.id)
             .unwrap_or_default();
         title_line = line_for_room_and_team_title(
-            ratt, 
-            room.unread, 
+            ratt,
+            room.unread,
             state.theme.roles.room_unread(),
-            state.theme.roles.room_team()
+            state.theme.roles.room_team(),
         );
 
         // add the room id to the title if debug is enabled

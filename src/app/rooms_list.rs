@@ -24,7 +24,7 @@ impl RoomsList {
     /// Does not update the active room.
     pub(crate) fn next_filter(&mut self, store: &Cache) {
         let new_mode = next_cycle(&self.filter);
-        debug!("Rooms list filter set to {:?}", new_mode);
+        debug!("Rooms list filter set to {new_mode:?}");
         self.filter = new_mode;
         // Reset selection when we change filter
         let num_rooms = store
@@ -40,7 +40,7 @@ impl RoomsList {
     /// Does not update the active room.
     pub(crate) fn previous_filter(&mut self, store: &Cache) {
         let new_mode = previous_cycle(&self.filter);
-        debug!("Rooms list mode set to {:?}", new_mode);
+        debug!("Rooms list mode set to {new_mode:?}");
         self.filter = new_mode;
         // Reset selection when we change filter
         let num_rooms = store

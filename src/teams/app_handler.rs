@@ -63,7 +63,7 @@ impl Teams<'_> {
             AppCmdEvent::LeaveRoom(room_id) => self.do_leave_room(&room_id).await,
             AppCmdEvent::WhoAmI() => self.get_me_user().await,
         } {
-            error!("Error handling app event: {}", error);
+            error!("Error handling app event: {error}");
         }
         {
             self.app.lock().await.state.is_loading = false;
@@ -85,7 +85,7 @@ impl Teams<'_> {
         let global_id = GlobalId::new(GlobalIdType::Message, id.to_owned()).unwrap();
         match self.client.delete::<Message>(&global_id).await {
             Ok(_) => {
-                debug!("Deleted message with id: {:?}", global_id);
+                debug!("Deleted message with id: {global_id:?}");
                 Ok(())
             }
             Err(e) => Err(eyre!("Could not delete message: {}", e)),
@@ -97,7 +97,7 @@ impl Teams<'_> {
         match self.client.send_message(msg_to_send).await {
             Ok(msg) => {
                 self.app.lock().await.cb_message_sent(&msg);
-                debug!("Sent message: {:?}", msg_to_send);
+                debug!("Sent message: {msg_to_send:?}");
                 Ok(())
             }
             Err(e) => Err(eyre!("Error sending message: {}", e)),
@@ -106,12 +106,12 @@ impl Teams<'_> {
 
     /// Gets the message with given id.
     async fn do_update_message(&self, msg_id: &MessageId) -> Result<()> {
-        debug!("Getting message with id: {:?}", msg_id);
+        debug!("Getting message with id: {msg_id:?}");
         let global_id = GlobalId::new(GlobalIdType::Message, msg_id.to_owned()).unwrap();
         match self.client.get::<Message>(&global_id).await {
             Ok(msg) => {
                 self.app.lock().await.cb_message_received(&msg, false);
-                debug!("Updated message: {:?}", msg_id);
+                debug!("Updated message: {msg_id:?}");
                 Ok(())
             }
             Err(e) => Err(eyre!("Error retrieving message: {}", e)),
@@ -124,7 +124,7 @@ impl Teams<'_> {
         msg_id: &MessageId,
         room_id: &RoomId,
     ) -> Result<()> {
-        debug!("Getting children of message with id: {:?}", msg_id);
+        debug!("Getting children of message with id: {msg_id:?}");
         let msg_gid = GlobalId::new(GlobalIdType::Message, msg_id.to_owned()).unwrap();
         let mut params = MessageListParams::new(room_id);
         params.parent_id = Some(msg_gid.id());
@@ -165,7 +165,7 @@ impl Teams<'_> {
         };
         match self.client.edit_message(&message_id, &params).await {
             Ok(_) => {
-                debug!("Edited message with id: {:?}", message_id);
+                debug!("Edited message with id: {message_id:?}");
                 Ok(())
             }
             Err(e) => Err(eyre!("Could not edit message: {}", e)),
@@ -174,10 +174,7 @@ impl Teams<'_> {
 
     async fn do_refresh_room(&mut self, id: &RoomId) -> Result<()> {
         let global_id = GlobalId::new(GlobalIdType::Room, id.to_owned()).unwrap();
-        debug!(
-            "Getting room with local id {} and global id: {:?}",
-            id, global_id
-        );
+        debug!("Getting room with local id {id} and global id: {global_id:?}");
         match self.client.get::<webex::Room>(&global_id).await {
             Ok(webex_room) => {
                 self.app.lock().await.cb_room_updated(webex_room);
@@ -192,7 +189,7 @@ impl Teams<'_> {
     /// team details, so errors are silenced.
     async fn do_update_team(&self, team_id: &TeamId) -> Result<()> {
         let global_id = GlobalId::new(GlobalIdType::Team, team_id.to_owned()).unwrap();
-        debug!("Getting team with global id: {:?}", global_id);
+        debug!("Getting team with global id: {global_id:?}");
         if let Ok(webex_team) = self.client.get::<webex::Team>(&global_id).await {
             self.app.lock().await.cb_team_updated(webex_team);
         };
@@ -238,13 +235,13 @@ impl Teams<'_> {
         before_id: Option<MessageId>,
         max: u32,
     ) -> Result<()> {
-        debug!("Getting messages in room {}", room_id);
+        debug!("Getting messages in room {room_id}");
         let gid = GlobalId::new(GlobalIdType::Room, room_id.to_owned()).unwrap();
         let mut params = MessageListParams::new(gid.id());
         params.max = Some(max);
         let mut _msg_id = String::new();
         if let Some(before_id) = before_id {
-            debug!("Only messages before {}", before_id);
+            debug!("Only messages before {before_id}");
             _msg_id = before_id.to_string();
             params.before_message = Some(&_msg_id);
         }
@@ -262,7 +259,7 @@ impl Teams<'_> {
     }
 
     async fn do_update_person(&self, person_id: &PersonId) -> Result<()> {
-        debug!("Getting person with id: {}", person_id);
+        debug!("Getting person with id: {person_id}");
         let global_id = GlobalId::new(GlobalIdType::Person, person_id.to_owned()).unwrap();
         match self.client.get::<webex::Person>(&global_id).await {
             Ok(webex_person) => {
@@ -292,19 +289,24 @@ impl Teams<'_> {
     async fn do_leave_room(&mut self, room_id: &RoomId) -> Result<()> {
         let global_id = GlobalId::new(GlobalIdType::Room, room_id.to_owned()).unwrap();
         debug!("=== STARTING LEAVE ROOM PROCESS ===");
-        debug!("Leaving room with local id {} and global id: {:?}", room_id, global_id);
-        
+        debug!("Leaving room with local id {room_id} and global id: {global_id:?}");
+
         // Get room title for better logging
         let room_title = {
             let app = self.app.lock().await;
-            app.state.cache.rooms.room_with_id(room_id).and_then(|r| r.title.clone()).unwrap_or_else(|| "Unknown".to_string())
+            app.state
+                .cache
+                .rooms
+                .room_with_id(room_id)
+                .and_then(|r| r.title.clone())
+                .unwrap_or_else(|| "Unknown".to_string())
         };
-        debug!("Room title: {}", room_title);
-        
+        debug!("Room title: {room_title}");
+
         debug!("About to call client.leave_room...");
         match self.client.leave_room(&global_id).await {
             Ok(_) => {
-                debug!("✅ Successfully left room: {} ({})", room_title, room_id);
+                debug!("✅ Successfully left room: {room_title} ({room_id})");
                 // Remove the room from the cache
                 debug!("Calling cb_space_left callback...");
                 self.app.lock().await.cb_space_left(room_id);
@@ -312,7 +314,7 @@ impl Teams<'_> {
                 Ok(())
             }
             Err(e) => {
-                error!("❌ Error leaving room {} ({}): {}", room_title, room_id, e);
+                error!("❌ Error leaving room {room_title} ({room_id}): {e}");
                 debug!("=== LEAVE ROOM PROCESS FAILED ===");
                 Err(eyre!("Error leaving room: {}", e))
             }

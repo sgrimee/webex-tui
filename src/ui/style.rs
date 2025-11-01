@@ -9,7 +9,7 @@ use crate::app::cache::room_and_team_title::RoomAndTeamTitle;
 
 /// Returns a formatted ratatui line with the room title and team name if any.
 pub(crate) fn line_for_room_and_team_title<'a>(
-    ratt: RoomAndTeamTitle, 
+    ratt: RoomAndTeamTitle,
     unread: bool,
     room_unread_color: Color,
     room_team_color: Color,
@@ -26,7 +26,7 @@ pub(crate) fn line_for_room_and_team_title<'a>(
         .push(Span::styled(ratt.room_title.clone(), room_style));
     if let Some(team_name) = ratt.team_name.clone() {
         line.spans.push(Span::styled(
-            format!(" ({})", team_name),
+            format!(" ({team_name})"),
             Style::default().fg(room_team_color),
         ));
     }

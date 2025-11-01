@@ -54,7 +54,10 @@ pub(crate) fn draw_message_editor<'a>(state: &'a AppState<'a>) -> TextArea<'a> {
         } else {
             // Composing a new message
             vec![
-                Span::styled("Type your new message.", Style::default().fg(state.theme.roles.compose_status())),
+                Span::styled(
+                    "Type your new message.",
+                    Style::default().fg(state.theme.roles.compose_status()),
+                ),
                 hint,
             ]
         }

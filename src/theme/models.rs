@@ -1,8 +1,8 @@
 //! Theme data models
 
+use super::parser::SerializableColor;
 use ratatui::style::Color;
 use serde::{Deserialize, Serialize};
-use super::parser::SerializableColor;
 
 /// Complete theme definition including palette, semantic roles, and user colors
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -103,26 +103,64 @@ pub struct Roles {
 impl Roles {
     // Convenience methods to get Color values for UI usage
     #[allow(dead_code)]
-    pub fn background(&self) -> Color { self.background.0 }
+    pub fn background(&self) -> Color {
+        self.background.0
+    }
     #[allow(dead_code)]
-    pub fn text_primary(&self) -> Color { self.text_primary.0 }
-    pub fn text_muted(&self) -> Color { self.text_muted.0 }
-    pub fn accent(&self) -> Color { self.accent.0 }
-    pub fn selection_bg(&self) -> Color { self.selection_bg.0 }
-    pub fn selection_fg(&self) -> Color { self.selection_fg.0 }
-    pub fn border(&self) -> Color { self.border.0 }
-    pub fn border_active(&self) -> Color { self.border_active.0 }
-    pub fn title(&self) -> Color { self.title.0 }
-    pub fn hint(&self) -> Color { self.hint.0 }
-    pub fn room_unread(&self) -> Color { self.room_unread.0 }
-    pub fn room_team(&self) -> Color { self.room_team.0 }
-    pub fn msg_timestamp(&self) -> Color { self.msg_timestamp.0 }
-    pub fn log_error(&self) -> Color { self.log_error.0 }
-    pub fn log_warn(&self) -> Color { self.log_warn.0 }
-    pub fn log_info(&self) -> Color { self.log_info.0 }
-    pub fn log_debug(&self) -> Color { self.log_debug.0 }
-    pub fn log_trace(&self) -> Color { self.log_trace.0 }
-    pub fn compose_status(&self) -> Color { self.compose_status.0 }
+    pub fn text_primary(&self) -> Color {
+        self.text_primary.0
+    }
+    pub fn text_muted(&self) -> Color {
+        self.text_muted.0
+    }
+    pub fn accent(&self) -> Color {
+        self.accent.0
+    }
+    pub fn selection_bg(&self) -> Color {
+        self.selection_bg.0
+    }
+    pub fn selection_fg(&self) -> Color {
+        self.selection_fg.0
+    }
+    pub fn border(&self) -> Color {
+        self.border.0
+    }
+    pub fn border_active(&self) -> Color {
+        self.border_active.0
+    }
+    pub fn title(&self) -> Color {
+        self.title.0
+    }
+    pub fn hint(&self) -> Color {
+        self.hint.0
+    }
+    pub fn room_unread(&self) -> Color {
+        self.room_unread.0
+    }
+    pub fn room_team(&self) -> Color {
+        self.room_team.0
+    }
+    pub fn msg_timestamp(&self) -> Color {
+        self.msg_timestamp.0
+    }
+    pub fn log_error(&self) -> Color {
+        self.log_error.0
+    }
+    pub fn log_warn(&self) -> Color {
+        self.log_warn.0
+    }
+    pub fn log_info(&self) -> Color {
+        self.log_info.0
+    }
+    pub fn log_debug(&self) -> Color {
+        self.log_debug.0
+    }
+    pub fn log_trace(&self) -> Color {
+        self.log_trace.0
+    }
+    pub fn compose_status(&self) -> Color {
+        self.compose_status.0
+    }
 }
 
 impl Theme {
@@ -193,43 +231,113 @@ impl Default for Roles {
 }
 
 // Default color functions for palette
-fn default_black() -> SerializableColor { SerializableColor(Color::Black) }
-fn default_red() -> SerializableColor { SerializableColor(Color::Red) }
-fn default_green() -> SerializableColor { SerializableColor(Color::Green) }
-fn default_yellow() -> SerializableColor { SerializableColor(Color::Yellow) }
-fn default_blue() -> SerializableColor { SerializableColor(Color::Blue) }
-fn default_magenta() -> SerializableColor { SerializableColor(Color::Magenta) }
-fn default_cyan() -> SerializableColor { SerializableColor(Color::Cyan) }
-fn default_white() -> SerializableColor { SerializableColor(Color::White) }
-fn default_bright_black() -> SerializableColor { SerializableColor(Color::DarkGray) }
-fn default_bright_red() -> SerializableColor { SerializableColor(Color::LightRed) }
-fn default_bright_green() -> SerializableColor { SerializableColor(Color::LightGreen) }
-fn default_bright_yellow() -> SerializableColor { SerializableColor(Color::LightYellow) }
-fn default_bright_blue() -> SerializableColor { SerializableColor(Color::LightBlue) }
-fn default_bright_magenta() -> SerializableColor { SerializableColor(Color::LightMagenta) }
-fn default_bright_cyan() -> SerializableColor { SerializableColor(Color::LightCyan) }
-fn default_bright_white() -> SerializableColor { SerializableColor(Color::Gray) }
+fn default_black() -> SerializableColor {
+    SerializableColor(Color::Black)
+}
+fn default_red() -> SerializableColor {
+    SerializableColor(Color::Red)
+}
+fn default_green() -> SerializableColor {
+    SerializableColor(Color::Green)
+}
+fn default_yellow() -> SerializableColor {
+    SerializableColor(Color::Yellow)
+}
+fn default_blue() -> SerializableColor {
+    SerializableColor(Color::Blue)
+}
+fn default_magenta() -> SerializableColor {
+    SerializableColor(Color::Magenta)
+}
+fn default_cyan() -> SerializableColor {
+    SerializableColor(Color::Cyan)
+}
+fn default_white() -> SerializableColor {
+    SerializableColor(Color::White)
+}
+fn default_bright_black() -> SerializableColor {
+    SerializableColor(Color::DarkGray)
+}
+fn default_bright_red() -> SerializableColor {
+    SerializableColor(Color::LightRed)
+}
+fn default_bright_green() -> SerializableColor {
+    SerializableColor(Color::LightGreen)
+}
+fn default_bright_yellow() -> SerializableColor {
+    SerializableColor(Color::LightYellow)
+}
+fn default_bright_blue() -> SerializableColor {
+    SerializableColor(Color::LightBlue)
+}
+fn default_bright_magenta() -> SerializableColor {
+    SerializableColor(Color::LightMagenta)
+}
+fn default_bright_cyan() -> SerializableColor {
+    SerializableColor(Color::LightCyan)
+}
+fn default_bright_white() -> SerializableColor {
+    SerializableColor(Color::Gray)
+}
 
 // Default color functions for roles - mapping current hardcoded colors
-fn default_background() -> SerializableColor { SerializableColor(Color::Reset) }
-fn default_text_primary() -> SerializableColor { SerializableColor(Color::Reset) }
-fn default_text_muted() -> SerializableColor { SerializableColor(Color::Gray) }
-fn default_accent() -> SerializableColor { SerializableColor(Color::LightCyan) }
-fn default_selection_bg() -> SerializableColor { SerializableColor(Color::Yellow) }
-fn default_selection_fg() -> SerializableColor { SerializableColor(Color::Black) }
-fn default_border() -> SerializableColor { SerializableColor(Color::Reset) }
-fn default_border_active() -> SerializableColor { SerializableColor(Color::Cyan) }
-fn default_title() -> SerializableColor { SerializableColor(Color::LightCyan) }
-fn default_hint() -> SerializableColor { SerializableColor(Color::Gray) }
-fn default_room_unread() -> SerializableColor { SerializableColor(Color::LightBlue) }
-fn default_room_team() -> SerializableColor { SerializableColor(Color::LightCyan) }
-fn default_msg_timestamp() -> SerializableColor { SerializableColor(Color::Gray) }
-fn default_log_error() -> SerializableColor { SerializableColor(Color::Red) }
-fn default_log_warn() -> SerializableColor { SerializableColor(Color::Yellow) }
-fn default_log_info() -> SerializableColor { SerializableColor(Color::Blue) }
-fn default_log_debug() -> SerializableColor { SerializableColor(Color::Green) }
-fn default_log_trace() -> SerializableColor { SerializableColor(Color::Gray) }
-fn default_compose_status() -> SerializableColor { SerializableColor(Color::Yellow) }
+fn default_background() -> SerializableColor {
+    SerializableColor(Color::Reset)
+}
+fn default_text_primary() -> SerializableColor {
+    SerializableColor(Color::Reset)
+}
+fn default_text_muted() -> SerializableColor {
+    SerializableColor(Color::Gray)
+}
+fn default_accent() -> SerializableColor {
+    SerializableColor(Color::LightCyan)
+}
+fn default_selection_bg() -> SerializableColor {
+    SerializableColor(Color::Yellow)
+}
+fn default_selection_fg() -> SerializableColor {
+    SerializableColor(Color::Black)
+}
+fn default_border() -> SerializableColor {
+    SerializableColor(Color::Reset)
+}
+fn default_border_active() -> SerializableColor {
+    SerializableColor(Color::Cyan)
+}
+fn default_title() -> SerializableColor {
+    SerializableColor(Color::LightCyan)
+}
+fn default_hint() -> SerializableColor {
+    SerializableColor(Color::Gray)
+}
+fn default_room_unread() -> SerializableColor {
+    SerializableColor(Color::LightBlue)
+}
+fn default_room_team() -> SerializableColor {
+    SerializableColor(Color::LightCyan)
+}
+fn default_msg_timestamp() -> SerializableColor {
+    SerializableColor(Color::Gray)
+}
+fn default_log_error() -> SerializableColor {
+    SerializableColor(Color::Red)
+}
+fn default_log_warn() -> SerializableColor {
+    SerializableColor(Color::Yellow)
+}
+fn default_log_info() -> SerializableColor {
+    SerializableColor(Color::Blue)
+}
+fn default_log_debug() -> SerializableColor {
+    SerializableColor(Color::Green)
+}
+fn default_log_trace() -> SerializableColor {
+    SerializableColor(Color::Gray)
+}
+fn default_compose_status() -> SerializableColor {
+    SerializableColor(Color::Yellow)
+}
 
 fn default_user_colors() -> Vec<SerializableColor> {
     vec![
