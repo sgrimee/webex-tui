@@ -10,7 +10,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `cargo test` - Run tests with rstest framework
 - `cargo check` - Fast compile check
 - `cargo clippy` - Run linter
+- `cargo fmt` - Format the code
 - `cargo doc --no-deps` - Generate documentation
+
+Always run cargo check, test, fmt and clipy before committing.
 
 ### Bacon Integration (preferred for continuous development)
 Uses `bacon.toml` configuration:
