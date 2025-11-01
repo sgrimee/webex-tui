@@ -427,22 +427,33 @@ impl App<'_> {
         Ok(())
     }
 
+    /// Extracts copyable text content from a message in priority order: text > markdown > html (converted)
+    fn extract_message_content(message: &Message) -> Result<String> {
+        match (&message.text, &message.markdown, &message.html) {
+            (Some(text), _, _) => Ok(text.clone()),
+            (None, Some(md), _) => Ok(md.clone()),
+            (None, None, Some(html)) => {
+                // Use html2text to convert HTML to plain text
+                html2text::from_read(html.as_bytes(), usize::MAX)
+                    .map_err(|e| {
+                        warn!("Failed to convert HTML to plain text: {e}");
+                        eyre!("Failed to convert HTML to plain text: {e}")
+                    })
+                    .or_else(|_| {
+                        warn!("HTML conversion failed, using raw HTML as fallback");
+                        Ok(html.clone())
+                    })
+            }
+            _ => Err(eyre!("Message has no content")),
+        }
+    }
+
     /// Copies the selected message content to clipboard
     fn copy_selected_message(&mut self) -> Result<()> {
         use arboard::Clipboard;
 
         let message = self.state.selected_message()?;
-
-        // Extract text in priority order: text > markdown > html (converted)
-        let content = match (&message.text, &message.markdown, &message.html) {
-            (Some(text), _, _) => text.clone(),
-            (None, Some(md), _) => md.clone(),
-            (None, None, Some(html)) => {
-                // Use html2text to convert HTML to plain text
-                html2text::from_read(html.as_bytes(), usize::MAX).unwrap_or_else(|_| html.clone())
-            }
-            _ => return Err(eyre!("Message has no content")),
-        };
+        let content = Self::extract_message_content(message)?;
 
         let mut clipboard =
             Clipboard::new().map_err(|e| eyre!("Failed to access clipboard: {}", e))?;
@@ -619,5 +630,128 @@ impl App<'_> {
             selected_room_ids.len()
         );
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use webex::Message;
+
+    /// Helper function to create a test message with specified content
+    fn make_message(
+        id: &str,
+        text: Option<String>,
+        markdown: Option<String>,
+        html: Option<String>,
+    ) -> Message {
+        Message {
+            id: Some(id.to_string()),
+            text,
+            markdown,
+            html,
+            created: Some(chrono::Utc::now().to_string()),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn test_extract_message_content_prioritizes_text() {
+        let message = make_message(
+            "msg1",
+            Some("Plain text content".to_string()),
+            Some("**Markdown** content".to_string()),
+            Some("<p>HTML content</p>".to_string()),
+        );
+
+        let result = App::extract_message_content(&message).unwrap();
+        assert_eq!(result, "Plain text content");
+    }
+
+    #[test]
+    fn test_extract_message_content_falls_back_to_markdown() {
+        let message = make_message(
+            "msg1",
+            None,
+            Some("**Markdown** content".to_string()),
+            Some("<p>HTML content</p>".to_string()),
+        );
+
+        let result = App::extract_message_content(&message).unwrap();
+        assert_eq!(result, "**Markdown** content");
+    }
+
+    #[test]
+    fn test_extract_message_content_converts_html_to_text() {
+        let message = make_message(
+            "msg1",
+            None,
+            None,
+            Some("<p>Hello <strong>world</strong>!</p>".to_string()),
+        );
+
+        let result = App::extract_message_content(&message).unwrap();
+        // html2text should convert HTML to plain text
+        assert!(result.contains("Hello"));
+        assert!(result.contains("world"));
+        // Should not contain HTML tags
+        assert!(!result.contains("<p>"));
+        assert!(!result.contains("<strong>"));
+    }
+
+    #[test]
+    fn test_extract_message_content_handles_malformed_html() {
+        let message = make_message(
+            "msg1",
+            None,
+            None,
+            Some("<p>Malformed HTML <strong>without closing".to_string()),
+        );
+
+        // Should not panic and should return some content
+        let result = App::extract_message_content(&message);
+        assert!(result.is_ok());
+        let content = result.unwrap();
+        assert!(!content.is_empty());
+    }
+
+    #[test]
+    fn test_extract_message_content_fails_with_no_content() {
+        let message = make_message("msg1", None, None, None);
+
+        let result = App::extract_message_content(&message);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Message has no content"));
+    }
+
+    #[test]
+    fn test_extract_message_content_handles_empty_strings() {
+        // Test with empty text (should use it even if empty)
+        let message = make_message(
+            "msg1",
+            Some("".to_string()),
+            Some("Markdown content".to_string()),
+            None,
+        );
+
+        let result = App::extract_message_content(&message).unwrap();
+        assert_eq!(result, "");
+    }
+
+    #[test]
+    fn test_extract_message_content_trims_whitespace_from_html() {
+        let message = make_message(
+            "msg1",
+            None,
+            None,
+            Some("  <p>  Content with spaces  </p>  ".to_string()),
+        );
+
+        let result = App::extract_message_content(&message).unwrap();
+        // html2text should handle whitespace appropriately
+        assert!(result.contains("Content with spaces"));
     }
 }
