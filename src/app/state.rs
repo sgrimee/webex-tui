@@ -87,7 +87,11 @@ impl AppState<'_> {
         if let Some(query) = self.rooms_list.search_query() {
             if !query.trim().is_empty() {
                 // Return search results (just the rooms, ignoring scores)
-                Box::new(self.cache.rooms_matching_search(query).map(|(room, _score)| room))
+                Box::new(
+                    self.cache
+                        .rooms_matching_search(query)
+                        .map(|(room, _score)| room),
+                )
             } else {
                 // Empty query - show all rooms with current filter
                 Box::new(self.cache.rooms.rooms_filtered_by(self.rooms_list.filter()))
@@ -147,7 +151,7 @@ impl AppState<'_> {
     /// according to what can be do in that pane.
     /// It also removes any message selection when switching to non Messages panes.
     pub(crate) fn set_active_pane(&mut self, active_pane: Option<ActivePane>) {
-        debug!("Activating pane: {:?}", active_pane);
+        debug!("Activating pane: {active_pane:?}");
         // Deselect messages when switching to non Messages panes
         match self.active_pane {
             Some(ActivePane::Messages) | Some(ActivePane::Compose) => (),
@@ -371,7 +375,13 @@ impl Default for AppState<'_> {
         let log_state = TuiWidgetState::default();
         log_state.transition(tui_logger::TuiWidgetEvent::HideKey);
         AppState {
-            actions: vec![Action::Quit, Action::ToggleHelp, Action::ToggleLogs, Action::ToggleRooms].into(),
+            actions: vec![
+                Action::Quit,
+                Action::ToggleHelp,
+                Action::ToggleLogs,
+                Action::ToggleRooms,
+            ]
+            .into(),
             active_pane: None,
             cache: Cache::default(),
             theme: Theme::default(),

@@ -1,8 +1,8 @@
 //! Theme file parsing utilities
 
 use ratatui::style::Color;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde::de::Error as DeError;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// Error type for color parsing failures
 #[derive(Debug, thiserror::Error)]
@@ -19,12 +19,12 @@ pub enum ColorParseError {
 /// Parse a color from various string formats
 pub fn parse_color(input: &str) -> Result<Color, ColorParseError> {
     let input = input.trim();
-    
+
     // Handle hex colors
     if input.starts_with('#') {
         return parse_hex_color(input);
     }
-    
+
     // Handle named colors
     parse_named_color(input)
 }
@@ -85,7 +85,7 @@ where
 {
     // Try to deserialize as string first
     let value = String::deserialize(deserializer)?;
-    parse_color(&value).map_err(|e| D::Error::custom(format!("Failed to parse color: {}", e)))
+    parse_color(&value).map_err(|e| D::Error::custom(format!("Failed to parse color: {e}")))
 }
 
 /// Wrapper for Color that implements serde traits
@@ -122,7 +122,7 @@ impl Serialize for SerializableColor {
         // Serialize Color as hex string when possible
         match self.0 {
             Color::Rgb(r, g, b) => {
-                let hex = format!("#{:02x}{:02x}{:02x}", r, g, b);
+                let hex = format!("#{r:02x}{g:02x}{b:02x}");
                 serializer.serialize_str(&hex)
             }
             Color::Reset => serializer.serialize_str("reset"),
@@ -142,7 +142,7 @@ impl Serialize for SerializableColor {
             Color::LightMagenta => serializer.serialize_str("light_magenta"),
             Color::LightCyan => serializer.serialize_str("light_cyan"),
             Color::White => serializer.serialize_str("white"),
-            Color::Indexed(i) => serializer.serialize_str(&format!("indexed_{}", i)),
+            Color::Indexed(i) => serializer.serialize_str(&format!("indexed_{i}")),
         }
     }
 }

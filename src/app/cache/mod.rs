@@ -197,14 +197,17 @@ impl Cache {
             .iter()
             .filter_map(|room| {
                 let room_and_team_title = self.room_and_team_title(&room.id).ok()?;
-                let search_text = format!("{} {}", 
+                let search_text = format!(
+                    "{} {}",
                     room_and_team_title.room_title,
                     room_and_team_title.team_name.unwrap_or_default()
                 );
-                matcher.fuzzy_match(&search_text, query).map(|score| (room, score))
+                matcher
+                    .fuzzy_match(&search_text, query)
+                    .map(|score| (room, score))
             })
             .collect();
-        
+
         // Sort by score (highest first)
         scored_rooms.sort_by(|a, b| b.1.cmp(&a.1));
         scored_rooms.into_iter()

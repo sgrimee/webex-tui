@@ -28,6 +28,6 @@ pub(crate) fn draw_logs<'a>(state: &AppState) -> TuiLoggerSmartWidget<'a> {
         .output_file(true)
         .output_line(true)
         .state(&state.log_state)
-    .border_type(BorderType::Rounded)
-    .border_style(border_style)
+        .border_type(BorderType::Rounded)
+        .border_style(border_style)
 }

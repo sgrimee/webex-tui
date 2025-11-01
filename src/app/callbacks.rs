@@ -44,7 +44,7 @@ impl App<'_> {
                 self.cb_messages_received_in_room(&room_id, &messages, update_unread)
             }
             None => {
-                error!("Received message without room id: {:#?}", msg);
+                error!("Received message without room id: {msg:#?}");
             }
         }
     }
@@ -58,11 +58,7 @@ impl App<'_> {
         messages: &[Message],
         update_unread: bool,
     ) {
-        debug!(
-            "Received {} messages in room {}",
-            messages.len(),
-            room_id.to_string()
-        );
+        debug!("Received {} messages in room {}", messages.len(), room_id);
         // keep track of the selected message, if any
         let selected_message_id = self
             .state
@@ -92,7 +88,7 @@ impl App<'_> {
                 self.state.cache.rooms.mark_unread(room_id);
             }
             if let Err(err) = self.state.cache.add_message(msg) {
-                error!("Error adding received message to store: {}", err);
+                error!("Error adding received message to store: {err}");
             }
         }
     }
@@ -180,10 +176,7 @@ impl App<'_> {
         // If the webex_room has a team_id, and the team is not already requested, request it and add it to the list of requested teams.
         if let Some(team_id) = team_id {
             if !self.state.cache.teams.exists_or_requested(&team_id) {
-                debug!(
-                    "Requesting team {} identified by room: {}",
-                    team_id, room_title
-                );
+                debug!("Requesting team {team_id} identified by room: {room_title}");
                 self.state.cache.teams.add_requested(team_id.clone());
                 self.dispatch_to_teams(AppCmdEvent::UpdateTeam(team_id), &Priority::Low);
             }
@@ -207,7 +200,7 @@ impl App<'_> {
         // We don't know which message was deleted, so we wipe the room and request the messages again.
         match self.state.cache.wipe_messages_in_room(room_id) {
             Ok(num_msg_deleted) => {
-                debug!("Deleted {} messages in room {}", num_msg_deleted, room_id);
+                debug!("Deleted {num_msg_deleted} messages in room {room_id}");
                 let num_msg_deleted: u32 = num_msg_deleted.try_into().unwrap_or(100);
                 self.dispatch_to_teams(
                     AppCmdEvent::ListMessagesInRoom(room_id.to_string(), None, num_msg_deleted),
@@ -215,7 +208,7 @@ impl App<'_> {
                 );
             }
             Err(err) => {
-                error!("Error deleting messages in room {}: {}", room_id, err);
+                error!("Error deleting messages in room {room_id}: {err}");
             }
         }
     }
@@ -227,10 +220,10 @@ impl App<'_> {
 
     /// Callback when a room is left.
     pub(crate) fn cb_space_left(&mut self, room_id: &RoomId) {
-        debug!("Callback: space left for room ID: {}", room_id);
+        debug!("Callback: space left for room ID: {room_id}");
         if let Some(room) = self.state.cache.rooms.room_with_id(room_id) {
             if let Some(title) = &room.title {
-                debug!("Removing room from cache: {}", title);
+                debug!("Removing room from cache: {title}");
             }
         }
         self.state.cache.remove_room(room_id);

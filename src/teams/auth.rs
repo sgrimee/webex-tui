@@ -4,14 +4,14 @@
 //!
 //! Inspired by `https://github.com/Nabushika/webexterm`
 
-use super::token_cache::{load_token_cache, save_token_cache, clear_token_cache, TokenCache};
+use super::token_cache::{clear_token_cache, load_token_cache, save_token_cache, TokenCache};
 use crate::ClientCredentials;
 use color_eyre::eyre::{eyre, Result};
 use log::*;
 use oauth2::basic::BasicClient;
 use oauth2::url::Url;
 use oauth2::{
-    AccessToken, AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, PkceCodeChallenge, 
+    AccessToken, AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, PkceCodeChallenge,
     RedirectUrl, Scope, TokenResponse, TokenUrl,
 };
 
@@ -19,11 +19,12 @@ use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
 use std::net::TcpStream;
 
-
-
 /// Get an integration token, using cached token if available and valid,
 /// otherwise falling back to browser authentication.
-pub(crate) async fn get_integration_token_cached(credentials: ClientCredentials, port: u16) -> Result<AccessToken> {
+pub(crate) async fn get_integration_token_cached(
+    credentials: ClientCredentials,
+    port: u16,
+) -> Result<AccessToken> {
     // First, try to load and use cached token
     match load_token_cache() {
         Ok(cache) => {
@@ -33,49 +34,54 @@ pub(crate) async fn get_integration_token_cached(credentials: ClientCredentials,
             } else {
                 info!("Cached token expired or invalid, clearing cache");
                 if let Err(e) = clear_token_cache() {
-                    warn!("Failed to clear expired token cache: {}", e);
+                    warn!("Failed to clear expired token cache: {e}");
                 }
             }
         }
         Err(e) => {
-            debug!("No valid cached token found: {}", e);
+            debug!("No valid cached token found: {e}");
         }
     }
 
     // No valid cached token, perform browser authentication
     info!("No valid cached token, starting browser authentication");
     let token = get_integration_token_browser(credentials, port).await?;
-    
+
     // Cache the new token for future use
     let cache = TokenCache::new(token.clone(), None, None);
     if let Err(e) = save_token_cache(&cache) {
-        warn!("Failed to cache authentication token: {}", e);
+        warn!("Failed to cache authentication token: {e}");
         // Don't fail the authentication if caching fails
     } else {
         info!("Authentication token cached successfully");
     }
-    
+
     Ok(token)
 }
 
 /// Create and authorize a client with the given `ClientCredentials`.
 /// A browser is opened for user authentication.
 /// Returns a token, or an error if any authentication step fail.
-async fn get_integration_token_browser(credentials: ClientCredentials, port: u16) -> Result<AccessToken> {
-    let client = BasicClient::new(
-        ClientId::new(credentials.client_id.clone()),
-    )
-    .set_client_secret(ClientSecret::new(credentials.client_secret.clone()))
-    .set_auth_uri(AuthUrl::new("https://webexapis.com/v1/authorize".to_string())?)
-    .set_token_uri(TokenUrl::new("https://webexapis.com/v1/access_token".to_string())?)
-    .set_redirect_uri(RedirectUrl::new(format!("http://localhost:{}", port))?);
+async fn get_integration_token_browser(
+    credentials: ClientCredentials,
+    port: u16,
+) -> Result<AccessToken> {
+    let client = BasicClient::new(ClientId::new(credentials.client_id.clone()))
+        .set_client_secret(ClientSecret::new(credentials.client_secret.clone()))
+        .set_auth_uri(AuthUrl::new(
+            "https://webexapis.com/v1/authorize".to_string(),
+        )?)
+        .set_token_uri(TokenUrl::new(
+            "https://webexapis.com/v1/access_token".to_string(),
+        )?)
+        .set_redirect_uri(RedirectUrl::new(format!("http://localhost:{port}"))?);
 
     let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
 
     // Use required scopes for webex-tui functionality
     let scopes = vec![
         "spark:messages_read",
-        "spark:messages_write", 
+        "spark:messages_write",
         "spark:rooms_read",
         "spark:rooms_write",
         "spark:memberships_read",
@@ -88,23 +94,21 @@ async fn get_integration_token_browser(credentials: ClientCredentials, port: u16
     let mut auth_url_builder = client
         .authorize_url(CsrfToken::new_random)
         .set_pkce_challenge(pkce_challenge);
-    
+
     // Add all required scopes
     for scope in &scopes {
         auth_url_builder = auth_url_builder.add_scope(Scope::new(scope.to_string()));
     }
-    
+
     let (auth_url, csrf_token) = auth_url_builder.url();
 
     println!("Requesting authorization for required scopes...");
-    debug!("Requesting scopes: {:?}", scopes);
-    
+    debug!("Requesting scopes: {scopes:?}");
+
     if webbrowser::open(auth_url.as_str()).is_err() {
         let msg = format!("We were unable to open a browser. You may quit with Ctrl+C and try again after setting 
-the BROWSER environment variable, or open the following url manually (on this computer):\n{}\n",
-        auth_url
-    );
-        println!("{}", msg);
+the BROWSER environment variable, or open the following url manually (on this computer):\n{auth_url}\n");
+        println!("{msg}");
     }
 
     let mut stream = await_authorization_callback(port).await?;
@@ -133,18 +137,17 @@ the BROWSER environment variable, or open the following url manually (on this co
     Ok(token_result.access_token().clone())
 }
 
-
-
-
-
 /// Backward compatibility alias for the cached authentication function
-pub(crate) async fn get_integration_token(credentials: ClientCredentials, port: u16) -> Result<AccessToken> {
+pub(crate) async fn get_integration_token(
+    credentials: ClientCredentials,
+    port: u16,
+) -> Result<AccessToken> {
     get_integration_token_cached(credentials, port).await
 }
 
 /// Listen on local port for OAuth callback and return the TCP stream
 async fn await_authorization_callback(port: u16) -> Result<TcpStream> {
-    let listener = TcpListener::bind(format!("127.0.0.1:{}", port))?;
+    let listener = TcpListener::bind(format!("127.0.0.1:{port}"))?;
     let stream = listener.incoming().flatten().next().unwrap();
     Ok(stream)
 }
@@ -161,12 +164,12 @@ fn parse_authorization_response(stream: &mut TcpStream) -> Result<(Authorization
     let url = Url::parse(&("http://localhost".to_string() + redirect_url)).unwrap();
 
     // Debug: print all query parameters
-    debug!("OAuth redirect URL: {}", redirect_url);
+    debug!("OAuth redirect URL: {redirect_url}");
     debug!("Parsed URL query parameters:");
     for (key, value) in url.query_pairs() {
-        debug!("  {}: {}", key, value);
+        debug!("  {key}: {value}");
     }
-    
+
     let code_pair = url
         .query_pairs()
         .find(|pair| {
@@ -175,9 +178,9 @@ fn parse_authorization_response(stream: &mut TcpStream) -> Result<(Authorization
         })
                         .ok_or_else(|| {
                             let params: Vec<String> = url.query_pairs()
-                                .map(|(key, value)| format!("{}={}", key, value))
+                                .map(|(key, value)| format!("{key}={value}"))
                                 .collect();
-                            
+
                             // Check if this is a scope-related error
                             let error_msg = url.query_pairs()
                                 .find(|(key, _)| key == "error_description")
@@ -186,7 +189,7 @@ fn parse_authorization_response(stream: &mut TcpStream) -> Result<(Authorization
                                     .find(|(key, _)| key == "error")
                                     .map(|(_, value)| value.to_string()))
                                 .unwrap_or_else(|| "Unknown OAuth error".to_string());
-                            
+
                             if error_msg.contains("scope") || error_msg.contains("invalid_scope") {
                                 eyre!("OAuth scope error: {}. Your Webex integration must be configured with these exact scopes: spark:messages_read, spark:messages_write, spark:rooms_read, spark:rooms_write, spark:memberships_read, spark:memberships_write, spark:people_read, spark:kms. Please update your integration at https://developer.webex.com/my-apps", error_msg)
                             } else {

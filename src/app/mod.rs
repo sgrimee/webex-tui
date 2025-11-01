@@ -74,10 +74,10 @@ impl App<'_> {
     /// the corresponding action otherwise
     pub(crate) async fn process_key_event(&mut self, key_event: KeyEvent) -> AppReturn {
         if self.state.message_editor.is_composing() {
-            trace!("Keyevent: {:?}", key_event);
+            trace!("Keyevent: {key_event:?}");
             self.process_editing_key(key_event)
         } else if self.state.active_pane() == &Some(ActivePane::Search) {
-            trace!("Search keyevent: {:?}", key_event);
+            trace!("Search keyevent: {key_event:?}");
             self.process_search_key(key_event)
         } else {
             self.do_action(Key::from(key_event))
@@ -87,16 +87,16 @@ impl App<'_> {
     /// Handle a user action (non-editing mode)
     fn do_action(&mut self, key: crate::inputs::key::Key) -> AppReturn {
         if let Some(action) = self.state.actions.find(key) {
-            debug!("Run action [{:?}]", action);
+            debug!("Run action [{action:?}]");
             match action {
                 Action::DeleteMessage => {
                     if let Err(e) = self.delete_selected_message() {
-                        error!("Could not delete message: {}", e);
+                        error!("Could not delete message: {e}");
                     };
                 }
                 Action::DumpRoomContentToFile => {
                     if let Err(e) = self.dump_room_content_to_file() {
-                        error!("Could not dump room content to file: {}", e);
+                        error!("Could not dump room content to file: {e}");
                     };
                 }
                 Action::ComposeNewMessage => {
@@ -106,7 +106,7 @@ impl App<'_> {
                 }
                 Action::EditSelectedMessage => {
                     if let Err(e) = self.edit_selected_message() {
-                        error!("Could not respond to message: {}", e);
+                        error!("Could not respond to message: {e}");
                     };
                     self.state.message_editor.set_is_composing(true);
                     self.state.set_active_pane(Some(ActivePane::Compose));
@@ -128,14 +128,10 @@ impl App<'_> {
                     self.state.log_state.transition(TuiWidgetEvent::RightKey);
                 }
                 Action::LogPageDown => {
-                    self.state
-                        .log_state
-                        .transition(TuiWidgetEvent::NextPageKey);
+                    self.state.log_state.transition(TuiWidgetEvent::NextPageKey);
                 }
                 Action::LogPageUp => {
-                    self.state
-                        .log_state
-                        .transition(TuiWidgetEvent::PrevPageKey);
+                    self.state.log_state.transition(TuiWidgetEvent::PrevPageKey);
                 }
                 Action::LogReduceCapturedOneLevel => {
                     self.state.log_state.transition(TuiWidgetEvent::MinusKey);
@@ -174,14 +170,14 @@ impl App<'_> {
                 Action::Quit => return AppReturn::Exit,
                 Action::RespondMessage => {
                     if let Err(e) = self.respond_to_selected_message() {
-                        error!("Could not respond to message: {}", e);
+                        error!("Could not respond to message: {e}");
                     };
                     self.state.message_editor.set_is_composing(true);
                     self.state.set_active_pane(Some(ActivePane::Compose));
                 }
                 Action::SendMessage => {
                     if let Err(e) = self.send_message_buffer() {
-                        error!("Could not send message: {}", e);
+                        error!("Could not send message: {e}");
                     };
                 }
                 Action::ToggleDebug => {
@@ -233,38 +229,45 @@ impl App<'_> {
                 }
                 Action::ToggleRoomSelection => {
                     // Collect room info first to avoid borrowing conflicts
-                    let room_ids: Vec<_> = self.state.visible_rooms().map(|r| r.id.clone()).collect();
-                    let visible_rooms: Vec<_> = room_ids.iter()
+                    let room_ids: Vec<_> =
+                        self.state.visible_rooms().map(|r| r.id.clone()).collect();
+                    let visible_rooms: Vec<_> = room_ids
+                        .iter()
                         .filter_map(|id| self.state.cache.rooms.room_with_id(id))
                         .collect();
-                    self.state.rooms_list.toggle_current_room_selection(&visible_rooms);
+                    self.state
+                        .rooms_list
+                        .toggle_current_room_selection(&visible_rooms);
                 }
                 Action::SelectAllVisibleRooms => {
-                    // Collect room info first to avoid borrowing conflicts  
-                    let room_ids: Vec<_> = self.state.visible_rooms().map(|r| r.id.clone()).collect();
-                    let visible_rooms: Vec<_> = room_ids.iter()
+                    // Collect room info first to avoid borrowing conflicts
+                    let room_ids: Vec<_> =
+                        self.state.visible_rooms().map(|r| r.id.clone()).collect();
+                    let visible_rooms: Vec<_> = room_ids
+                        .iter()
                         .filter_map(|id| self.state.cache.rooms.room_with_id(id))
                         .collect();
-                    self.state.rooms_list.select_all_visible_rooms(&visible_rooms);
+                    self.state
+                        .rooms_list
+                        .select_all_visible_rooms(&visible_rooms);
                 }
                 Action::ClearRoomSelections => {
                     self.state.rooms_list.clear_room_selections();
                 }
                 Action::CopyMessage => {
                     if let Err(e) = self.copy_selected_message() {
-                        error!("Could not copy message: {}", e);
+                        error!("Could not copy message: {e}");
                     };
                 }
                 Action::DeleteSelectedRooms => {
                     debug!("User triggered DeleteSelectedRooms action");
                     if let Err(e) = self.delete_selected_rooms() {
-                        error!("Could not delete selected rooms: {}", e);
+                        error!("Could not delete selected rooms: {e}");
                     }
                 }
-
             }
         } else {
-            warn!("No action associated with {} in this mode", key);
+            warn!("No action associated with {key} in this mode");
             // If the key actually corresponds to an action, it needs to be added to the list of active actions too.
         }
         AppReturn::Continue
@@ -282,7 +285,7 @@ impl App<'_> {
             Key::AltEnter => self.state.message_editor.insert_newline(),
             Key::Enter => {
                 if let Err(e) = self.send_message_buffer() {
-                    error!("Could not send message: {}", e);
+                    error!("Could not send message: {e}");
                 };
             }
             _ => _ = self.state.message_editor.input(Input::from(key_event)),
@@ -329,8 +332,11 @@ impl App<'_> {
             }
             Key::Char(c) => {
                 // Add character to search query
-                let query = self.state.rooms_list.search_query()
-                    .map(|q| format!("{}{}", q, c))
+                let query = self
+                    .state
+                    .rooms_list
+                    .search_query()
+                    .map(|q| format!("{q}{c}"))
                     .unwrap_or_else(|| c.to_string());
                 self.state.rooms_list.set_search_query(Some(query));
                 // Reset selection when search changes
@@ -433,14 +439,13 @@ impl App<'_> {
             (None, Some(md), _) => md.clone(),
             (None, None, Some(html)) => {
                 // Use html2text to convert HTML to plain text
-                html2text::from_read(html.as_bytes(), usize::MAX)
-                    .unwrap_or_else(|_| html.clone())
+                html2text::from_read(html.as_bytes(), usize::MAX).unwrap_or_else(|_| html.clone())
             }
             _ => return Err(eyre!("Message has no content")),
         };
 
-        let mut clipboard = Clipboard::new()
-            .map_err(|e| eyre!("Failed to access clipboard: {}", e))?;
+        let mut clipboard =
+            Clipboard::new().map_err(|e| eyre!("Failed to access clipboard: {}", e))?;
         clipboard
             .set_text(content)
             .map_err(|e| eyre!("Failed to set clipboard content: {}", e))?;
@@ -508,7 +513,7 @@ impl App<'_> {
             Priority::Low => &self.app_to_teams_tx_low,
         };
         if let Err(e) = tx.send(action) {
-            error!("Error from dispatch {}", e);
+            error!("Error from dispatch {e}");
         };
     }
 
@@ -588,8 +593,8 @@ impl App<'_> {
     /// Delete all selected rooms by leaving them
     fn delete_selected_rooms(&mut self) -> Result<()> {
         let selected_room_ids = self.state.rooms_list.selected_room_ids();
-        debug!("Selected room IDs for deletion: {:?}", selected_room_ids);
-        
+        debug!("Selected room IDs for deletion: {selected_room_ids:?}");
+
         if selected_room_ids.is_empty() {
             debug!("No rooms selected for deletion");
             return Err(eyre!("No rooms selected for deletion"));
@@ -597,11 +602,11 @@ impl App<'_> {
 
         // Send leave room commands for all selected rooms
         for room_id in selected_room_ids.clone() {
-            debug!("Sending leave room command for room: {}", room_id);
+            debug!("Sending leave room command for room: {room_id}");
             // Also log the room title if available
             if let Some(room) = self.state.cache.rooms.room_with_id(&room_id) {
                 if let Some(title) = &room.title {
-                    debug!("Room title: {}", title);
+                    debug!("Room title: {title}");
                 }
             }
             self.dispatch_to_teams(AppCmdEvent::LeaveRoom(room_id), &Priority::High);
@@ -609,7 +614,10 @@ impl App<'_> {
 
         // Clear selections after sending the commands
         self.state.rooms_list.clear_room_selections();
-        debug!("Cleared room selections, sent {} leave commands", selected_room_ids.len());
+        debug!(
+            "Cleared room selections, sent {} leave commands",
+            selected_room_ids.len()
+        );
         Ok(())
     }
 }

@@ -82,7 +82,7 @@ async fn main() -> Result<()> {
     if matches.get_flag("list-modules") {
         println!("Modules that can be traced:");
         for module in logger::crate_modules().iter() {
-            println!("  {}", module);
+            println!("  {module}");
         }
         return Ok(());
     }
@@ -102,21 +102,21 @@ async fn main() -> Result<()> {
     setup_logger(default_log_level, trace_modules, log_file_opt); // only for tui mode
 
     // Welcome message
-    println!("{}", BANNER);
+    println!("{BANNER}");
     println!("Starting webex-tui, version {}.", env!("CARGO_PKG_VERSION"));
 
     // Read configurations
     let client_config = get_config()?;
     let user_config = UserConfig::load();
-    
+
     // Get port from client config (for OAuth redirect)
     let port = client_config.port.unwrap_or(DEFAULT_PORT);
-    
+
     let credentials = ClientCredentials {
         client_id: client_config.client_id,
         client_secret: client_config.client_secret,
     };
-    
+
     // Load theme from user config
     let theme = load_theme(&user_config.theme);
 
@@ -137,8 +137,10 @@ async fn main() -> Result<()> {
         tokio::sync::mpsc::unbounded_channel::<AppCmdEvent>();
     // CLI args override config values
     let debug = matches.get_flag("debug") || user_config.debug;
-    let messages_to_load = *matches.get_one("messages").unwrap_or(&user_config.messages_to_load);
-    
+    let messages_to_load = *matches
+        .get_one("messages")
+        .unwrap_or(&user_config.messages_to_load);
+
     let app = Arc::new(tokio::sync::Mutex::new(App::new(
         app_to_teams_tx_lowpri.clone(),
         app_to_teams_tx_highpri.clone(),

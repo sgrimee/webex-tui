@@ -37,7 +37,7 @@ impl Teams<'_> {
                 trace!("Received unhandled highlight event.");
             }
             Unknown(s) => {
-                trace!("Received unhandled unknown event: {:#?}", s);
+                trace!("Received unhandled unknown event: {s:#?}");
             }
         }
         Ok(())
@@ -62,13 +62,10 @@ impl Teams<'_> {
                         e
                     )
                 })?;
-                trace!(
-                    "Received message posted/shared event with global id: {:#?}",
-                    global_id
-                );
+                trace!("Received message posted/shared event with global id: {global_id:#?}");
                 // The event doesn't contain the message content, go fetch it
                 if let Ok(msg) = self.client.get::<webex::Message>(&global_id).await {
-                    trace!("Message: {:#?}", msg);
+                    trace!("Message: {msg:#?}");
                     // add message and mark room as unread
                     self.app.lock().await.cb_message_received(&msg, true);
                 }
@@ -81,10 +78,7 @@ impl Teams<'_> {
                         e
                     )
                 })?;
-                trace!(
-                    "Received message deleted event with global id: {:#?}",
-                    global_id
-                );
+                trace!("Received message deleted event with global id: {global_id:#?}");
                 self.app
                     .lock()
                     .await
@@ -110,8 +104,8 @@ impl Teams<'_> {
                     })?
                     .id()
                     .to_string() as RoomId;
-                trace!("Received space event {:?} for room: {}", activity, room_id);
-                trace!("Space event: {:#?}", event);
+                trace!("Received space event {activity:?} for room: {room_id}");
+                trace!("Space event: {event:#?}");
                 self.app.lock().await.cb_space_updated(&room_id);
             }
             Left => {
@@ -122,11 +116,11 @@ impl Teams<'_> {
                     })?
                     .id()
                     .to_string() as RoomId;
-                trace!("Received left space event for room: {}", room_id);
+                trace!("Received left space event for room: {room_id}");
                 self.app.lock().await.cb_space_left(&room_id);
             }
             _ => {
-                trace!("Unhandled space event: {:?}", activity);
+                trace!("Unhandled space event: {activity:?}");
             }
         }
         Ok(())

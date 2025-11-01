@@ -84,7 +84,7 @@ fn get_cache_file_path() -> Result<PathBuf> {
         .ok_or_else(|| eyre!("Could not determine cache directory"))?;
 
     let app_cache_dir = cache_dir.join("webex-tui");
-    
+
     // Ensure the cache directory exists
     fs::create_dir_all(&app_cache_dir)?;
 
@@ -114,23 +114,23 @@ fn set_secure_permissions(_path: &PathBuf) -> Result<()> {
 /// Save token cache to disk securely
 pub(crate) fn save_token_cache(cache: &TokenCache) -> Result<()> {
     let cache_path = get_cache_file_path()?;
-    
-    log::debug!("Saving token cache to: {:?}", cache_path);
-    
+
+    log::debug!("Saving token cache to: {cache_path:?}");
+
     // Create the file with restrictive permissions from the start
     let file = OpenOptions::new()
         .create(true)
         .write(true)
         .truncate(true)
         .open(&cache_path)?;
-    
+
     // Set secure permissions
     set_secure_permissions(&cache_path)?;
-    
+
     // Write the cache data
     let writer = BufWriter::new(file);
     serde_json::to_writer_pretty(writer, cache)?;
-    
+
     log::info!("Token cache saved successfully");
     Ok(())
 }
@@ -138,18 +138,18 @@ pub(crate) fn save_token_cache(cache: &TokenCache) -> Result<()> {
 /// Load token cache from disk
 pub(crate) fn load_token_cache() -> Result<TokenCache> {
     let cache_path = get_cache_file_path()?;
-    
+
     if !cache_path.exists() {
         return Err(eyre!("Token cache file does not exist"));
     }
-    
-    log::debug!("Loading token cache from: {:?}", cache_path);
-    
+
+    log::debug!("Loading token cache from: {cache_path:?}");
+
     let file = File::open(&cache_path)?;
     let reader = BufReader::new(file);
-    let cache: TokenCache = serde_json::from_reader(reader)
-        .map_err(|e| eyre!("Failed to parse token cache: {}", e))?;
-    
+    let cache: TokenCache =
+        serde_json::from_reader(reader).map_err(|e| eyre!("Failed to parse token cache: {}", e))?;
+
     log::info!("Token cache loaded successfully");
     Ok(cache)
 }
@@ -157,12 +157,12 @@ pub(crate) fn load_token_cache() -> Result<TokenCache> {
 /// Clear the token cache (e.g., on logout or authentication failure)
 pub(crate) fn clear_token_cache() -> Result<()> {
     let cache_path = get_cache_file_path()?;
-    
+
     if cache_path.exists() {
         fs::remove_file(&cache_path)?;
         log::info!("Token cache cleared");
     }
-    
+
     Ok(())
 }
 
@@ -188,13 +188,10 @@ mod tests {
     #[test]
     fn test_token_validity_with_expiration() {
         let access_token = AccessToken::new("test_token".to_string());
-        
+
         // Token that expires in 1 hour (should be valid)
-        let future_cache = TokenCache::new(
-            access_token.clone(), 
-            None, 
-            Some(Duration::from_secs(3600))
-        );
+        let future_cache =
+            TokenCache::new(access_token.clone(), None, Some(Duration::from_secs(3600)));
         assert!(future_cache.is_likely_valid());
 
         // Simulate expired token
@@ -203,7 +200,8 @@ mod tests {
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
-                .as_secs() - 100 // Expired 100 seconds ago
+                .as_secs()
+                - 100, // Expired 100 seconds ago
         );
         assert!(!expired_cache.is_likely_valid());
     }
@@ -211,7 +209,7 @@ mod tests {
     #[test]
     fn test_token_validity_without_expiration() {
         let access_token = AccessToken::new("test_token".to_string());
-        
+
         // Recent token without expiration info (should be valid)
         let recent_cache = TokenCache::new(access_token.clone(), None, None);
         assert!(recent_cache.is_likely_valid());
@@ -221,7 +219,8 @@ mod tests {
         old_cache.cached_at = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
-            .as_secs() - 24 * 60 * 60; // 24 hours ago
+            .as_secs()
+            - 24 * 60 * 60; // 24 hours ago
         assert!(!old_cache.is_likely_valid());
     }
 
@@ -251,7 +250,7 @@ mod tests {
         let _ = clear_token_cache();
     }
 
-    #[test] 
+    #[test]
     fn test_cache_clear() {
         // Test clearing a cache
         let access_token = AccessToken::new("test_clear_token".to_string());

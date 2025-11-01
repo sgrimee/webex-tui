@@ -15,27 +15,33 @@ pub(crate) const ROOMS_LIST_WIDTH: u16 = 32;
 pub(crate) fn draw_rooms_table<'a>(state: &AppState) -> Table<'a> {
     // highlight pane if it is active or in search mode
     let border_style = match state.active_pane() {
-        Some(ActivePane::Rooms) | Some(ActivePane::Search) => Style::default().fg(state.theme.roles.border_active()),
+        Some(ActivePane::Rooms) | Some(ActivePane::Search) => {
+            Style::default().fg(state.theme.roles.border_active())
+        }
         _ => Style::default().fg(state.theme.roles.border()),
     };
-    
+
     // Build title based on current mode
     let title = if let Some(query) = state.rooms_list.search_query() {
         let selected_count = state.rooms_list.selected_room_count();
         if selected_count > 0 {
-            format!("Search: {} ({} selected)", query, selected_count)
+            format!("Search: {query} ({selected_count} selected)")
         } else {
-            format!("Search: {}", query)
+            format!("Search: {query}")
         }
     } else {
         let selected_count = state.rooms_list.selected_room_count();
         if selected_count > 0 {
-            format!("Filter: {:?} ({} selected)", state.rooms_list.filter(), selected_count)
+            format!(
+                "Filter: {:?} ({} selected)",
+                state.rooms_list.filter(),
+                selected_count
+            )
         } else {
             format!("Filter: {:?}", state.rooms_list.filter())
         }
     };
-    
+
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
@@ -43,7 +49,11 @@ pub(crate) fn draw_rooms_table<'a>(state: &AppState) -> Table<'a> {
         .title({
             let selected_count = state.rooms_list.selected_room_count();
             if selected_count > 0 {
-                format!("Filter: {:?} ({} selected)", state.rooms_list.filter(), selected_count)
+                format!(
+                    "Filter: {:?} ({} selected)",
+                    state.rooms_list.filter(),
+                    selected_count
+                )
             } else {
                 title
             }
@@ -56,20 +66,20 @@ pub(crate) fn draw_rooms_table<'a>(state: &AppState) -> Table<'a> {
                 .room_and_team_title(&room.id)
                 .unwrap_or_default();
             let line = line_for_room_and_team_title(
-                ratt, 
-                room.unread, 
+                ratt,
+                room.unread,
                 state.theme.roles.room_unread(),
-                state.theme.roles.room_team()
+                state.theme.roles.room_team(),
             );
-            
+
             // Add selection indicator
             let selection_indicator = if state.rooms_list.is_room_selected(&room.id) {
                 "☑ "
             } else {
                 "☐ "
             };
-            
-            let cell_content = format!("{}{}", selection_indicator, line);
+
+            let cell_content = format!("{selection_indicator}{line}");
             Row::new(vec![Cell::from(cell_content)])
         })
         .collect();

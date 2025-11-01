@@ -3,8 +3,8 @@
 #[cfg(test)]
 mod tests {
     use super::super::load_theme;
-    use crate::theme::parser::parse_color;
     use crate::theme::models::Theme;
+    use crate::theme::parser::parse_color;
     use ratatui::style::Color;
 
     #[test]
@@ -33,7 +33,7 @@ user_colors:
   - \"#ff5555\"
   - \"#50fa7b\"
 ";
-        
+
         let theme: Theme = serde_yaml::from_str(yaml_content).unwrap();
         assert_eq!(theme.name, "Dracula");
         assert_eq!(theme.roles.accent(), Color::Rgb(189, 147, 249));
@@ -47,7 +47,7 @@ user_colors:
 roles:
   accent: \"#bd93f9\"
 ";
-        
+
         let theme: Theme = serde_yaml::from_str(yaml_content).unwrap();
         assert_eq!(theme.name, "Partial");
         assert_eq!(theme.roles.accent(), Color::Rgb(189, 147, 249));

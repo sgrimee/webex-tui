@@ -72,7 +72,7 @@ impl Key {
             10 => Key::F10,
             11 => Key::F11,
             12 => Key::F12,
-            _ => panic!("unknown function key: F{}", n),
+            _ => panic!("unknown function key: F{n}"),
         }
     }
 }
@@ -81,14 +81,14 @@ impl Display for Key {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match *self {
             Key::Alt(' ') => write!(f, "<Alt+Space>"),
-            Key::Alt(c) => write!(f, "<Alt+{}>", c),
+            Key::Alt(c) => write!(f, "<Alt+{c}>"),
             Key::AltEnter => write!(f, "<Alt+Enter>"),
             Key::Char(' ') => write!(f, "<Space>"),
-            Key::Char(c) => write!(f, "<{}>", c),
+            Key::Char(c) => write!(f, "<{c}>"),
             Key::Ctrl(' ') => write!(f, "<Ctrl+Space>"),
-            Key::Ctrl(c) => write!(f, "<Ctrl+{}>", c),
+            Key::Ctrl(c) => write!(f, "<Ctrl+{c}>"),
             Key::ShiftTab => write!(f, "<Shift+Tab>"),
-            _ => write!(f, "<{:?}>", self),
+            _ => write!(f, "<{self:?}>"),
         }
     }
 }

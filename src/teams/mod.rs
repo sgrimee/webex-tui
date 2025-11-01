@@ -69,7 +69,7 @@ impl<'a> Teams<'a> {
                                 warn!("Even stream closed, reopening.");
                                 break;
                             }
-                            error!("Error received from event stream: {}", e);
+                            error!("Error received from event stream: {e}");
                             break;
                         }
                     }
@@ -80,17 +80,17 @@ impl<'a> Teams<'a> {
         loop {
             tokio::select! {
                 Some(app_event) = app_to_teams_rx_highpri.recv() => {
-                    trace!("Got high priority app event: {:#?}", app_event);
+                    trace!("Got high priority app event: {app_event:#?}");
                     self.handle_app_event(app_event).await;
                 },
                 Some(webex_event) = wbx_stream_to_teams_rx.recv() => {
-                    trace!("Got webex event: {:#?}", webex_event );
+                    trace!("Got webex event: {webex_event:#?}" );
                     if let Err(err) = self.handle_webex_event(webex_event).await {
-                        error!("Error handling webex event: {}", err);
+                        error!("Error handling webex event: {err}");
                     }
                 },
                 Some(app_event) = app_to_teams_rx_lowpri.recv() => {
-                    trace!("Got low priority app event: {:#?}", app_event);
+                    trace!("Got low priority app event: {app_event:#?}");
                     self.handle_app_event(app_event).await;
                 }
             }
@@ -111,10 +111,7 @@ async fn initialize_event_stream(client: &Webex) -> WebexEventStream {
                 break;
             }
             Err(e) => {
-                error!(
-                    "Failed to start event stream, trying again in 1 minute: {}",
-                    e
-                );
+                error!("Failed to start event stream, trying again in 1 minute: {e}");
                 tokio::time::sleep(std::time::Duration::from_secs(60)).await;
             }
         };
