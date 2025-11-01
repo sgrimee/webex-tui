@@ -1,5 +1,20 @@
 # Justfile for webex-tui development
 
+# List all available targets
+default:
+    @just --list
+
+# Run comprehensive quality checks (check, clippy, test, fmt)
+check-all:
+    just check
+    just lint
+    just test
+    just fmt
+
+# Compile check
+check:
+    cargo check
+
 # Build the project
 build:
     cargo build
