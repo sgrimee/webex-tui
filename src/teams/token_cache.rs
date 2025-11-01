@@ -79,6 +79,11 @@ impl TokenCache {
 
 /// Get the path to the token cache file
 fn get_cache_file_path() -> Result<PathBuf> {
+    get_cache_file_path_impl(None)
+}
+
+/// Internal implementation that supports custom suffixes for testing
+fn get_cache_file_path_impl(suffix: Option<&str>) -> Result<PathBuf> {
     let cache_dir = dirs::cache_dir()
         .or_else(|| dirs::home_dir().map(|home| home.join(".cache")))
         .ok_or_else(|| eyre!("Could not determine cache directory"))?;
@@ -88,7 +93,12 @@ fn get_cache_file_path() -> Result<PathBuf> {
     // Ensure the cache directory exists
     fs::create_dir_all(&app_cache_dir)?;
 
-    Ok(app_cache_dir.join("tokens.json"))
+    let filename = match suffix {
+        Some(suffix) => format!("tokens-{suffix}.json"),
+        None => "tokens.json".to_string(),
+    };
+
+    Ok(app_cache_dir.join(filename))
 }
 
 /// Set restrictive file permissions (user read/write only)
@@ -172,6 +182,53 @@ mod tests {
     use oauth2::{AccessToken, RefreshToken};
     use std::time::Duration;
 
+    /// Test-specific function to save cache with a unique suffix
+    fn save_test_cache(cache: &TokenCache, test_suffix: &str) -> Result<()> {
+        let cache_path = get_cache_file_path_impl(Some(test_suffix))?;
+
+        log::debug!("Saving test token cache to: {cache_path:?}");
+
+        let file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(&cache_path)?;
+
+        set_secure_permissions(&cache_path)?;
+
+        let writer = BufWriter::new(file);
+        serde_json::to_writer_pretty(writer, cache)?;
+
+        Ok(())
+    }
+
+    /// Test-specific function to load cache with a unique suffix
+    fn load_test_cache(test_suffix: &str) -> Result<TokenCache> {
+        let cache_path = get_cache_file_path_impl(Some(test_suffix))?;
+
+        if !cache_path.exists() {
+            return Err(eyre!("Token cache file does not exist"));
+        }
+
+        let file = File::open(&cache_path)?;
+        let reader = BufReader::new(file);
+        let cache: TokenCache = serde_json::from_reader(reader)
+            .map_err(|e| eyre!("Failed to parse token cache: {}", e))?;
+
+        Ok(cache)
+    }
+
+    /// Test-specific function to clear cache with a unique suffix
+    fn clear_test_cache(test_suffix: &str) -> Result<()> {
+        let cache_path = get_cache_file_path_impl(Some(test_suffix))?;
+
+        if cache_path.exists() {
+            fs::remove_file(&cache_path)?;
+        }
+
+        Ok(())
+    }
+
     #[test]
     fn test_token_cache_creation() {
         let access_token = AccessToken::new("test_access_token".to_string());
@@ -226,19 +283,19 @@ mod tests {
 
     #[test]
     fn test_cache_round_trip() {
-        // Test saving and loading a cache
+        // Test saving and loading a cache with unique suffix to avoid conflicts
+        let test_suffix = "round_trip";
         let access_token = AccessToken::new("test_round_trip_token".to_string());
         let original_cache = TokenCache::new(access_token, None, Some(Duration::from_secs(3600)));
 
-        // This test uses the real cache functions, so we need to be careful
-        // Clear any existing cache first
-        let _ = clear_token_cache();
+        // Clear any existing test cache first
+        let _ = clear_test_cache(test_suffix);
 
         // Save the cache
-        save_token_cache(&original_cache).expect("Should save cache");
+        save_test_cache(&original_cache, test_suffix).expect("Should save cache");
 
         // Load the cache back
-        let loaded_cache = load_token_cache().expect("Should load cache");
+        let loaded_cache = load_test_cache(test_suffix).expect("Should load cache");
 
         // Verify they match
         assert_eq!(original_cache.access_token, loaded_cache.access_token);
@@ -247,28 +304,29 @@ mod tests {
         assert!(loaded_cache.is_likely_valid());
 
         // Clean up
-        let _ = clear_token_cache();
+        let _ = clear_test_cache(test_suffix);
     }
 
     #[test]
     fn test_cache_clear() {
-        // Test clearing a cache
+        // Test clearing a cache with unique suffix to avoid conflicts
+        let test_suffix = "clear";
         let access_token = AccessToken::new("test_clear_token".to_string());
         let cache = TokenCache::new(access_token, None, None);
 
-        // Clear any existing cache first
-        let _ = clear_token_cache();
+        // Clear any existing test cache first
+        let _ = clear_test_cache(test_suffix);
 
         // Save the cache
-        save_token_cache(&cache).expect("Should save cache");
+        save_test_cache(&cache, test_suffix).expect("Should save cache");
 
         // Verify it exists
-        assert!(load_token_cache().is_ok());
+        assert!(load_test_cache(test_suffix).is_ok());
 
         // Clear it
-        clear_token_cache().expect("Should clear cache");
+        clear_test_cache(test_suffix).expect("Should clear cache");
 
         // Verify it's gone
-        assert!(load_token_cache().is_err());
+        assert!(load_test_cache(test_suffix).is_err());
     }
 }
