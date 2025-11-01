@@ -2,7 +2,6 @@
 
 use color_eyre::eyre::Result;
 use crossterm::{
-    event::{DisableMouseCapture, EnableMouseCapture},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -51,7 +50,7 @@ impl Tui {
     /// It enables the raw mode and sets terminal properties.
     pub(crate) fn init(&mut self) -> Result<()> {
         enable_raw_mode()?;
-        execute!(io::stderr(), EnterAlternateScreen, EnableMouseCapture)?;
+        execute!(io::stderr(), EnterAlternateScreen)?;
 
         // Define a custom panic hook to reset the terminal properties.
         // This way, you won't have your terminal messed up if an unexpected error happens.
@@ -82,7 +81,7 @@ impl Tui {
     /// the terminal properties if unexpected errors occur.
     fn reset() -> Result<()> {
         disable_raw_mode()?;
-        execute!(io::stderr(), LeaveAlternateScreen, DisableMouseCapture)?;
+        execute!(io::stderr(), LeaveAlternateScreen)?;
         Ok(())
     }
 
