@@ -18,7 +18,7 @@ use webex::{
 };
 
 /// Commands the main `App` can send to the `Teams` thread.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) enum AppCmdEvent {
     DeleteMessage(MessageId),
     EditMessage(MessageId, RoomId, String),
@@ -35,19 +35,28 @@ pub(crate) enum AppCmdEvent {
     WhoAmI(),
 }
 
+impl AppCmdEvent {
+    /// Returns true if this event should be retried on failure.
+    /// Only critical read operations that don't modify state should be retried.
+    fn should_retry_on_failure(&self) -> bool {
+        matches!(self, AppCmdEvent::ListAllRooms())
+    }
+}
+
 impl Teams<'_> {
     /// Handle an `AppCmdEvent` dispatched by the App.
     pub(crate) async fn handle_app_event(&mut self, app_cmd_event: AppCmdEvent) {
         {
             self.app.lock().await.state.is_loading = true;
         }
+        let should_retry = app_cmd_event.should_retry_on_failure();
         if let Err(error) = match app_cmd_event {
             AppCmdEvent::DeleteMessage(msg_id) => self.delete_message(&msg_id).await,
             AppCmdEvent::EditMessage(msg_id, room_id, text) => {
                 self.do_edit_message(&msg_id, &room_id, &text).await
             }
             AppCmdEvent::Initialize() => self.do_initialize().await,
-            AppCmdEvent::ListAllRooms() => self.do_list_all_rooms().await,
+            AppCmdEvent::ListAllRooms() => self.do_list_all_rooms_with_retry().await,
             AppCmdEvent::ListMessagesInRoom(room_id, before_id, max) => {
                 self.do_list_messages_in_room(&room_id, before_id, max)
                     .await
@@ -64,6 +73,9 @@ impl Teams<'_> {
             AppCmdEvent::WhoAmI() => self.get_me_user().await,
         } {
             error!("Error handling app event: {error}");
+            if should_retry {
+                warn!("Critical operation failed, will be retried automatically");
+            }
         }
         {
             self.app.lock().await.state.is_loading = false;
@@ -212,6 +224,35 @@ impl Teams<'_> {
             .state
             .set_active_pane(Some(ActivePane::Rooms));
         Ok(())
+    }
+
+    /// Gets all rooms with retry logic on failure.
+    /// Retries up to 3 times with 5 second delays between attempts.
+    async fn do_list_all_rooms_with_retry(&mut self) -> Result<()> {
+        const MAX_RETRIES: u32 = 3;
+        const RETRY_DELAY_SECS: u64 = 5;
+        
+        for attempt in 1..=MAX_RETRIES {
+            match self.do_list_all_rooms().await {
+                Ok(()) => {
+                    if attempt > 1 {
+                        info!("Successfully loaded rooms after {attempt} attempts");
+                    }
+                    return Ok(());
+                }
+                Err(e) => {
+                    if attempt < MAX_RETRIES {
+                        warn!("Failed to load rooms (attempt {attempt}/{MAX_RETRIES}): {e}");
+                        warn!("Retrying in {RETRY_DELAY_SECS} seconds...");
+                        tokio::time::sleep(std::time::Duration::from_secs(RETRY_DELAY_SECS)).await;
+                    } else {
+                        error!("Failed to load rooms after {MAX_RETRIES} attempts: {e}");
+                        return Err(e);
+                    }
+                }
+            }
+        }
+        unreachable!()
     }
 
     /// Gets the rooms as per `params`, updates the store.
