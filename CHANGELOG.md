@@ -11,6 +11,7 @@ This project tries to follow semantic versioning.
 - **Token caching**: OAuth tokens are now cached between sessions for faster startup
 - **Multi-room selection**: Enable multi-room selection with visual indicators
 - **Batch operations**: Implement batch leave via LeaveRoom command for selected rooms
+- **Native text selection**: Enable native terminal text selection and clipboard copy by disabling mouse capture
 
 ## [0.7.6] - 2025-10-06
 
