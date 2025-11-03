@@ -178,7 +178,10 @@ impl App<'_> {
             if !self.state.cache.teams.exists_or_requested(&team_id) {
                 debug!("Requesting team {team_id} identified by room: {room_title}");
                 self.state.cache.teams.add_requested(team_id.clone());
-                self.dispatch_to_teams(AppCmdEvent::UpdateTeam(team_id), &Priority::Low);
+                self.dispatch_to_teams(
+                    AppCmdEvent::UpdateTeam(team_id, Some(room_title.clone())),
+                    &Priority::Low,
+                );
             }
         }
     }

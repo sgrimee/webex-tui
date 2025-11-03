@@ -27,7 +27,7 @@ pub(crate) enum AppCmdEvent {
     ListMessagesInRoom(RoomId, Option<MessageId>, u32),
     SendMessage(MessageOut),
     UpdateRoom(RoomId),
-    UpdateTeam(TeamId),
+    UpdateTeam(TeamId, Option<String>), // TeamId and optional room context
     UpdateMessage(MessageId),
     UpdateChildrenMessages(MessageId, RoomId),
     UpdatePerson(PersonId),
@@ -68,7 +68,9 @@ impl Teams<'_> {
             AppCmdEvent::UpdateMessage(msg_id) => self.do_update_message(&msg_id).await,
             AppCmdEvent::UpdatePerson(person_id) => self.do_update_person(&person_id).await,
             AppCmdEvent::UpdateRoom(room_id) => self.do_refresh_room(&room_id).await,
-            AppCmdEvent::UpdateTeam(team_id) => self.do_update_team(&team_id).await,
+            AppCmdEvent::UpdateTeam(team_id, room_context) => {
+                self.do_update_team(&team_id, room_context.as_deref()).await
+            }
             AppCmdEvent::LeaveRoom(room_id) => self.do_leave_room(&room_id).await,
             AppCmdEvent::WhoAmI() => self.get_me_user().await,
         } {
@@ -198,13 +200,34 @@ impl Teams<'_> {
 
     /// Gets the team with given id and updates the store.
     /// Many of these calls fail because the user does not have access to the
-    /// team details, so errors are silenced.
-    async fn do_update_team(&self, team_id: &TeamId) -> Result<()> {
+    /// team details (HTTP 404 when not a team member), so errors are silenced.
+    /// Note: You can access rooms within a team without being a team member,
+    /// but team details require team membership per Webex API design.
+    async fn do_update_team(&self, team_id: &TeamId, room_context: Option<&str>) -> Result<()> {
         let global_id = GlobalId::new(GlobalIdType::Team, team_id.to_owned()).unwrap();
         debug!("Getting team with global id: {global_id:?}");
-        if let Ok(webex_team) = self.client.get::<webex::Team>(&global_id).await {
-            self.app.lock().await.cb_team_updated(webex_team);
-        };
+        match self.client.get::<webex::Team>(&global_id).await {
+            Ok(webex_team) => {
+                self.app.lock().await.cb_team_updated(webex_team);
+            }
+            Err(e) => {
+                // Log the error but don't fail the operation
+                let error_msg = e.to_string();
+                let context_info = room_context
+                    .map(|room| format!(" (requested from room: '{room}')"))
+                    .unwrap_or_default();
+
+                if error_msg.contains("missing required scopes")
+                    || error_msg.contains("missing required roles")
+                {
+                    debug!("Skipping team update for {team_id}{context_info}: insufficient API permissions");
+                } else if error_msg.contains("Could not find teams") || error_msg.contains("404") {
+                    debug!("Skipping team update for {team_id}{context_info}: not a team member (404 is expected behavior)");
+                } else {
+                    debug!("Failed to get team details for {team_id}{context_info}: {error_msg}");
+                }
+            }
+        }
         Ok(())
     }
 
@@ -231,7 +254,7 @@ impl Teams<'_> {
     async fn do_list_all_rooms_with_retry(&mut self) -> Result<()> {
         const MAX_RETRIES: u32 = 3;
         const RETRY_DELAY_SECS: u64 = 5;
-        
+
         for attempt in 1..=MAX_RETRIES {
             match self.do_list_all_rooms().await {
                 Ok(()) => {
