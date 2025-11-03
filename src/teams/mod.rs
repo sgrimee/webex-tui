@@ -17,7 +17,7 @@ use oauth2::AccessToken;
 use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedReceiver;
 
-use webex::{Webex, WebexEventStream};
+use webex::{error::Error as WebexError, Webex, WebexEventStream};
 
 /// ClientCredentials obtained when creating the Webex integration
 #[derive(Clone)]
@@ -111,7 +111,16 @@ async fn initialize_event_stream(client: &Webex) -> WebexEventStream {
                 break;
             }
             Err(e) => {
-                error!("Failed to start event stream, trying again in 1 minute: {e}");
+                // Check if it's a 403 error (expected for third-party integrations without device permissions)
+                if let WebexError::StatusText(status, _) = &e {
+                    if status.as_u16() == 403 {
+                        debug!("Device registration returned 403 (expected for integrations without spark:devices_write), retrying in 1 minute");
+                    } else {
+                        error!("Failed to start event stream, trying again in 1 minute: {e}");
+                    }
+                } else {
+                    error!("Failed to start event stream, trying again in 1 minute: {e}");
+                }
                 tokio::time::sleep(std::time::Duration::from_secs(60)).await;
             }
         };
