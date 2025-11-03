@@ -27,13 +27,15 @@ build-release:
 test:
     cargo test
 
-# Run the application
+# Run the application with timestamped log file
 run *args:
-    cargo run -- {{args}}
+    mkdir -p logs
+    cargo run -- --log logs/$(date +%Y%m%d-%H:%M:%S).log {{args}}
 
 # Run with debug logging
 run-debug *args:
-    cargo run -- --debug {{args}}
+    mkdir -p logs
+    cargo run -- --log logs/$(date +%Y%m%d-%H:%M:%S).log --debug {{args}}
 
 # Clear cached authentication token (forces re-authentication)
 clear-token:
