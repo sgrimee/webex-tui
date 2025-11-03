@@ -78,16 +78,26 @@ async fn get_integration_token_browser(
 
     let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
 
-    // Use required scopes for webex-tui functionality
+    // Use required scopes for webex-tui functionality - must match Webex integration configuration
     let scopes = vec![
-        "spark:messages_read",
-        "spark:messages_write",
-        "spark:rooms_read",
-        "spark:rooms_write",
-        "spark:memberships_read",
-        "spark:memberships_write",
-        "spark:people_read",
-        "spark:kms",
+        "spark:applications_token",     // Retrieve Service App token
+        "spark:messages_write",         // Post and delete messages on your behalf
+        "spark:messages_read",          // Read the content of rooms that you are in
+        "spark:memberships_write",      // Invite people to rooms on your behalf
+        "spark:memberships_read",       // List people in the rooms you are in
+        "spark:people_write",           // Write user directory information
+        "spark:people_read",            // Read your users' company directory
+        "spark:rooms_write",            // Manage rooms on your behalf
+        "spark:rooms_read",             // List the titles of rooms that you are in
+        "spark:teams_write",            // Create teams on your users' behalf
+        "spark:teams_read",             // List the teams your user's a member of
+        "spark:team_memberships_write", // Add people to teams on your users' behalf
+        "spark:team_memberships_read",  // List the people in the teams your user belongs to
+        "spark:devices_write",          // Modify and delete your devices
+        "spark:devices_read",           // See details for your devices
+        "spark:organizations_read",     // Access to read your user's organizations
+        "application:webhooks_write",   // Register Service App authorization webhook
+        "application:webhooks_read",    // List webhooks for Service App authorization
     ];
 
     // Generate the authorization URL
@@ -191,7 +201,7 @@ fn parse_authorization_response(stream: &mut TcpStream) -> Result<(Authorization
                                 .unwrap_or_else(|| "Unknown OAuth error".to_string());
 
                             if error_msg.contains("scope") || error_msg.contains("invalid_scope") {
-                                eyre!("OAuth scope error: {}. Your Webex integration must be configured with these exact scopes: spark:messages_read, spark:messages_write, spark:rooms_read, spark:rooms_write, spark:memberships_read, spark:memberships_write, spark:people_read, spark:kms. Please update your integration at https://developer.webex.com/my-apps", error_msg)
+                                eyre!("OAuth scope error: {}. Your Webex integration must be configured with these exact scopes: spark:applications_token, spark:messages_write, spark:messages_read, spark:memberships_write, spark:memberships_read, spark:people_write, spark:people_read, spark:rooms_write, spark:rooms_read, spark:teams_write, spark:teams_read, spark:team_memberships_write, spark:team_memberships_read, spark:devices_write, spark:devices_read, spark:organizations_read, application:webhooks_write, application:webhooks_read. Please update your integration at https://developer.webex.com/my-apps", error_msg)
                             } else {
                                 eyre!("OAuth authentication failed: {}. Available parameters: [{}]", error_msg, params.join(", "))
                             }
