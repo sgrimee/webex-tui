@@ -40,7 +40,7 @@ impl MessageEditor<'_> {
     }
 
     /// Returns the textarea.
-    pub(crate) fn textarea(&self) -> &TextArea {
+    pub(crate) fn textarea(&self) -> &TextArea<'_> {
         &self.textarea
     }
 
