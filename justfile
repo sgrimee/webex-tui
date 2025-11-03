@@ -46,6 +46,10 @@ clear-token:
 clean:
     cargo clean
 
+# Remove logfiles
+clean-logs:
+    rm logs/*
+
 # Format code
 fmt:
     cargo fmt
