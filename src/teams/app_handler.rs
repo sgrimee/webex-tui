@@ -88,6 +88,10 @@ impl Teams<'_> {
     /// This is useful to inform the main thread that the `teams` thread is ready.
     async fn do_initialize(&mut self) -> Result<()> {
         debug!("Initializing webex-tui");
+
+        // Note: Scope verification happens automatically during event stream initialization
+        // If there are scope issues, detailed error messages will appear in the logs
+
         let mut app = self.app.lock().await;
         app.cb_teams_initialized();
         debug!("👍 Webex initialization successful");

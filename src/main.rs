@@ -24,6 +24,7 @@ use log::LevelFilter;
 use std::path::PathBuf;
 use teams::app_handler::AppCmdEvent;
 use teams::auth::get_integration_token;
+use teams::token_cache::load_token_cache;
 use teams::ClientCredentials;
 use teams::Teams;
 use theme::load_theme;
@@ -122,9 +123,25 @@ async fn main() -> Result<()> {
 
     // Start authentication (cached or browser-based)
     println!("Authenticating to Webex...");
-    let token = get_integration_token(credentials, port)
-        .await
-        .expect("Need token to continue");
+    let token = match get_integration_token(credentials, port).await {
+        Ok(token) => token,
+        Err(e) => {
+            eprintln!("Authentication failed: {}", e);
+            eprintln!("If you see scope errors, your integration may be configured with different scopes.");
+            eprintln!("Trying to continue anyway - some features may not work.");
+            // Try to load cached token as fallback
+            match load_token_cache() {
+                Ok(cache) => {
+                    eprintln!("Using cached token...");
+                    cache.to_access_token()
+                }
+                Err(_) => {
+                    eprintln!("No cached token available. Cannot continue.");
+                    return Err(e);
+                }
+            }
+        }
+    };
 
     // Initialize the terminal user interface with events thread
     let mut tui = Tui::default()?;

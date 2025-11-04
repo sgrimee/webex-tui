@@ -18,7 +18,7 @@ pub(crate) async fn get_webex_client(token: AccessToken) -> Webex {
         .into_string()
         .unwrap_or_else(|_| String::from("unknown"));
 
-    // Use the new constructor with default mercury URL to avoid 403 errors on internal endpoints
+    // Use pre-configured mercury URL to skip discovery
     let mercury_url = "https://wdm-a.wbx2.com/wdm/api/v1";
     let client = Webex::new_with_mercury_url(&device_name, secret, mercury_url).await;
     debug!("Authenticated with pre-configured mercury URL.");

@@ -59,13 +59,12 @@ pub(crate) async fn get_integration_token_cached(
     Ok(token)
 }
 
-/// Create and authorize a client with the given `ClientCredentials`.
-/// A browser is opened for user authentication.
-/// Returns a token, or an error if any authentication step fail.
-async fn get_integration_token_browser(
-    credentials: ClientCredentials,
+/// Try to authenticate with a specific set of scopes
+async fn try_auth_with_scopes(
+    credentials: &ClientCredentials,
+    scopes: &[&str],
     port: u16,
-) -> Result<AccessToken> {
+) -> Result<(AccessToken, Vec<String>)> {
     let client = BasicClient::new(ClientId::new(credentials.client_id.clone()))
         .set_client_secret(ClientSecret::new(credentials.client_secret.clone()))
         .set_auth_uri(AuthUrl::new(
@@ -78,42 +77,18 @@ async fn get_integration_token_browser(
 
     let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
 
-    // Use required scopes for webex-tui functionality - must match Webex integration configuration
-    let scopes = vec![
-        "spark:applications_token",     // Retrieve Service App token
-        "spark:messages_write",         // Post and delete messages on your behalf
-        "spark:messages_read",          // Read the content of rooms that you are in
-        "spark:memberships_write",      // Invite people to rooms on your behalf
-        "spark:memberships_read",       // List people in the rooms you are in
-        "spark:people_write",           // Write user directory information
-        "spark:people_read",            // Read your users' company directory
-        "spark:rooms_write",            // Manage rooms on your behalf
-        "spark:rooms_read",             // List the titles of rooms that you are in
-        "spark:teams_write",            // Create teams on your users' behalf
-        "spark:teams_read",             // List the teams your user's a member of
-        "spark:team_memberships_write", // Add people to teams on your users' behalf
-        "spark:team_memberships_read",  // List the people in the teams your user belongs to
-        "spark:devices_write",          // Modify and delete your devices
-        "spark:devices_read",           // See details for your devices
-        "spark:organizations_read",     // Access to read your user's organizations
-        "application:webhooks_write",   // Register Service App authorization webhook
-        "application:webhooks_read",    // List webhooks for Service App authorization
-    ];
-
-    // Generate the authorization URL
     let mut auth_url_builder = client
         .authorize_url(CsrfToken::new_random)
         .set_pkce_challenge(pkce_challenge);
 
-    // Add all required scopes
-    for scope in &scopes {
+    for scope in scopes {
         auth_url_builder = auth_url_builder.add_scope(Scope::new(scope.to_string()));
     }
 
     let (auth_url, csrf_token) = auth_url_builder.url();
 
-    println!("Requesting authorization for required scopes...");
-    debug!("Requesting scopes: {scopes:?}");
+    println!("Requesting authorization...");
+    debug!("Requesting scopes: {:?}", scopes);
 
     if webbrowser::open(auth_url.as_str()).is_err() {
         let msg = format!("We were unable to open a browser. You may quit with Ctrl+C and try again after setting 
@@ -122,7 +97,6 @@ the BROWSER environment variable, or open the following url manually (on this co
     }
 
     let mut stream = await_authorization_callback(port).await?;
-
     let (code, state) = parse_authorization_response(&mut stream)?;
     send_success_response(&mut stream)?;
 
@@ -132,19 +106,146 @@ the BROWSER environment variable, or open the following url manually (on this co
         ));
     }
 
-    let http_client = reqwest::ClientBuilder::new()
-        // Following redirects opens the client up to SSRF vulnerabilities.
-        // .redirect(reqwest::redirect::Policy::none())
-        .build()
-        .expect("Client should build");
-
+    let http_client = reqwest::ClientBuilder::new().build()?;
     let token_result = client
         .exchange_code(code)
         .set_pkce_verifier(pkce_verifier)
         .request_async(&http_client)
         .await?;
 
-    Ok(token_result.access_token().clone())
+    // Get the actual scopes granted (if available in the response)
+    let granted_scopes = token_result
+        .scopes()
+        .map(|scopes| scopes.iter().map(|s| s.as_str().to_string()).collect())
+        .unwrap_or_else(|| scopes.iter().map(|s| s.to_string()).collect());
+
+    Ok((token_result.access_token().clone(), granted_scopes))
+}
+
+/// Create and authorize a client with the given `ClientCredentials`.
+/// A browser is opened for user authentication.
+/// Returns a token, or an error if any authentication step fail.
+async fn get_integration_token_browser(
+    credentials: ClientCredentials,
+    port: u16,
+) -> Result<AccessToken> {
+    // Desired scopes for full webex-tui functionality (scope, description, critical)
+    let desired_scopes = vec![
+        (
+            "spark:all",
+            "All spark permissions (alternative to granular scopes)",
+            false,
+        ),
+        (
+            "spark:applications_token",
+            "Retrieve Service App token",
+            true,
+        ),
+        ("spark:messages_write", "Post and delete messages", true),
+        ("spark:messages_read", "Read room messages", true),
+        ("spark:memberships_write", "Invite people to rooms", true),
+        ("spark:memberships_read", "List room members", true),
+        ("spark:people_write", "Write user directory", false),
+        ("spark:people_read", "Read user directory", true),
+        ("spark:rooms_write", "Manage rooms", true),
+        ("spark:rooms_read", "List rooms", true),
+        ("spark:teams_write", "Create teams", false),
+        ("spark:teams_read", "List teams", true),
+        (
+            "spark:team_memberships_write",
+            "Add people to teams (leave team)",
+            false,
+        ),
+        ("spark:team_memberships_read", "List team members", false),
+        (
+            "spark:devices_write",
+            "Register device for real-time events",
+            true,
+        ),
+        (
+            "spark:devices_read",
+            "Read device info for real-time events",
+            true,
+        ),
+        ("spark:organizations_read", "Read organization info", false),
+        ("application:webhooks_write", "Register webhooks", false),
+        ("application:webhooks_read", "List webhooks", false),
+    ];
+
+    let scopes_list: Vec<&str> = desired_scopes.iter().map(|(s, _, _)| *s).collect();
+
+    // Try authentication with granular scopes
+    println!("Attempting authentication with granular scopes...");
+    let result = try_auth_with_scopes(&credentials, &scopes_list, port).await;
+
+    let (token, granted_scopes) = match result {
+        Ok((token, scopes)) => (token, scopes),
+        Err(e) if e.to_string().contains("invalid_scope") || e.to_string().contains("scope") => {
+            // Scope error - try with spark:all instead
+            println!();
+            println!("Granular scopes not supported by this integration.");
+            println!("Trying with spark:all scope...");
+            try_auth_with_scopes(&credentials, &["spark:all"], port).await?
+        }
+        Err(e) => return Err(e),
+    };
+
+    // Analyze granted scopes and warn about missing functionality
+    println!();
+    println!("========================================================================");
+    println!("Authentication successful!");
+    println!("------------------------------------------------------------------------");
+    println!("Granted scopes: {}", granted_scopes.join(", "));
+    println!("------------------------------------------------------------------------");
+
+    // Check for missing critical scopes
+    let mut missing_critical = Vec::new();
+    let mut missing_optional = Vec::new();
+
+    let has_spark_all = granted_scopes.iter().any(|s| s == "spark:all");
+
+    if !has_spark_all {
+        for (scope, description, critical) in &desired_scopes {
+            if !granted_scopes.iter().any(|s| s == scope) {
+                if *critical {
+                    missing_critical.push((*scope, *description));
+                } else {
+                    missing_optional.push((*scope, *description));
+                }
+            }
+        }
+    }
+
+    if !missing_critical.is_empty() {
+        println!("WARNING: Missing critical scopes:");
+        for (scope, desc) in &missing_critical {
+            println!("  - {}: {}", scope, desc);
+        }
+        println!();
+    }
+
+    if !missing_optional.is_empty() {
+        println!("INFO: Missing optional scopes (reduced functionality):");
+        for (scope, desc) in &missing_optional {
+            println!("  - {}: {}", scope, desc);
+        }
+        println!();
+    }
+
+    if missing_critical.is_empty() && missing_optional.is_empty() && !has_spark_all {
+        println!("All desired scopes granted!");
+    }
+
+    if has_spark_all {
+        println!("Using spark:all scope (grants most permissions)");
+        println!("NOTE: spark:all may conflict with team_memberships scopes");
+        println!("      You may not be able to leave teams/rooms");
+    }
+
+    println!("========================================================================");
+    println!();
+
+    Ok(token)
 }
 
 /// Backward compatibility alias for the cached authentication function
@@ -201,7 +302,7 @@ fn parse_authorization_response(stream: &mut TcpStream) -> Result<(Authorization
                                 .unwrap_or_else(|| "Unknown OAuth error".to_string());
 
                             if error_msg.contains("scope") || error_msg.contains("invalid_scope") {
-                                eyre!("OAuth scope error: {}. Your Webex integration must be configured with these exact scopes: spark:applications_token, spark:messages_write, spark:messages_read, spark:memberships_write, spark:memberships_read, spark:people_write, spark:people_read, spark:rooms_write, spark:rooms_read, spark:teams_write, spark:teams_read, spark:team_memberships_write, spark:team_memberships_read, spark:devices_write, spark:devices_read, spark:organizations_read, application:webhooks_write, application:webhooks_read. Please update your integration at https://developer.webex.com/my-apps", error_msg)
+                                eyre!("OAuth scope error: {}. Your Webex integration may be configured with different scopes than requested. Common alternatives: spark:all (grants most permissions but may conflict with team_memberships scopes), or individual scopes. Please check your integration configuration at https://developer.webex.com/my-apps", error_msg)
                             } else {
                                 eyre!("OAuth authentication failed: {}. Available parameters: [{}]", error_msg, params.join(", "))
                             }
