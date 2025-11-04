@@ -126,7 +126,7 @@ async fn main() -> Result<()> {
     let token = match get_integration_token(credentials, port).await {
         Ok(token) => token,
         Err(e) => {
-            eprintln!("Authentication failed: {}", e);
+            eprintln!("Authentication failed: {e}");
             eprintln!("If you see scope errors, your integration may be configured with different scopes.");
             eprintln!("Trying to continue anyway - some features may not work.");
             // Try to load cached token as fallback

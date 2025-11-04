@@ -122,7 +122,7 @@ async fn initialize_event_stream(client: &Webex) -> Option<WebexEventStream> {
                     if status.as_u16() == 403 {
                         error!("========================================================================");
                         error!("CRITICAL: Event stream initialization failed with 403 Forbidden");
-                        error!("Error details: {}", msg);
+                        error!("Error details: {msg}");
                         error!("");
                         error!("This usually means your Webex integration is missing required OAuth scopes:");
                         error!("  - spark:devices_write");

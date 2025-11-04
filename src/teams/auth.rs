@@ -88,7 +88,7 @@ async fn try_auth_with_scopes(
     let (auth_url, csrf_token) = auth_url_builder.url();
 
     println!("Requesting authorization...");
-    debug!("Requesting scopes: {:?}", scopes);
+    debug!("Requesting scopes: {scopes:?}");
 
     if webbrowser::open(auth_url.as_str()).is_err() {
         let msg = format!("We were unable to open a browser. You may quit with Ctrl+C and try again after setting 
@@ -219,7 +219,7 @@ async fn get_integration_token_browser(
     if !missing_critical.is_empty() {
         println!("WARNING: Missing critical scopes:");
         for (scope, desc) in &missing_critical {
-            println!("  - {}: {}", scope, desc);
+            println!("  - {scope}: {desc}");
         }
         println!();
     }
@@ -227,7 +227,7 @@ async fn get_integration_token_browser(
     if !missing_optional.is_empty() {
         println!("INFO: Missing optional scopes (reduced functionality):");
         for (scope, desc) in &missing_optional {
-            println!("  - {}: {}", scope, desc);
+            println!("  - {scope}: {desc}");
         }
         println!();
     }
