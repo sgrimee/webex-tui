@@ -102,7 +102,9 @@ impl Rooms {
             RoomsListFilter::Recent => room.has_activity_since(Duration::hours(24)),
             RoomsListFilter::Spaces => room.is_space(),
             RoomsListFilter::Unread => room.unread,
-            RoomsListFilter::Inactive => !room.has_activity_since(Duration::days(365)),
+            RoomsListFilter::InactiveSpaces => {
+                !room.is_direct() && !room.has_activity_since(Duration::days(365))
+            }
         })
     }
 

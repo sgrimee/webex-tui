@@ -14,6 +14,6 @@ pub(crate) enum RoomsListFilter {
     Spaces,
     /// Only rooms with unread messages
     Unread,
-    /// Only rooms with no activity for a long time (configurable threshold)
-    Inactive,
+    /// Only spaces (not 1-1 chats) with no activity for a long time (configurable threshold)
+    InactiveSpaces,
 }
