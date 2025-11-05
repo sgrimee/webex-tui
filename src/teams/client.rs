@@ -3,7 +3,6 @@
 //! Obtain a `Webex` client
 
 use gethostname::gethostname;
-use log::*;
 use oauth2::AccessToken;
 use webex::Webex;
 
@@ -18,9 +17,7 @@ pub(crate) async fn get_webex_client(token: AccessToken) -> Webex {
         .into_string()
         .unwrap_or_else(|_| String::from("unknown"));
 
-    // Use pre-configured mercury URL to skip discovery
-    let mercury_url = "https://wdm-a.wbx2.com/wdm/api/v1";
-    let client = Webex::new_with_mercury_url(&device_name, secret, mercury_url).await;
-    debug!("Authenticated with pre-configured mercury URL.");
+    // Use auto-discovery to find the mercury URL
+    let client = Webex::new_with_device_name(&device_name, secret).await;
     client
 }
