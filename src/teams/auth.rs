@@ -182,9 +182,9 @@ async fn get_integration_token_browser(
     debug!("Available Webex API scopes in integration/token:");
     for (scope, description, critical) in &available_scopes {
         if *critical {
-            debug!("  {} - {} [CRITICAL]", scope, description);
+            debug!("  {scope} - {description} [CRITICAL]");
         } else {
-            debug!("  {} - {} [OPTIONAL]", scope, description);
+            debug!("  {scope} - {description} [OPTIONAL]");
         }
     }
     debug!("========================================================================");
@@ -200,7 +200,7 @@ async fn get_integration_token_browser(
     println!("Authentication successful!");
     println!("------------------------------------------------------------------------");
     println!("Granted scopes: {}", granted_scopes.join(", "));
-    debug!("Granted scopes detail: {:?}", granted_scopes);
+    debug!("Granted scopes detail: {granted_scopes:?}");
     println!("------------------------------------------------------------------------");
 
     let has_spark_all = granted_scopes.iter().any(|s| s == "spark:all");
@@ -211,10 +211,7 @@ async fn get_integration_token_browser(
     } else {
         println!("WARNING: spark:all scope was not granted!");
         println!("Some functionality may not work correctly.");
-        debug!(
-            "spark:all scope was requested but not granted. Granted scopes: {:?}",
-            granted_scopes
-        );
+        debug!("spark:all scope was requested but not granted. Granted scopes: {granted_scopes:?}");
     }
 
     println!("========================================================================");
