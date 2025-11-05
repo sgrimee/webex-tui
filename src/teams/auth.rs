@@ -30,6 +30,10 @@ pub(crate) async fn get_integration_token_cached(
         Ok(cache) => {
             if cache.is_likely_valid() {
                 info!("Using cached authentication token");
+                debug!("Cached token does not contain scope information");
+                debug!("Token was originally requested with spark:all scope");
+                debug!("If you encounter permission issues, delete cache and re-authenticate:");
+                debug!("  rm ~/.cache/webex-tui/tokens.json");
                 return Ok(cache.to_access_token());
             } else {
                 info!("Cached token expired or invalid, clearing cache");
@@ -129,8 +133,9 @@ async fn get_integration_token_browser(
     credentials: ClientCredentials,
     port: u16,
 ) -> Result<AccessToken> {
-    // Desired scopes for full webex-tui functionality (scope, description, critical)
-    let desired_scopes = vec![
+    // Available scopes for reference (scope, description, critical)
+    // These are logged at debug level but only spark:all is requested
+    let available_scopes = vec![
         (
             "spark:all",
             "All spark permissions (alternative to granular scopes)",
@@ -172,74 +177,44 @@ async fn get_integration_token_browser(
         ("application:webhooks_read", "List webhooks", false),
     ];
 
-    let scopes_list: Vec<&str> = desired_scopes.iter().map(|(s, _, _)| *s).collect();
-
-    // Try authentication with granular scopes
-    println!("Attempting authentication with granular scopes...");
-    let result = try_auth_with_scopes(&credentials, &scopes_list, port).await;
-
-    let (token, granted_scopes) = match result {
-        Ok((token, scopes)) => (token, scopes),
-        Err(e) if e.to_string().contains("invalid_scope") || e.to_string().contains("scope") => {
-            // Scope error - try with spark:all instead
-            println!();
-            println!("Granular scopes not supported by this integration.");
-            println!("Trying with spark:all scope...");
-            try_auth_with_scopes(&credentials, &["spark:all"], port).await?
+    // Log all available scopes at debug level
+    debug!("========================================================================");
+    debug!("Available Webex API scopes in integration/token:");
+    for (scope, description, critical) in &available_scopes {
+        if *critical {
+            debug!("  {} - {} [CRITICAL]", scope, description);
+        } else {
+            debug!("  {} - {} [OPTIONAL]", scope, description);
         }
-        Err(e) => return Err(e),
-    };
+    }
+    debug!("========================================================================");
 
-    // Analyze granted scopes and warn about missing functionality
+    // Only request spark:all scope (which provides most permissions)
+    println!("Requesting authentication with spark:all scope...");
+    debug!("Requesting only spark:all scope (provides best guarantee all features will work)");
+    let (token, granted_scopes) = try_auth_with_scopes(&credentials, &["spark:all"], port).await?;
+
+    // Log and display granted scopes
     println!();
     println!("========================================================================");
     println!("Authentication successful!");
     println!("------------------------------------------------------------------------");
     println!("Granted scopes: {}", granted_scopes.join(", "));
+    debug!("Granted scopes detail: {:?}", granted_scopes);
     println!("------------------------------------------------------------------------");
-
-    // Check for missing critical scopes
-    let mut missing_critical = Vec::new();
-    let mut missing_optional = Vec::new();
 
     let has_spark_all = granted_scopes.iter().any(|s| s == "spark:all");
 
-    if !has_spark_all {
-        for (scope, description, critical) in &desired_scopes {
-            if !granted_scopes.iter().any(|s| s == scope) {
-                if *critical {
-                    missing_critical.push((*scope, *description));
-                } else {
-                    missing_optional.push((*scope, *description));
-                }
-            }
-        }
-    }
-
-    if !missing_critical.is_empty() {
-        println!("WARNING: Missing critical scopes:");
-        for (scope, desc) in &missing_critical {
-            println!("  - {scope}: {desc}");
-        }
-        println!();
-    }
-
-    if !missing_optional.is_empty() {
-        println!("INFO: Missing optional scopes (reduced functionality):");
-        for (scope, desc) in &missing_optional {
-            println!("  - {scope}: {desc}");
-        }
-        println!();
-    }
-
-    if missing_critical.is_empty() && missing_optional.is_empty() && !has_spark_all {
-        println!("All desired scopes granted!");
-    }
-
     if has_spark_all {
         println!("Using spark:all scope (grants most permissions)");
-        println!("NOTE: spark:all may conflict with team_memberships scopes");
-        println!("      You may not be able to leave teams/rooms");
+        debug!("spark:all scope confirmed in granted scopes");
+    } else {
+        println!("WARNING: spark:all scope was not granted!");
+        println!("Some functionality may not work correctly.");
+        debug!(
+            "spark:all scope was requested but not granted. Granted scopes: {:?}",
+            granted_scopes
+        );
     }
 
     println!("========================================================================");
