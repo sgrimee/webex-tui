@@ -35,9 +35,9 @@ thiserror = "1.0"
 tokio = { version = "1.43.1", features = ["rt", "macros"] }
 webbrowser = "1.0.1"
 # webex = "0.10.0"
-# webex = { git = "https://github.com/sgrimee/webex-rust.git", rev = "df42923706a3e44b1bd108afd8c432ac8e1ec901" }
+webex = { git = "https://github.com/sgrimee/webex-rust.git", branch = "master" }
 # webex = { git = "https://github.com/Nabushika/webex-rust.git", branch = "master"}
-webex = { path = "../webex-rust" }
+# webex = { path = "../webex-rust" }
 
 # UI dependencies - allow latest compatible versions
 crossterm = "0.28"
