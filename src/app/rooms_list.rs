@@ -10,12 +10,25 @@ use log::*;
 use ratatui::widgets::TableState;
 use std::collections::HashSet;
 
+/// Represents the current state of search functionality
+#[derive(Debug, Clone, PartialEq, Default)]
+pub(crate) enum SearchState {
+    /// Not searching - normal room browsing
+    #[default]
+    None,
+    /// Actively typing search query  
+    Entering,
+    /// Search applied, can select rooms with space
+    Filtering,
+}
+
 #[derive(Default)]
 pub(crate) struct RoomsList {
     filter: RoomsListFilter,
     table_state: TableState,
     active_room_id: Option<RoomId>,
     search_query: Option<String>,
+    search_state: SearchState,
     selected_rooms: HashSet<RoomId>,
 }
 
@@ -139,6 +152,22 @@ impl RoomsList {
         self.search_query = query;
     }
 
+    /// Get the current search state
+    pub(crate) fn search_state(&self) -> &SearchState {
+        &self.search_state
+    }
+
+    /// Set the search state
+    pub(crate) fn set_search_state(&mut self, state: SearchState) {
+        self.search_state = state;
+    }
+
+    /// Clear search query and return to normal mode
+    pub(crate) fn clear_search(&mut self) {
+        self.search_query = None;
+        self.search_state = SearchState::None;
+    }
+
     /// Toggle selection of a room
     pub(crate) fn toggle_room_selection(&mut self, room_id: &RoomId) {
         if self.selected_rooms.contains(room_id) {
@@ -170,15 +199,37 @@ impl RoomsList {
         }
     }
 
+    /// Invert selection of all visible rooms
+    pub(crate) fn invert_visible_room_selection(&mut self, rooms: &[&Room]) {
+        for room in rooms {
+            if self.selected_rooms.contains(&room.id) {
+                self.selected_rooms.remove(&room.id);
+            } else {
+                self.selected_rooms.insert(room.id.clone());
+            }
+        }
+    }
+
     /// Get the number of selected rooms
     pub(crate) fn selected_room_count(&self) -> usize {
         self.selected_rooms.len()
     }
 
-    /// Toggle selection of the currently highlighted room
-    pub(crate) fn toggle_current_room_selection(&mut self, rooms: &[&Room]) {
+    /// Toggle selection of the currently highlighted room and move cursor to next room
+    /// Returns true if cursor was advanced, false if at end of list
+    pub(crate) fn toggle_current_room_selection_and_advance(&mut self, rooms: &[&Room]) -> bool {
+        // First toggle the current selection
         if let Some(room_id) = self.id_of_selected(rooms) {
             self.toggle_room_selection(&room_id);
         }
+
+        // Then try to advance cursor
+        if let Some(current_index) = self.table_state.selected() {
+            if current_index + 1 < rooms.len() {
+                self.table_state.select(Some(current_index + 1));
+                return true;
+            }
+        }
+        false
     }
 }

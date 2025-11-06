@@ -12,6 +12,7 @@ pub(crate) mod state;
 
 use self::state::AppState;
 use crate::app::actions::Action;
+use crate::app::rooms_list::SearchState;
 use crate::app::state::ActivePane;
 use crate::inputs::key::Key;
 use crate::teams::app_handler::AppCmdEvent;
@@ -76,9 +77,9 @@ impl App<'_> {
         if self.state.message_editor.is_composing() {
             trace!("Keyevent: {key_event:?}");
             self.process_editing_key(key_event)
-        } else if self.state.active_pane() == &Some(ActivePane::Search) {
-            trace!("Search keyevent: {key_event:?}");
-            self.process_search_key(key_event)
+        } else if self.state.rooms_list.search_state() == &SearchState::Entering {
+            trace!("Search entering keyevent: {key_event:?}");
+            self.process_search_entering_key(key_event)
         } else {
             self.do_action(Key::from(key_event))
         }
@@ -217,15 +218,48 @@ impl App<'_> {
                 Action::UnselectMessage => {
                     self.state.messages_list.deselect();
                 }
+                Action::JumpToLastMessage => {
+                    self.state.messages_list.select_last_message();
+                }
                 Action::StartRoomSearch => {
-                    self.state.rooms_list.set_search_query(Some(String::new()));
-                    self.state.set_active_pane(Some(ActivePane::Search));
+                    // If already in filtering mode, keep the existing query but switch to entering mode
+                    if self.state.rooms_list.search_state() == &SearchState::Filtering {
+                        self.state
+                            .rooms_list
+                            .set_search_state(SearchState::Entering);
+                    } else {
+                        // Start fresh search
+                        self.state.rooms_list.set_search_query(Some(String::new()));
+                        self.state
+                            .rooms_list
+                            .set_search_state(SearchState::Entering);
+                    }
                 }
                 Action::EndRoomSearch => {
-                    self.state.rooms_list.set_search_query(None);
-                    self.state.set_active_pane(Some(ActivePane::Rooms));
-                    // Reset room selection to match the active room after search
-                    self.state.update_room_selection_with_active_room();
+                    match self.state.rooms_list.search_state() {
+                        SearchState::Entering => {
+                            // Switch to filtering mode if we have a non-empty query
+                            if let Some(query) = self.state.rooms_list.search_query() {
+                                if !query.is_empty() {
+                                    self.state
+                                        .rooms_list
+                                        .set_search_state(SearchState::Filtering);
+                                } else {
+                                    // Empty query, clear search entirely
+                                    self.state.rooms_list.clear_search();
+                                }
+                            } else {
+                                self.state.rooms_list.set_search_state(SearchState::None);
+                            }
+                        }
+                        SearchState::Filtering => {
+                            // Exit filtering mode but keep the search query active
+                            self.state.rooms_list.set_search_state(SearchState::None);
+                        }
+                        SearchState::None => {
+                            // Do nothing - already in normal mode
+                        }
+                    }
                 }
                 Action::ToggleRoomSelection => {
                     // Collect room info first to avoid borrowing conflicts
@@ -237,7 +271,7 @@ impl App<'_> {
                         .collect();
                     self.state
                         .rooms_list
-                        .toggle_current_room_selection(&visible_rooms);
+                        .toggle_current_room_selection_and_advance(&visible_rooms);
                 }
                 Action::SelectAllVisibleRooms => {
                     // Collect room info first to avoid borrowing conflicts
@@ -251,8 +285,23 @@ impl App<'_> {
                         .rooms_list
                         .select_all_visible_rooms(&visible_rooms);
                 }
+                Action::InvertSelection => {
+                    // Collect room info first to avoid borrowing conflicts
+                    let room_ids: Vec<_> =
+                        self.state.visible_rooms().map(|r| r.id.clone()).collect();
+                    let visible_rooms: Vec<_> = room_ids
+                        .iter()
+                        .filter_map(|id| self.state.cache.rooms.room_with_id(id))
+                        .collect();
+                    self.state
+                        .rooms_list
+                        .invert_visible_room_selection(&visible_rooms);
+                }
                 Action::ClearRoomSelections => {
                     self.state.rooms_list.clear_room_selections();
+                }
+                Action::ClearSearchFilter => {
+                    self.state.rooms_list.clear_search();
                 }
                 Action::CopyMessage => {
                     if let Err(e) = self.copy_selected_message() {
@@ -293,20 +342,18 @@ impl App<'_> {
         AppReturn::Continue
     }
 
-    // Handle a key while in search mode
-    fn process_search_key(&mut self, key_event: KeyEvent) -> AppReturn {
+    // Handle a key while in search entering mode
+    fn process_search_entering_key(&mut self, key_event: KeyEvent) -> AppReturn {
         let key: Key = key_event.into();
         match key {
             Key::Ctrl('c') => return AppReturn::Exit,
             Key::Esc => {
-                // End search mode
+                // Exit search entering mode
                 return self.do_action(Key::Esc);
             }
             Key::Enter => {
-                // Select the highlighted room and exit search mode
-                self.set_active_room_to_selection();
-                self.state.rooms_list.set_search_query(None);
-                self.state.set_active_pane(Some(ActivePane::Messages));
+                // Switch to filtering mode
+                return self.do_action(Key::Esc);
             }
             Key::Up => {
                 // Navigate search results
@@ -323,15 +370,20 @@ impl App<'_> {
                 if let Some(query) = self.state.rooms_list.search_query() {
                     let mut new_query = query.clone();
                     new_query.pop();
-                    self.state.rooms_list.set_search_query(Some(new_query));
-                    // Reset selection when search changes
-                    let num_rooms = self.state.num_of_visible_rooms();
-                    let selected = if num_rooms == 0 { None } else { Some(0) };
-                    self.state.rooms_list.table_state_mut().select(selected);
+                    if new_query.is_empty() {
+                        // If query becomes empty, clear search entirely
+                        self.state.rooms_list.clear_search();
+                    } else {
+                        self.state.rooms_list.set_search_query(Some(new_query));
+                        // Reset selection when search changes
+                        let num_rooms = self.state.num_of_visible_rooms();
+                        let selected = if num_rooms == 0 { None } else { Some(0) };
+                        self.state.rooms_list.table_state_mut().select(selected);
+                    }
                 }
             }
             Key::Char(c) => {
-                // Add character to search query
+                // Add character to search query (including '/')
                 let query = self
                     .state
                     .rooms_list

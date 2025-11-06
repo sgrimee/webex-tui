@@ -107,7 +107,7 @@ impl MessagesList {
         self.table_state.select(Some(0));
     }
 
-    fn select_last_message(&mut self) {
+    pub(crate) fn select_last_message(&mut self) {
         if self.nb_messages == 0 {
             self.deselect();
             return;

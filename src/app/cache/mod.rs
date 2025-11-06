@@ -186,15 +186,16 @@ impl Cache {
 
     /// Returns an iterator over rooms that match the search query using fuzzy matching.
     /// Searches both room titles and team names.
+    /// Only searches within rooms that match the given filter.
     pub(crate) fn rooms_matching_search<'a>(
         &'a self,
         query: &'a str,
+        filter: &'a room_list_filter::RoomsListFilter,
     ) -> impl Iterator<Item = (&'a room::Room, i64)> {
         let matcher = SkimMatcherV2::default();
         let mut scored_rooms: Vec<_> = self
             .rooms
-            .sorted_rooms()
-            .iter()
+            .rooms_filtered_by(filter)
             .filter_map(|room| {
                 let room_and_team_title = self.room_and_team_title(&room.id).ok()?;
                 let search_text = format!(

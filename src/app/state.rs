@@ -87,9 +87,10 @@ impl AppState<'_> {
         if let Some(query) = self.rooms_list.search_query() {
             if !query.trim().is_empty() {
                 // Return search results (just the rooms, ignoring scores)
+                // Search only within the current filter
                 Box::new(
                     self.cache
-                        .rooms_matching_search(query)
+                        .rooms_matching_search(query, self.rooms_list.filter())
                         .map(|(room, _score)| room),
                 )
             } else {
@@ -183,7 +184,11 @@ impl AppState<'_> {
                     actions.push(Action::ComposeNewMessage);
                 }
                 if self.num_messages_active_room() > 0 {
-                    actions.extend(vec![Action::NextMessage, Action::PreviousMessage]);
+                    actions.extend(vec![
+                        Action::NextMessage,
+                        Action::PreviousMessage,
+                        Action::JumpToLastMessage,
+                    ]);
                 }
                 if self.messages_list.has_selection() {
                     actions.push(Action::CopyMessage);
@@ -207,32 +212,47 @@ impl AppState<'_> {
                 actions
             }
             Some(ActivePane::Rooms) => {
-                let common_actions = vec![
-                    Action::NextRoom,
-                    Action::PreviousRoom,
-                    Action::NextRoomFilter,
-                    Action::PreviousRoomFilter,
-                    Action::StartRoomSearch,
-                    Action::ToggleRoomSelection,
-                    Action::SelectAllVisibleRooms,
-                    Action::ClearRoomSelections,
-                    Action::DeleteSelectedRooms,
-                    Action::NextPane,
-                    Action::PreviousPane,
-                    Action::ToggleDebug,
-                    Action::ToggleHelp,
-                    Action::ToggleLogs,
-                    Action::ToggleRooms,
-                    Action::Quit,
-                ];
-                let selection_actions = vec![
-                    Action::ComposeNewMessage,
-                    Action::MarkRead,
-                    Action::SendMessage,
-                ];
-                match self.rooms_list.has_selection() {
-                    true => concat([selection_actions, common_actions]),
-                    false => common_actions,
+                // Check if we're in search entering mode
+                if matches!(
+                    self.rooms_list.search_state(),
+                    super::rooms_list::SearchState::Entering
+                ) {
+                    // In search entering mode, only show essential actions
+                    vec![
+                        Action::EndRoomSearch, // Esc to exit search
+                        Action::Quit,
+                    ]
+                } else {
+                    // Normal rooms mode or search filtering mode
+                    let common_actions = vec![
+                        Action::NextRoom,
+                        Action::PreviousRoom,
+                        Action::NextRoomFilter,
+                        Action::PreviousRoomFilter,
+                        Action::StartRoomSearch,
+                        Action::ToggleRoomSelection,
+                        Action::SelectAllVisibleRooms,
+                        Action::InvertSelection,
+                        Action::ClearRoomSelections,
+                        Action::ClearSearchFilter,
+                        Action::DeleteSelectedRooms,
+                        Action::NextPane,
+                        Action::PreviousPane,
+                        Action::ToggleDebug,
+                        Action::ToggleHelp,
+                        Action::ToggleLogs,
+                        Action::ToggleRooms,
+                        Action::Quit,
+                    ];
+                    let selection_actions = vec![
+                        Action::ComposeNewMessage,
+                        Action::MarkRead,
+                        Action::SendMessage,
+                    ];
+                    match self.rooms_list.has_selection() {
+                        true => concat([selection_actions, common_actions]),
+                        false => common_actions,
+                    }
                 }
             }
             Some(ActivePane::Logs) => {

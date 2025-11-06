@@ -47,10 +47,13 @@ pub(crate) enum Action {
     ToggleRooms,
     ToggleRoomSelection,
     SelectAllVisibleRooms,
+    InvertSelection,
     ClearRoomSelections,
+    ClearSearchFilter,
     CopyMessage,
     DeleteSelectedRooms,
     UnselectMessage,
+    JumpToLastMessage,
 }
 
 impl Action {
@@ -87,17 +90,20 @@ impl Action {
             Action::RespondMessage => &[Key::Char('r')],
             Action::SendMessage => &[],
             Action::StartRoomSearch => &[Key::Char('/'), Key::Ctrl('f')],
-            Action::EndRoomSearch => &[Key::Esc],
+            Action::EndRoomSearch => &[Key::Esc, Key::Enter],
             Action::ToggleDebug => &[Key::Char('t')],
             Action::ToggleHelp => &[Key::Char('?')],
             Action::ToggleLogs => &[Key::Char('l')],
             Action::ToggleRooms => &[Key::Char('R')],
             Action::ToggleRoomSelection => &[Key::Char(' ')],
-            Action::SelectAllVisibleRooms => &[Key::Char('A')],
-            Action::ClearRoomSelections => &[Key::Char('C')],
+            Action::SelectAllVisibleRooms => &[Key::Ctrl('a')],
+            Action::InvertSelection => &[Key::Ctrl('i')],
+            Action::ClearRoomSelections => &[Key::Ctrl('d')],
+            Action::ClearSearchFilter => &[Key::Ctrl('u')],
             Action::CopyMessage => &[Key::Char('y')],
             Action::DeleteSelectedRooms => &[Key::Char('X')],
             Action::UnselectMessage => &[Key::Esc],
+            Action::JumpToLastMessage => &[Key::Char('G')],
         }
     }
 }
@@ -143,10 +149,13 @@ impl Display for Action {
             Action::ToggleRooms => "Toggle rooms panel",
             Action::ToggleRoomSelection => "Toggle room selection",
             Action::SelectAllVisibleRooms => "Select all visible rooms",
+            Action::InvertSelection => "Invert selection",
             Action::ClearRoomSelections => "Clear room selections",
+            Action::ClearSearchFilter => "Clear search filter",
             Action::CopyMessage => "Copy message",
             Action::DeleteSelectedRooms => "Delete selected rooms",
             Action::UnselectMessage => "Unselect message",
+            Action::JumpToLastMessage => "Jump to last message",
         };
         write!(f, "{str}")
     }

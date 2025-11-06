@@ -14,31 +14,41 @@ pub(crate) const ROOMS_LIST_WIDTH: u16 = 32;
 /// Draws the list of rooms as per selected filtering mode.
 pub(crate) fn draw_rooms_table<'a>(state: &AppState) -> Table<'a> {
     // highlight pane if it is active or in search mode
-    let border_style = match state.active_pane() {
-        Some(ActivePane::Rooms) | Some(ActivePane::Search) => {
+    let border_style = match (state.active_pane(), state.rooms_list.search_state()) {
+        (Some(ActivePane::Rooms), _)
+        | (_, super::super::app::rooms_list::SearchState::Entering) => {
             Style::default().fg(state.theme.roles.border_active())
         }
         _ => Style::default().fg(state.theme.roles.border()),
     };
 
     // Build title based on current mode
-    let title = if let Some(query) = state.rooms_list.search_query() {
-        let selected_count = state.rooms_list.selected_room_count();
-        if selected_count > 0 {
-            format!("Search: {query} ({selected_count} selected)")
-        } else {
+    let title = match (
+        state.rooms_list.search_query(),
+        state.rooms_list.search_state(),
+    ) {
+        (Some(query), super::super::app::rooms_list::SearchState::Entering) => {
             format!("Search: {query}")
         }
-    } else {
-        let selected_count = state.rooms_list.selected_room_count();
-        if selected_count > 0 {
-            format!(
-                "Filter: {:?} ({} selected)",
-                state.rooms_list.filter(),
-                selected_count
-            )
-        } else {
-            format!("Filter: {:?}", state.rooms_list.filter())
+        (Some(query), super::super::app::rooms_list::SearchState::Filtering) => {
+            let selected_count = state.rooms_list.selected_room_count();
+            if selected_count > 0 {
+                format!("Filtered: {query} ({selected_count} selected)")
+            } else {
+                format!("Filtered: {query}")
+            }
+        }
+        _ => {
+            let selected_count = state.rooms_list.selected_room_count();
+            if selected_count > 0 {
+                format!(
+                    "Filter: {:?} ({} selected)",
+                    state.rooms_list.filter(),
+                    selected_count
+                )
+            } else {
+                format!("Filter: {:?}", state.rooms_list.filter())
+            }
         }
     };
 

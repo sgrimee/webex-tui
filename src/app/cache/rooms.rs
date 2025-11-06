@@ -116,6 +116,7 @@ impl Rooms {
     }
 
     /// Returns a reference to the sorted rooms list
+    #[allow(dead_code)]
     pub(crate) fn sorted_rooms(&self) -> &Vec<Room> {
         &self.sorted_rooms
     }
