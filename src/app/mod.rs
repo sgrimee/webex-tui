@@ -272,6 +272,7 @@ impl App<'_> {
                     self.state
                         .rooms_list
                         .toggle_current_room_selection_and_advance(&visible_rooms);
+                    self.set_active_room_to_selection();
                 }
                 Action::SelectAllVisibleRooms => {
                     // Collect room info first to avoid borrowing conflicts

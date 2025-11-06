@@ -103,7 +103,9 @@ impl Rooms {
             RoomsListFilter::Spaces => room.is_space(),
             RoomsListFilter::Unread => room.unread,
             RoomsListFilter::InactiveSpaces => {
-                !room.is_direct() && !room.has_activity_since(Duration::days(365))
+                !room.is_direct()
+                    && !room.has_activity_since(Duration::days(365))
+                    && !room.is_moderated()
             }
         })
     }
@@ -227,5 +229,63 @@ mod tests {
         rooms.remove_room(&String::from("2") as &RoomId);
         assert_eq!(rooms.sorted_rooms.len(), 0);
         assert_eq!(rooms.requested_rooms.len(), 0);
+    }
+
+    #[test]
+    fn test_inactive_spaces_filter_excludes_moderated() {
+        let mut rooms = Rooms::default();
+
+        // Create an old, inactive, non-moderated space (should be included)
+        let inactive_space = Room {
+            id: String::from("inactive") as RoomId,
+            title: Some(String::from("Old Inactive Space")),
+            room_type: String::from("group"),
+            is_locked: false,
+            last_activity: Utc::now() - Duration::days(400),
+            ..Default::default()
+        };
+
+        // Create an old, inactive, moderated space (should be excluded)
+        let moderated_space = Room {
+            id: String::from("moderated") as RoomId,
+            title: Some(String::from("Moderated Space")),
+            room_type: String::from("group"),
+            is_locked: true,
+            last_activity: Utc::now() - Duration::days(400),
+            ..Default::default()
+        };
+
+        // Create a direct message (should be excluded)
+        let direct_message = Room {
+            id: String::from("direct") as RoomId,
+            title: Some(String::from("Direct Chat")),
+            room_type: String::from("direct"),
+            is_locked: false,
+            last_activity: Utc::now() - Duration::days(400),
+            ..Default::default()
+        };
+
+        // Create a recent space (should be excluded)
+        let recent_space = Room {
+            id: String::from("recent") as RoomId,
+            title: Some(String::from("Recent Space")),
+            room_type: String::from("group"),
+            is_locked: false,
+            last_activity: Utc::now() - Duration::days(10),
+            ..Default::default()
+        };
+
+        rooms.update_with_room(&inactive_space);
+        rooms.update_with_room(&moderated_space);
+        rooms.update_with_room(&direct_message);
+        rooms.update_with_room(&recent_space);
+
+        let filtered: Vec<&Room> = rooms
+            .rooms_filtered_by(&RoomsListFilter::InactiveSpaces)
+            .collect();
+
+        // Only the inactive, non-moderated space should be included
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].id, "inactive");
     }
 }

@@ -68,10 +68,11 @@ impl App<'_> {
 
         self.add_messages_to_cache(messages, update_unread, room_id);
         self.request_missing_parent_messages(messages, room_id);
-        self.state.update_room_selection_with_active_room();
         self.update_message_selection_in_active_room(room_id, selected_message_id);
         self.request_missing_room_info(room_id);
         self.request_missing_persons(messages);
+        // Update cursor to follow active room in case message arrival changed room order
+        self.state.update_room_selection_with_active_room();
     }
 
     /// Adds messages to the cache for a given room, and updates the unread status if requested and
@@ -165,12 +166,12 @@ impl App<'_> {
     }
 
     /// Callback when room information is received.
-    /// Saves the room info in the store and adjusts the position
-    /// of the selector in the list.
+    /// Saves the room info in the store and updates cursor to follow active room.
     pub(crate) fn cb_room_updated(&mut self, webex_room: webex::Room) {
         let team_id = webex_room.team_id.clone();
         let room_title = webex_room.title.clone().unwrap_or_default();
         self.state.cache.rooms.update_with_room(&webex_room.into());
+        // Update cursor to follow active room since list order may have changed
         self.state.update_room_selection_with_active_room();
 
         // If the webex_room has a team_id, and the team is not already requested, request it and add it to the list of requested teams.
@@ -231,5 +232,7 @@ impl App<'_> {
         }
         self.state.cache.remove_room(room_id);
         debug!("Room removed from cache");
+        // Update cursor to follow active room since the list has changed
+        self.state.update_room_selection_with_active_room();
     }
 }

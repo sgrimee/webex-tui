@@ -10,7 +10,7 @@ pub(crate) struct Room {
     pub(crate) id: String,
     pub(crate) title: Option<String>,
     pub(crate) room_type: String,
-    // is_locked: bool,
+    pub(crate) is_locked: bool,
     pub(crate) team_id: Option<String>,
     pub(crate) last_activity: DateTime<Utc>,
     // creator_id: String,
@@ -27,6 +27,11 @@ impl Room {
     /// Returns whether a room is a space.
     pub(crate) fn is_space(&self) -> bool {
         self.room_type == "group"
+    }
+
+    /// Returns whether a room is moderated (locked).
+    pub(crate) fn is_moderated(&self) -> bool {
+        self.is_locked
     }
 
     /// Returns whether the room has seen any activity in the past specified period.
@@ -50,7 +55,7 @@ impl From<WebexRoom> for Room {
             id: webex_room.id,
             title: webex_room.title,
             room_type: webex_room.room_type,
-            // is_locked: webex_room.is_locked,
+            is_locked: webex_room.is_locked,
             team_id: webex_room.team_id,
             // creator_id: webex_room.creator_id,
             // created: webex_room.created,
@@ -75,6 +80,7 @@ mod tests {
         let mut room = Room {
             id: "id".to_string(),
             room_type: "group".to_string(),
+            is_locked: false,
             last_activity: Utc.with_ymd_and_hms(2020, 1, 1, 0, 0, 0).unwrap(),
             unread: false,
             ..Default::default()
@@ -96,6 +102,7 @@ mod tests {
         let room = Room {
             id: "id".to_string(),
             room_type: "group".to_string(),
+            is_locked: false,
             last_activity: Utc::now(),
             unread: false,
             ..Default::default()

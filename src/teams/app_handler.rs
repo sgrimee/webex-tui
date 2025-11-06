@@ -359,17 +359,28 @@ impl Teams<'_> {
         debug!("=== STARTING LEAVE ROOM PROCESS ===");
         debug!("Leaving room with local id {room_id} and global id: {global_id:?}");
 
-        // Get room title for better logging
-        let room_title = {
+        // Get room info for better logging and validation
+        let (room_title, is_locked) = {
             let app = self.app.lock().await;
-            app.state
-                .cache
-                .rooms
-                .room_with_id(room_id)
-                .and_then(|r| r.title.clone())
-                .unwrap_or_else(|| "Unknown".to_string())
+            let room = app.state.cache.rooms.room_with_id(room_id);
+            (
+                room.and_then(|r| r.title.clone())
+                    .unwrap_or_else(|| "Unknown".to_string()),
+                room.map(|r| r.is_moderated()).unwrap_or(false),
+            )
         };
-        debug!("Room title: {room_title}");
+        debug!("Room title: {room_title}, is_locked: {is_locked}");
+
+        // Check if room is moderated/locked before attempting to leave
+        if is_locked {
+            warn!(
+                "⚠️  Cannot leave moderated room '{room_title}' ({room_id}). Moderated rooms require administrator approval to leave."
+            );
+            return Err(eyre!(
+                "Cannot leave moderated room '{}'. Moderated rooms are locked and require administrator approval to leave or remove members.",
+                room_title
+            ));
+        }
 
         debug!("About to call client.leave_room...");
         match self.client.leave_room(&global_id).await {
