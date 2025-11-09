@@ -37,6 +37,10 @@ impl Teams<'_> {
                 trace!("Received unhandled highlight event.");
             }
             Unknown(s) => {
+                info!("===== UNKNOWN EVENT RECEIVED =====");
+                info!("Event type string: {s}");
+                info!("Full event: {event:#?}");
+                info!("===== END UNKNOWN EVENT =====");
                 trace!("Received unhandled unknown event: {s:#?}");
             }
         }
@@ -106,6 +110,23 @@ impl Teams<'_> {
                     .to_string() as RoomId;
                 trace!("Received space event {activity:?} for room: {room_id}");
                 trace!("Space event: {event:#?}");
+
+                // REACTION INVESTIGATION: Log full event details for Joined events
+                if matches!(activity, Joined) {
+                    info!("===== REACTION INVESTIGATION: Joined Event =====");
+                    info!("Full event data: {event:#?}");
+                    if let Some(ref activity_data) = event.data.activity {
+                        info!("Activity verb: {}", activity_data.verb);
+                        info!("Activity object type: {}", activity_data.object.object_type);
+                        info!("Activity object content: {:?}", activity_data.object.content);
+                        info!("Activity object display_name: {:?}", activity_data.object.display_name);
+                        info!("Activity target: {:?}", activity_data.target);
+                        info!("Full activity object: {:#?}", activity_data.object);
+                        info!("Full activity: {:#?}", activity_data);
+                    }
+                    info!("===== END REACTION INVESTIGATION =====");
+                }
+
                 self.app.lock().await.cb_space_updated(&room_id);
             }
             Left => {
