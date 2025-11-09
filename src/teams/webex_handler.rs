@@ -178,18 +178,34 @@ impl Teams<'_> {
                 if let Some(ref encryption_key_url) = activity_data.encryption_key_url {
                     info!("Encryption key URL: {encryption_key_url}");
 
-                    // TODO: Decrypt the reaction emoji
-                    // For now, we'll just log the encrypted data
-                    // In the future, we'll use webex::encryption::DecryptionService to decrypt
+                    // Decrypt the reaction emoji
+                    info!("Attempting to decrypt reaction emoji...");
+                    let decryption_service = webex::encryption::DecryptionService::new(
+                        self.client.token().to_string()
+                    );
+                    let encrypted = webex::encryption::EncryptedContent::new(
+                        encrypted_emoji.clone(),
+                        encryption_key_url.clone(),
+                    );
 
-                    match activity {
-                        ReactionActivity::Added => {
-                            info!("Reaction ADDED to message {message_id}");
-                            // TODO: Update message cache with new reaction
+                    match decryption_service.decrypt(&encrypted).await {
+                        Ok(emoji) => {
+                            info!("✅ Successfully decrypted reaction emoji: {emoji}");
+
+                            match activity {
+                                ReactionActivity::Added => {
+                                    info!("Reaction '{emoji}' ADDED to message {message_id}");
+                                    // TODO: Update message cache with new reaction
+                                }
+                                ReactionActivity::Removed => {
+                                    info!("Reaction '{emoji}' REMOVED from message {message_id}");
+                                    // TODO: Update message cache to remove reaction
+                                }
+                            }
                         }
-                        ReactionActivity::Removed => {
-                            info!("Reaction REMOVED from message {message_id}");
-                            // TODO: Update message cache to remove reaction
+                        Err(e) => {
+                            error!("❌ Failed to decrypt reaction emoji: {e}");
+                            error!("This will help us debug the KMS API structure");
                         }
                     }
                 } else {
