@@ -15,23 +15,43 @@ port: 8080  # OAuth2 redirect port (optional, defaults to 8080)
 ```
 
 ### 2. User Configuration (`config.yml`)
-**Location**: `~/.config/webex-tui/config.yml`  
-**Purpose**: User preferences and UI settings  
+**Location**: `~/.config/webex-tui/config.yml`
+**Purpose**: User preferences and UI settings
+**Auto-creation**: If this file doesn't exist on first run, it will be automatically created with default values, and all bundled theme files will be copied to `~/.config/webex-tui/themes/`
 **Contents**:
 ```yaml
 # Theme to use (default: "default")
-theme: "dracula"
+theme: "default"
 
 # Messages to load per room (default: 10)
-messages_to_load: 20
+messages_to_load: 10
 
 # Enable debug logging (default: false)
-debug: true
+debug: false
 ```
 
 ## Configuration Methods
 
-### Method 1: Manual Configuration
+### Method 1: Automatic Configuration (First Run)
+
+On first run, if `~/.config/webex-tui/config.yml` doesn't exist, webex-tui will:
+1. Create `config.yml` with default settings
+2. Copy all bundled theme files to `~/.config/webex-tui/themes/`
+3. Set the default theme to "default" (a clean, functional theme)
+
+You can then edit `~/.config/webex-tui/config.yml` to customize your preferences:
+
+```yaml
+theme: "dracula"  # Switch to Dracula theme
+messages_to_load: 15
+debug: false
+```
+
+Available bundled themes:
+- `default` - Clean, functional theme with standard terminal colors
+- `dracula` - Popular dark theme with vibrant colors
+
+### Method 2: Manual Configuration
 
 Create `~/.config/webex-tui/config.yml` manually:
 
@@ -41,7 +61,7 @@ messages_to_load: 15
 debug: false
 ```
 
-### Method 2: Environment Variable
+### Method 3: Environment Variable
 
 Set `WEBEX_TUI_CONFIG` to point to a custom config file:
 
@@ -50,7 +70,7 @@ export WEBEX_TUI_CONFIG="/path/to/my/webex-config.yml"
 webex-tui
 ```
 
-### Method 3: Nix Configuration (Recommended)
+### Method 4: Nix Configuration (Recommended)
 
 For NixOS or home-manager users, use the provided nix module:
 

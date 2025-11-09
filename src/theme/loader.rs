@@ -73,8 +73,7 @@ fn get_theme_path(theme_name: &str) -> Result<PathBuf> {
 }
 
 /// Create the themes directory if it doesn't exist
-#[allow(dead_code)]
-pub fn ensure_themes_directory() -> Result<PathBuf> {
+pub(crate) fn ensure_themes_directory() -> Result<PathBuf> {
     let home_dir =
         dirs::home_dir().ok_or_else(|| color_eyre::eyre::eyre!("Could not find home directory"))?;
 
@@ -86,6 +85,50 @@ pub fn ensure_themes_directory() -> Result<PathBuf> {
     }
 
     Ok(theme_dir)
+}
+
+/// Copy bundled theme files to user's config directory
+/// This is called on first run to populate the themes directory
+pub(crate) fn copy_bundled_themes() -> Result<()> {
+    let theme_dir = ensure_themes_directory()?;
+
+    // Get the path to bundled themes (relative to binary or in development, relative to workspace)
+    // In development, themes are in ./themes/ relative to workspace root
+    // When installed, we'll need to bundle them or skip this step
+    let bundled_themes_dir = std::env::current_dir()?.join("themes");
+
+    if !bundled_themes_dir.exists() {
+        debug!(
+            "No bundled themes directory found at {}, skipping theme copy",
+            bundled_themes_dir.display()
+        );
+        return Ok(());
+    }
+
+    // Copy all .yml files from bundled themes to user config
+    for entry in fs::read_dir(bundled_themes_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+
+        if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("yml") {
+            if let Some(filename) = path.file_name() {
+                let dest_path = theme_dir.join(filename);
+
+                // Only copy if destination doesn't exist (don't overwrite user modifications)
+                if !dest_path.exists() {
+                    fs::copy(&path, &dest_path)?;
+                    info!("Copied theme file: {}", filename.to_string_lossy());
+                } else {
+                    debug!(
+                        "Theme file already exists, skipping: {}",
+                        filename.to_string_lossy()
+                    );
+                }
+            }
+        }
+    }
+
+    Ok(())
 }
 
 /// List available themes in the themes directory

@@ -12,3 +12,6 @@ mod tests;
 
 pub use loader::load_theme;
 pub use models::Theme;
+
+// Re-export copy_bundled_themes for use within the crate
+pub(crate) use loader::copy_bundled_themes;

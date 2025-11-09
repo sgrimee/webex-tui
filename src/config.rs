@@ -241,12 +241,38 @@ impl UserConfig {
                 .join(APP_CONFIG_DIR)
                 .join(USER_FILE_NAME);
             info!("Loading user config from: {}", config_path.display());
+
+            // If config file doesn't exist, create it with defaults
+            if !config_path.exists() {
+                info!(
+                    "No user config found, creating default configuration at: {}",
+                    config_path.display()
+                );
+                let default_config = Self::default();
+
+                // Save default config
+                if let Err(e) = default_config.save() {
+                    warn!("Failed to create default config file: {e}");
+                } else {
+                    info!("Created default config file: {}", config_path.display());
+                }
+
+                // Copy bundled theme files to user's config directory
+                if let Err(e) = crate::theme::copy_bundled_themes() {
+                    warn!("Failed to copy theme files: {e}");
+                } else {
+                    info!("Copied theme files to user config directory");
+                }
+
+                return default_config;
+            }
+
             if let Ok(config) = Self::load_from_file(&config_path) {
                 return config;
             }
         }
 
-        // Use defaults if no config found
+        // Use defaults if no config found (shouldn't reach here normally)
         info!("No user config found, using defaults");
         Self::default()
     }
@@ -259,7 +285,6 @@ impl UserConfig {
     }
 
     /// Save user configuration to the standard location
-    #[allow(dead_code)]
     pub(crate) fn save(&self) -> color_eyre::Result<()> {
         if let Some(home) = dirs::home_dir() {
             let config_dir = home.join(CONFIG_DIR).join(APP_CONFIG_DIR);
@@ -276,5 +301,32 @@ impl UserConfig {
         } else {
             Err(eyre!("Could not determine home directory"))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_user_config_default() {
+        let config = UserConfig::default();
+        assert_eq!(config.theme, "default");
+        assert_eq!(config.messages_to_load, 10);
+        assert!(!config.debug);
+    }
+
+    #[test]
+    fn test_user_config_serialization() {
+        let config = UserConfig::default();
+        let yaml = serde_yaml::to_string(&config).expect("Failed to serialize");
+
+        // Check that default values are present in YAML
+        assert!(yaml.contains("theme:"));
+        assert!(yaml.contains("default"));
+        assert!(yaml.contains("messages_to_load:"));
+        assert!(yaml.contains("10"));
+        assert!(yaml.contains("debug:"));
+        assert!(yaml.contains("false"));
     }
 }
