@@ -8,11 +8,11 @@
 use color_eyre::{eyre::eyre, Result};
 use log::*;
 use webex::ActivityType::{
-    AdaptiveCardSubmit, Highlight, Janus, Locus, Message, Space, StartTyping, Unknown,
+    AdaptiveCardSubmit, Highlight, Janus, Locus, Message, Reaction, Space, StartTyping, Unknown,
 };
 use webex::MessageActivity::{Acknowledged, Deleted, Posted, Shared};
 use webex::SpaceActivity::{Changed, Created, Joined, Left};
-use webex::{Event, MessageActivity};
+use webex::{Event, MessageActivity, ReactionActivity};
 
 use crate::app::cache::room::RoomId;
 
@@ -24,6 +24,7 @@ impl Teams<'_> {
         match event.activity_type() {
             Message(activity) => self.handle_message_event(&activity, &event).await?,
             Space(activity) => self.handle_space_event(&activity, &event).await?,
+            Reaction(activity) => self.handle_reaction_event(&activity, &event).await?,
             AdaptiveCardSubmit => {
                 trace!("Received unhandled adaptive card submit event.");
             }
@@ -144,6 +145,62 @@ impl Teams<'_> {
                 trace!("Unhandled space event: {activity:?}");
             }
         }
+        Ok(())
+    }
+
+    /// Handle a reaction event.
+    async fn handle_reaction_event(
+        &mut self,
+        activity: &ReactionActivity,
+        event: &webex::Event,
+    ) -> Result<()> {
+        info!("===== REACTION EVENT =====");
+        info!("Reaction activity: {activity:?}");
+        info!("Full event: {event:#?}");
+
+        // Extract the message ID from the parent
+        let message_id = event
+            .data
+            .activity
+            .as_ref()
+            .and_then(|a| a.parent.as_ref())
+            .map(|p| p.id.clone())
+            .ok_or_else(|| eyre!("No parent message ID found in reaction event"))?;
+
+        info!("Reaction target message ID: {message_id}");
+
+        // Extract the encrypted reaction data
+        if let Some(activity_data) = &event.data.activity {
+            if let Some(ref encrypted_emoji) = activity_data.object.display_name {
+                info!("Encrypted reaction emoji (JWE): {encrypted_emoji}");
+
+                // Extract encryption key URL
+                if let Some(ref encryption_key_url) = activity_data.encryption_key_url {
+                    info!("Encryption key URL: {encryption_key_url}");
+
+                    // TODO: Decrypt the reaction emoji
+                    // For now, we'll just log the encrypted data
+                    // In the future, we'll use webex::encryption::DecryptionService to decrypt
+
+                    match activity {
+                        ReactionActivity::Added => {
+                            info!("Reaction ADDED to message {message_id}");
+                            // TODO: Update message cache with new reaction
+                        }
+                        ReactionActivity::Removed => {
+                            info!("Reaction REMOVED from message {message_id}");
+                            // TODO: Update message cache to remove reaction
+                        }
+                    }
+                } else {
+                    warn!("No encryption key URL found in reaction event");
+                }
+            } else {
+                warn!("No display_name (encrypted emoji) found in reaction event");
+            }
+        }
+
+        info!("===== END REACTION EVENT =====");
         Ok(())
     }
 }
