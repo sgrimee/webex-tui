@@ -503,16 +503,38 @@ impl App<'_> {
 
     /// Copies the selected message content to clipboard
     fn copy_selected_message(&mut self) -> Result<()> {
-        use arboard::Clipboard;
+        use std::io::Write;
+        use std::process::{Command, Stdio};
 
         let message = self.state.selected_message()?;
         let content = Self::extract_message_content(message)?;
 
-        let mut clipboard =
-            Clipboard::new().map_err(|e| eyre!("Failed to access clipboard: {}", e))?;
-        clipboard
-            .set_text(content)
-            .map_err(|e| eyre!("Failed to set clipboard content: {}", e))?;
+        // On Wayland, use wl-copy for better compatibility
+        if std::env::var("WAYLAND_DISPLAY").is_ok() {
+            let mut child = Command::new("wl-copy")
+                .stdin(Stdio::piped())
+                .spawn()
+                .map_err(|e| eyre!("Failed to spawn wl-copy: {}", e))?;
+            if let Some(mut stdin) = child.stdin.take() {
+                stdin
+                    .write_all(content.as_bytes())
+                    .map_err(|e| eyre!("Failed to write to wl-copy: {}", e))?;
+            }
+            let status = child
+                .wait()
+                .map_err(|e| eyre!("Failed to wait for wl-copy: {}", e))?;
+            if !status.success() {
+                return Err(eyre!("wl-copy exited with status: {}", status));
+            }
+        } else {
+            // Fallback to arboard for X11 or other
+            use arboard::Clipboard;
+            let mut clipboard =
+                Clipboard::new().map_err(|e| eyre!("Failed to access clipboard: {}", e))?;
+            clipboard
+                .set_text(content)
+                .map_err(|e| eyre!("Failed to set clipboard content: {}", e))?;
+        }
 
         info!("Message copied to clipboard");
         Ok(())

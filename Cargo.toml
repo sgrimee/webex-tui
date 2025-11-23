@@ -12,7 +12,7 @@ repository = "https://github.com/sgrimee/webex-tui"
 version = "0.8.0"
 
 [dependencies]
-arboard = { version = "3.6", default-features = false }
+arboard = { version = "3.6" }
 base64 = "0.22"
 chrono = "0.4"
 clap = { version = "4", features = ["cargo"] }
