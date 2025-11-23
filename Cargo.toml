@@ -20,8 +20,8 @@ color-eyre = "0.6"
 dirs = "6"
 enum-iterator = "2"
 fuzzy-matcher = "0.3"
-gethostname = "0.5"
-html2text = "0.15"
+gethostname = "1.1"
+html2text = "0.16"
 itertools = "0.14"
 log = "0.4"
 oauth2 = { version = "5", features = ["reqwest"] }
@@ -31,7 +31,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_yaml = "0.9"
 textwrap = "0.16"
-thiserror = "1.0"
+thiserror = "2.0"
 tokio = { version = "1.43.1", features = ["rt", "macros"] }
 webbrowser = "1.0.1"
 # webex = "0.10.0"
@@ -40,11 +40,11 @@ webbrowser = "1.0.1"
 webex = { path = "../webex-rust" }
 
 # UI dependencies - allow latest compatible versions
-crossterm = "0.28"
+crossterm = "0.29"
 ratatui = "0.29"
-tui-logger = "0.14"
+tui-logger = "0.17.4"
 tui-textarea = "0.7"
 
 [dev-dependencies]
-rstest = "0.24.0"
+rstest = "0.26.1"
 tempfile = "3.0"

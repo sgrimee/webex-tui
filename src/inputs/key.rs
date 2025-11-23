@@ -4,7 +4,7 @@
 
 use std::fmt::{self, Display, Formatter};
 
-use crossterm::event;
+use ratatui::crossterm::event;
 
 /// Represents an key.
 #[derive(PartialEq, Eq, Clone, Copy, Hash, Debug)]

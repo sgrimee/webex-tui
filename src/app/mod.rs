@@ -20,8 +20,8 @@ use crate::theme::Theme;
 use cache::room::RoomId;
 
 use color_eyre::{eyre::eyre, Result};
-use crossterm::event::KeyEvent;
 use log::*;
+use ratatui::crossterm::event::KeyEvent;
 use tui_logger::TuiWidgetEvent;
 use tui_textarea::Input;
 use webex::Message;

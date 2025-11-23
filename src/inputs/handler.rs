@@ -10,7 +10,7 @@ use std::time::Duration;
 pub(crate) enum Event {
     /// An input event occurred.
     // Input(Key),
-    Input(crossterm::event::KeyEvent),
+    Input(ratatui::crossterm::event::KeyEvent),
     /// An tick event occurred.
     Tick,
 }
@@ -37,9 +37,9 @@ impl EventHandler {
         tokio::spawn(async move {
             loop {
                 // poll for tick rate duration, if no event, sent tick event.
-                if crossterm::event::poll(tick_rate).unwrap() {
-                    if let crossterm::event::Event::Key(key_event) =
-                        crossterm::event::read().unwrap()
+                if ratatui::crossterm::event::poll(tick_rate).unwrap() {
+                    if let ratatui::crossterm::event::Event::Key(key_event) =
+                        ratatui::crossterm::event::read().unwrap()
                     {
                         if let Err(err) = event_tx.send(Event::Input(key_event)).await {
                             error!("Could not send terminal event to main thread!, {err}");
