@@ -8,7 +8,7 @@
 use color_eyre::{eyre::eyre, Result};
 use log::*;
 use webex::ActivityType::{
-    AdaptiveCardSubmit, Highlight, Janus, Locus, Message, Space, StartTyping, Unknown,
+    AdaptiveCardSubmit, Highlight, Janus, Locus, Membership, Message, Space, StartTyping, Unknown,
 };
 use webex::MessageActivity::{Acknowledged, Deleted, Posted, Shared};
 use webex::SpaceActivity::{Changed, Created, Joined, Left};
@@ -38,6 +38,9 @@ impl Teams<'_> {
             }
             Unknown(s) => {
                 trace!("Received unhandled unknown event: {s:#?}");
+            }
+            Membership(_) => {
+                trace!("Received unhandled membership event.");
             }
         }
         Ok(())
