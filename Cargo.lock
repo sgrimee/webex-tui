@@ -3493,6 +3493,7 @@ dependencies = [
 [[package]]
 name = "webex"
 version = "0.10.0"
+source = "git+https://github.com/wr-org/webex-rust.git?branch=master#f132301a9f38477a0866a978f5701a650ffbe897"
 dependencies = [
  "base64",
  "chrono",
