@@ -8,4 +8,6 @@ pub(crate) mod projection;
 mod text;
 
 #[cfg(test)]
+mod continuity_tests;
+#[cfg(test)]
 mod tests;

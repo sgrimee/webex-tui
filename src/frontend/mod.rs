@@ -7,6 +7,8 @@ pub(crate) mod models;
 // Stage 5B scaffold: current Teams dispatch is intentionally unchanged. Remove
 // these narrow allowances as the bridge adapter starts consuming each boundary.
 #[allow(dead_code)]
+pub(crate) mod continuity;
+#[allow(dead_code)]
 pub(crate) mod data;
 #[allow(dead_code)]
 pub(crate) mod envelopes;

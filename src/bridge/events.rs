@@ -1,9 +1,10 @@
-//! Decode only the B7 metadata needed by the neutral lifecycle seam.
-//! B8 continuity/session control events need a separately fenced runtime adapter;
-//! this compile-only decoder neither claims continuity nor consumes their cursors.
+//! Compile-only B7 payload and B8 UI continuity/control projection.
+//! Whole-frame projection validates markers before exposing ordinary changes;
+//! it does not subscribe, maintain a runtime fence or recreate expired sessions.
 
 use super::projection::{connection, valid_id, ProjectionError};
 use crate::frontend::{
+    continuity::{ContinuityBoundary, DaemonInstanceId, LifecycleControl, UiLifecycleFrame},
     data::{MessageId, RoomId},
     events::{
         ChangeScope, ConnectionLayer, LifecycleEvent, MembershipChange, MessageChange, MessageKey,
@@ -11,7 +12,10 @@ use crate::frontend::{
     },
 };
 use serde_json::Value;
-use webex_bridge::client::events::BridgeEvent;
+use webex_bridge::{
+    client::events::{BridgeEvent, CONTINUITY_READY_EVENT},
+    dto,
+};
 
 fn string<'a>(data: &'a Value, name: &str) -> Result<&'a str, ProjectionError> {
     data.get(name)
@@ -32,9 +36,8 @@ fn count(data: &Value, name: &str) -> Result<Option<u64>, ProjectionError> {
     }
 }
 
-pub(crate) fn project_event(
-    event: &BridgeEvent,
-) -> Result<Option<LifecycleEvent>, ProjectionError> {
+// Payload-only helper stays private: UI callers must retain continuity/controls.
+fn project_event(event: &BridgeEvent) -> Result<Option<LifecycleEvent>, ProjectionError> {
     let data = &event.data;
     let projected = match event.name.as_str() {
         "connection.status" => LifecycleEvent::Connection {
@@ -93,11 +96,85 @@ pub(crate) fn project_event(
                 _ => ResyncReason::Unknown,
             },
         },
-        // Including B8 control events: a future lifecycle owner must handle
-        // them before forwarding ordinary B7 changes to this decoder.
+        // The whole-frame mapper handles B8 controls before this payload helper.
         _ => return Ok(None),
     };
     Ok(Some(projected))
+}
+
+pub(crate) fn project_continuity(
+    value: dto::Continuity,
+) -> Result<ContinuityBoundary, ProjectionError> {
+    valid_id(&value.instance_id)?;
+    Ok(ContinuityBoundary {
+        instance_id: DaemonInstanceId::new(value.instance_id),
+        watermark: value.watermark,
+    })
+}
+
+fn event_boundary(event: &BridgeEvent) -> Result<Option<ContinuityBoundary>, ProjectionError> {
+    let nested = event.data.get("continuity").is_some();
+    let top = event.data.get("instanceId").is_some() || event.data.get("watermark").is_some();
+    if nested && top {
+        return Err(ProjectionError::Metadata);
+    }
+    if !nested && !top {
+        return Ok(None);
+    }
+    // Ready/lag markers are top-level; normal UI changes carry nested metadata.
+    if event.name == CONTINUITY_READY_EVENT && nested {
+        return Err(ProjectionError::Metadata);
+    }
+    if top && event.name != CONTINUITY_READY_EVENT && !event.requires_resync() {
+        return Err(ProjectionError::Metadata);
+    }
+    let value = event.continuity().ok_or(ProjectionError::Metadata)?;
+    project_continuity(value).map(Some)
+}
+
+/// B8 frame mapping only: controls must be processed by the owning subscription
+/// before snapshot/generation filtering. No renewal, reconnect or write occurs.
+pub(crate) fn project_ui_event(event: &BridgeEvent) -> Result<UiLifecycleFrame, ProjectionError> {
+    if event.is_session_expired() {
+        if string(&event.data, "reason")? != "session_expired" {
+            return Err(ProjectionError::Metadata);
+        }
+        // The actual terminal event has no continuity. Do not fabricate a marker
+        // or let extra payload data/snapshot filtering erase subscription expiry.
+        return Ok(UiLifecycleFrame::Control(LifecycleControl::SessionExpired));
+    }
+    let boundary = event_boundary(event)?;
+    if event.name == CONTINUITY_READY_EVENT {
+        return Ok(UiLifecycleFrame::Control(LifecycleControl::Ready(
+            boundary.ok_or(ProjectionError::Metadata)?,
+        )));
+    }
+    if event.requires_resync() {
+        return Ok(UiLifecycleFrame::Control(
+            LifecycleControl::ResyncRequired {
+                boundary: boundary.ok_or(ProjectionError::Metadata)?,
+                scope: ChangeScope::WholeMirror,
+                reason: match string(&event.data, "reason")? {
+                    "event_lag" => ResyncReason::EventLag,
+                    _ => ResyncReason::Unknown,
+                },
+            },
+        ));
+    }
+    match project_event(event)? {
+        Some(projected) => {
+            // publish_both(connection.status) intentionally has no UI watermark.
+            // No other known UI invalidation may silently lose its marker.
+            if boundary.is_none() && event.name != "connection.status" {
+                return Err(ProjectionError::Metadata);
+            }
+            Ok(UiLifecycleFrame::Change {
+                boundary,
+                event: projected,
+            })
+        }
+        None => Ok(UiLifecycleFrame::Unrecognized { boundary }),
+    }
 }
 
 #[cfg(test)]
