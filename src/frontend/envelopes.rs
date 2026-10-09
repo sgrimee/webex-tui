@@ -133,6 +133,9 @@ pub(crate) enum PartialReason {
     ParentUnavailable,
     PermissionUnavailable,
     SyncInProgress,
+    MorePages,
+    RemoteUnavailable,
+    ResourceMismatch,
 }
 
 /// A partial read still has usable data; pagination exhaustion is separate.

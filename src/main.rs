@@ -2,6 +2,9 @@
 
 mod app;
 mod banner;
+// Compile-only migration adapter; startup still uses the legacy Teams backend.
+#[allow(dead_code)]
+mod bridge;
 mod config;
 mod frontend;
 mod inputs;
