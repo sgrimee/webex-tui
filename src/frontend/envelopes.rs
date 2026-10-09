@@ -10,6 +10,7 @@ use super::{
         PersonId, PersonSnapshot, RoomId, RoomSnapshot, TeamId, TeamSnapshot,
     },
     requests::{CounterExhausted, RoomRequestContext, RoomViewRequests},
+    threads::ThreadPage,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -161,7 +162,7 @@ pub(crate) enum FrontendResult {
     UpdatePerson(ReadOutcome<PersonSnapshot>),
     ListMessagesInRoom(ReadOutcome<MessagePage>),
     UpdateMessage(ReadOutcome<MessageSnapshot>),
-    UpdateChildrenMessages(ReadOutcome<MessagePage>),
+    UpdateChildrenMessages(ReadOutcome<ThreadPage>),
     SendMessage(WriteOutcome<MessageSnapshot>),
     EditMessage(WriteOutcome<MessageSnapshot>),
     DeleteMessage(WriteOutcome<MessageId>),
