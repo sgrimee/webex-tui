@@ -3,6 +3,7 @@
 mod app;
 mod banner;
 mod config;
+mod frontend;
 mod inputs;
 mod logger;
 mod teams;

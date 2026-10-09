@@ -11,10 +11,10 @@ pub(crate) const ACTIVE_ROOM_MIN_WIDTH: u16 = 30;
 pub(crate) const ROOM_MIN_HEIGHT: u16 = 8;
 
 use crate::app::state::{ActivePane, AppState};
+use crate::frontend::models::{DisplayBody, MessagePresentation};
 use base64::Engine;
 use html2text::from_read;
 use ratatui::prelude::Rect;
-use webex::Message;
 
 use chrono::{DateTime, Local, Utc};
 use ratatui::layout::Constraint;
@@ -30,7 +30,7 @@ use super::style::line_for_room_and_team_title;
 
 /// Assigns a color/style to each message sender, spreading over the palette
 /// while ensuring each user always gets the same style for consistency.
-fn style_for_user(id: &Option<String>, user_colors: &[Color]) -> Style {
+fn style_for_user(id: Option<&str>, user_colors: &[Color]) -> Style {
     match id {
         Some(id) => {
             let upper = user_colors.len() as u64;
@@ -77,7 +77,11 @@ fn trim_newline(s: &mut String) {
 }
 
 /// Returns a row with the formatted message and the number of lines.
-fn row_for_message<'a>(state: &AppState, msg: Message, width: u16) -> (Row<'a>, usize) {
+fn row_for_message<'a>(
+    state: &AppState,
+    msg: MessagePresentation<'_>,
+    width: u16,
+) -> (Row<'a>, usize) {
     // Offset messages that are part of a conversation
     let (title_indent, content_indent) = match msg.parent_id {
         None => (TITLE_INDENT, CONTENT_INDENT),
@@ -88,29 +92,24 @@ fn row_for_message<'a>(state: &AppState, msg: Message, width: u16) -> (Row<'a>, 
     let mut title_line = Line::default();
     title_line.spans.push(title_indent.into());
 
-    // If the message has a person_id, get the person's display name from the cache.
-    // Otherwise, or if it is not in cache, use the person's email.
-    // If none is available, use "Unknown".
-    let person_opt = msg
-        .person_id
-        .clone()
-        .and_then(|id| state.cache.persons.get(&id));
-    let sender = match (person_opt, msg.person_email) {
+    // Prefer the cached display name, then the projected sender email.
+    let person_opt = msg.sender_id.and_then(|id| state.cache.persons.get(id));
+    let sender = match (person_opt, msg.sender_email) {
         (Some(person), _) => person.display_name.clone(),
-        (None, Some(email)) => email,
+        (None, Some(email)) => email.to_owned(),
         _ => String::from("Unknown"),
     };
     title_line.spans.push(Span::styled(
         sender,
-        style_for_user(&msg.person_id, &state.theme.user_colors()),
+        style_for_user(msg.sender_id, &state.theme.user_colors()),
     ));
 
     // Add message timestamp
     title_line.spans.push(Span::from("  "));
     let mut stamp = String::new();
-    if let Some(updated) = &msg.updated {
+    if let Some(updated) = msg.updated_at {
         stamp = format!("{} (edited)", human_timestamp(updated));
-    } else if let Some(created) = &msg.created {
+    } else if let Some(created) = msg.created_at {
         stamp = human_timestamp(created);
     }
     title_line.spans.push(Span::styled(
@@ -128,22 +127,22 @@ fn row_for_message<'a>(state: &AppState, msg: Message, width: u16) -> (Row<'a>, 
     let options = textwrap::Options::new(text_width)
         .initial_indent(content_indent)
         .subsequent_indent(content_indent);
-    let mut content = match (msg.html, msg.markdown, msg.text) {
-        (None, None, None) => String::from("No content"),
-        (Some(html), _, _) => {
+    let mut content = match msg.body.display() {
+        DisplayBody::Missing => String::from("No content"),
+        DisplayBody::Html(html) => {
             if state.debug {
                 title_line.spans.push(Span::from(" (HTML)"));
             }
             from_read(html.as_bytes(), text_width)
                 .unwrap_or_else(|_| String::from("Failed to parse HTML"))
         }
-        (_, Some(markdown), _) => {
+        DisplayBody::Markdown(markdown) => {
             if state.debug {
                 title_line.spans.push(Span::from("  (MD)"));
             }
-            markdown
+            markdown.to_owned()
         }
-        (_, _, Some(text)) => text,
+        DisplayBody::Text(text) => text.to_owned(),
     };
     trim_newline(&mut content);
 
@@ -153,12 +152,12 @@ fn row_for_message<'a>(state: &AppState, msg: Message, width: u16) -> (Row<'a>, 
     text.extend(Text::from(title_line));
     text.extend(Text::from(fill(&content, options)));
 
-    // Indicate the presence of attachments
-    if let Some(files) = msg.files {
+    // Indicate the presence of attachments, without exposing attachment URLs.
+    if let Some(count) = msg.attachment_count {
         text.extend(Text::from(format!(
             "-- {} attachment{}",
-            files.len(),
-            if files.len() > 1 { "s" } else { "" }
+            count,
+            if count > 1 { "s" } else { "" }
         )));
     }
 
@@ -169,7 +168,7 @@ fn row_for_message<'a>(state: &AppState, msg: Message, width: u16) -> (Row<'a>, 
 }
 
 /// Adds the decoded message uuid to the line.
-fn add_uuid_to_line(id: Option<String>, line: &mut Line<'_>) {
+fn add_uuid_to_line(id: Option<&str>, line: &mut Line<'_>) {
     if let Some(id) = id
         .and_then(|id| {
             base64::engine::general_purpose::STANDARD_NO_PAD
@@ -208,7 +207,7 @@ pub(crate) fn draw_msg_table<'a>(state: &AppState, rect: &Rect) -> (Table<'a>, u
 
         // add the room id to the title if debug is enabled
         if state.debug {
-            add_uuid_to_line(Some(room.id.clone()), &mut title_line);
+            add_uuid_to_line(Some(room.id.as_str()), &mut title_line);
         }
 
         // get the formatted messages for the room
@@ -216,7 +215,8 @@ pub(crate) fn draw_msg_table<'a>(state: &AppState, rect: &Rect) -> (Table<'a>, u
             .cache
             .messages_in_room(&room.id)
             .map(|msg| {
-                let (row, height) = row_for_message(state, msg.clone(), rect.width - 2);
+                let (row, height) =
+                    row_for_message(state, MessagePresentation::from(msg), rect.width - 2);
                 nb_lines += height;
                 row
             })
@@ -244,4 +244,64 @@ pub(crate) fn draw_msg_table<'a>(state: &AppState, rect: &Rect) -> (Table<'a>, u
         nb_rows,
         nb_lines,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::frontend::models::MessageBody;
+    use ratatui::{buffer::Buffer, widgets::Widget};
+
+    fn rendered_row(message: MessagePresentation<'_>) -> String {
+        let state = AppState::default();
+        let (row, height) = row_for_message(&state, message, 60);
+        let area = Rect::new(0, 0, 60, height as u16);
+        let mut buffer = Buffer::empty(area);
+        Table::new([row], [Constraint::Percentage(100)]).render(area, &mut buffer);
+        buffer.content.iter().map(|cell| cell.symbol()).collect()
+    }
+
+    #[test]
+    fn neutral_row_renders_text_sender_and_attachment_count() {
+        let text = rendered_row(MessagePresentation {
+            sender_email: Some("synthetic@example.invalid"),
+            body: MessageBody {
+                text: Some("Plain message"),
+                ..Default::default()
+            },
+            attachment_count: Some(2),
+            ..Default::default()
+        });
+        assert!(text.contains("synthetic@example.invalid"));
+        assert!(text.contains("Plain message"));
+        assert!(text.contains("-- 2 attachments"));
+    }
+
+    #[test]
+    fn neutral_row_preserves_html_display_precedence_and_reply_indent() {
+        let text = rendered_row(MessagePresentation {
+            parent_id: Some("parent-a"),
+            body: MessageBody {
+                text: Some("alternate plain body"),
+                markdown: Some("alternate Markdown body"),
+                html: Some("<p>Displayed HTML body</p>"),
+            },
+            ..Default::default()
+        });
+        assert!(text.contains("Displayed HTML body"));
+        assert!(text.contains(CONTENT_INDENT_REPLY));
+        assert!(!text.contains("<p>"));
+        assert!(!text.contains("alternate"));
+    }
+
+    #[test]
+    fn neutral_row_distinguishes_no_body_and_known_zero_attachments() {
+        let text = rendered_row(MessagePresentation {
+            attachment_count: Some(0),
+            ..Default::default()
+        });
+        assert!(text.contains("Unknown"));
+        assert!(text.contains("No content"));
+        assert!(text.contains("-- 0 attachment"));
+    }
 }
