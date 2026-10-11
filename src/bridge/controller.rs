@@ -8,11 +8,12 @@ use super::{
     events::project_ui_event,
     session::{
         FrameAction, LeaseAction, SessionBackend, SessionClock, SessionFailure, SessionLifecycle,
-        SessionPhase, SnapshotTicket, SubscriptionId,
+        SessionPhase, SessionWriteError, SnapshotTicket, SubscriptionId,
     },
 };
 use crate::frontend::{
     continuity::UiLifecycleFrame,
+    envelopes::{FrontendIntent, FrontendResult},
     events::{ConnectionState, LifecycleEvent},
     lifecycle::{LifecycleProjection, ProjectionEffects},
 };
@@ -41,6 +42,19 @@ impl<B: SessionBackend, C: SessionClock, H: PresentationHost> HostController<B, 
             projection: LifecycleProjection::default(),
             host,
         }
+    }
+
+    /// The host can request a typed write result but never sees the capability.
+    pub(crate) async fn dispatch_write(
+        &mut self,
+        intent: FrontendIntent,
+    ) -> Result<FrontendResult, SessionWriteError> {
+        let before = self.session.phase();
+        let result = self.session.dispatch_write(intent).await;
+        if self.session.phase() != before {
+            self.phase_changed();
+        }
+        result
     }
 
     pub(crate) fn phase(&self) -> SessionPhase {
