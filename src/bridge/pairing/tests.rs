@@ -1,3 +1,6 @@
+#[cfg(target_os = "macos")]
+use super::keychain::MacosKeychainSecretStore;
+use super::keychain::{KeychainItem, KeychainSecretStore};
 use super::*;
 use crate::bridge::session::{SessionBackend, SessionClock, SessionPhase};
 use std::{
@@ -436,6 +439,115 @@ async fn existing_secret_is_not_observable_through_session_failure_or_state() {
     assert_secret_free(&result, &secret);
     assert_secret_free(&bootstrap.state(), &secret);
     assert_eq!(*events.lock().unwrap(), ["status", "load", "pair", "issue"]);
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum KeychainCall {
+    Read,
+    Write,
+}
+
+struct FakeKeychainItem {
+    calls: Arc<Mutex<Vec<KeychainCall>>>,
+    read: Option<Result<Option<String>, SecretStoreFailure>>,
+    write: Result<(), SecretStoreFailure>,
+}
+
+impl KeychainItem for FakeKeychainItem {
+    fn read(&mut self) -> Result<Option<String>, SecretStoreFailure> {
+        self.calls.lock().unwrap().push(KeychainCall::Read);
+        self.read
+            .take()
+            .expect("contract fake is read only once per store")
+    }
+
+    fn write(&mut self, _: &UiSecret) -> Result<(), SecretStoreFailure> {
+        self.calls.lock().unwrap().push(KeychainCall::Write);
+        self.write
+    }
+}
+
+fn fake_keychain(
+    read: Result<Option<String>, SecretStoreFailure>,
+    write: Result<(), SecretStoreFailure>,
+) -> (
+    KeychainSecretStore<FakeKeychainItem>,
+    Arc<Mutex<Vec<KeychainCall>>>,
+) {
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let item = FakeKeychainItem {
+        calls: Arc::clone(&calls),
+        read: Some(read),
+        write,
+    };
+    (KeychainSecretStore::new(item), calls)
+}
+
+#[tokio::test]
+async fn keychain_store_writes_only_after_a_confirmed_missing_item() {
+    let (mut store, calls) = fake_keychain(Ok(None), Ok(()));
+    let secret = UiSecret::from_random([0xA9; 32]);
+
+    assert!(matches!(store.load().await, Ok(None)));
+    assert!(store.persist(&secret).await.is_ok());
+    assert_eq!(
+        *calls.lock().unwrap(),
+        [KeychainCall::Read, KeychainCall::Write]
+    );
+}
+
+#[tokio::test]
+async fn keychain_store_never_writes_after_denied_or_unavailable_read() {
+    for failure in [SecretStoreFailure::Denied, SecretStoreFailure::Unavailable] {
+        let (mut store, calls) = fake_keychain(Err(failure), Ok(()));
+        let secret = UiSecret::from_random([0xBA; 32]);
+
+        assert!(matches!(store.load().await, Err(error) if error == failure));
+        assert!(matches!(store.persist(&secret).await, Err(error) if error == failure));
+        assert_eq!(*calls.lock().unwrap(), [KeychainCall::Read]);
+    }
+}
+
+#[tokio::test]
+async fn keychain_store_does_not_retry_a_failed_write() {
+    for failure in [SecretStoreFailure::Denied, SecretStoreFailure::Unavailable] {
+        let (mut store, calls) = fake_keychain(Ok(None), Err(failure));
+        let secret = UiSecret::from_random([0xCB; 32]);
+
+        assert!(matches!(store.load().await, Ok(None)));
+        assert!(matches!(store.persist(&secret).await, Err(error) if error == failure));
+        assert!(matches!(store.persist(&secret).await, Err(error) if error == failure));
+        assert_eq!(
+            *calls.lock().unwrap(),
+            [KeychainCall::Read, KeychainCall::Write]
+        );
+    }
+}
+
+#[tokio::test]
+async fn keychain_store_never_overwrites_present_or_malformed_items() {
+    for value in [encoded([0xCB; 32]), "not-a-canonical-pairing-secret".into()] {
+        let (mut store, calls) = fake_keychain(Ok(Some(value)), Ok(()));
+        let secret = UiSecret::from_random([0xDC; 32]);
+
+        let load = store.load().await;
+        match load {
+            Ok(Some(_)) | Err(SecretStoreFailure::Unavailable) => {}
+            _ => panic!("unexpected Keychain load result"),
+        }
+        assert!(matches!(
+            store.persist(&secret).await,
+            Err(SecretStoreFailure::Unavailable)
+        ));
+        assert_eq!(*calls.lock().unwrap(), [KeychainCall::Read]);
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn macos_keychain_adapter_is_compile_checked_without_opening_keychain() {
+    let _: fn() -> Result<MacosKeychainSecretStore, SecretStoreFailure> =
+        MacosKeychainSecretStore::new;
 }
 
 #[tokio::test]

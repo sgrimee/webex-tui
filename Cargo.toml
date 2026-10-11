@@ -47,6 +47,9 @@ ratatui = "0.29"
 tui-logger = "0.17.4"
 tui-textarea = "0.7"
 
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3.6.3", features = ["apple-native"] }
+
 [dev-dependencies]
 rstest = "0.26.1"
 tempfile = "3.0"

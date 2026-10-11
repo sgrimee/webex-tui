@@ -1,9 +1,10 @@
 //! Explicit, non-UI bootstrap for the paired local bridge session.
 //!
-//! This module owns no Keychain implementation, terminal prompt, App state or
-//! background work. Callers inject a secret store, random source and local
-//! bridge pairing backend. The secret is kept only in this orchestration call,
-//! is never exposed through [`PairingState`], and is borrowed directly by
+//! This module owns no terminal prompt, App state or background work. Its
+//! Keychain adapter remains injectable and unconnected: callers explicitly
+//! construct it and inject it with a random source and local bridge pairing
+//! backend. The secret is kept only in this orchestration call, is never
+//! exposed through [`PairingState`], and is borrowed directly by
 //! [`SessionLifecycle`] when opening the session.
 
 use super::session::{
@@ -17,6 +18,8 @@ use webex_bridge::{
     dto,
 };
 use zeroize::Zeroize;
+
+pub(crate) mod keychain;
 
 /// The bridge API revision understood by this bounded bootstrap seam.
 pub(crate) const SUPPORTED_API_VERSION: u32 = 1;
@@ -111,8 +114,8 @@ pub(crate) enum PairingBackendFailure {
     Unavailable,
 }
 
-/// TUI-owned secret persistence. A production implementation will use the
-/// TUI's dedicated Keychain item; this seam deliberately supplies none yet.
+/// TUI-owned secret persistence. [`keychain::MacosKeychainSecretStore`] is the
+/// dedicated production adapter, while callers may inject test or alternate adapters.
 /// Implementations must not format, log, clone, or retain the borrowed secret.
 pub(crate) trait UiSecretStore: Send {
     fn load(&mut self)
@@ -140,8 +143,8 @@ pub(crate) trait PairingBackend: Send {
 }
 
 /// Concrete protected-UDS pairing adapter. It creates no sessions and does not
-/// retain a secret; production Keychain/random wiring remains intentionally out
-/// of scope for this source-only seam.
+/// retain a secret; Keychain/random wiring remains intentionally unconnected
+/// from startup and presentation code.
 pub(crate) struct BridgePairingBackend {
     bridge: BridgeClient,
 }
