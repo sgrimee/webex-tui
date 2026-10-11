@@ -8,7 +8,7 @@
 use super::{
     events::project_continuity,
     projection::valid_id,
-    write_dispatch::{BridgeUiWriteBackend, UiWriteBackend},
+    write_dispatch::{BridgeUiWriteBackend, UiWriteBackend, WriteDispatcher},
 };
 use crate::frontend::{
     continuity::{
@@ -253,11 +253,11 @@ pub(crate) struct ConnectAttempt {
     started: Instant,
 }
 
-struct Active<C, S, W> {
+struct Active<C, S, W: UiWriteBackend> {
     client: C,
     stream: S,
     // Retained privately until the active session is replaced or dropped.
-    _writer: W,
+    _writer: WriteDispatcher<W>,
     subscription: SubscriptionId,
     lease_deadline: Instant,
     renew_at: Instant,
@@ -420,7 +420,7 @@ impl<B: SessionBackend, C: SessionClock> SessionLifecycle<B, C> {
         self.active = Some(Active {
             client,
             stream,
-            _writer: writer,
+            _writer: WriteDispatcher::new(writer),
             subscription,
             lease_deadline,
             renew_at,
