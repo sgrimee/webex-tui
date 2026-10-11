@@ -247,6 +247,68 @@ async fn host_active_write_uses_private_writer_once() {
 }
 
 #[tokio::test]
+async fn host_write_rejects_awaiting_and_snapshot_without_mutation() {
+    let mut f = fixture();
+    let intent = || FrontendIntent::SendMessage {
+        room_id: RoomId::new("r"),
+        parent_id: None,
+        body: ComposedBody::PlainText("body".into()),
+    };
+    f.controller.connect("synthetic-secret").await.unwrap();
+    assert!(matches!(
+        f.controller.dispatch_write(intent()).await,
+        Err(SessionWriteError::NotReady)
+    ));
+    let id = f.controller.subscription().unwrap();
+    f.controller.frame(id, ready()).unwrap();
+    assert!(matches!(
+        f.controller.dispatch_write(intent()).await,
+        Err(SessionWriteError::NotReady)
+    ));
+    assert_eq!(f.writer_calls.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn host_write_wrong_intent_has_no_mutation() {
+    let mut f = fixture();
+    active(&mut f).await;
+    assert!(matches!(
+        f.controller.dispatch_write(FrontendIntent::WhoAmI).await,
+        Err(SessionWriteError::Dispatch(_))
+    ));
+    assert_eq!(f.writer_calls.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn host_write_expiry_publishes_one_disconnected_update() {
+    let mut f = fixture();
+    active(&mut f).await;
+    let phase_len = f.controller.host().phases.len();
+    let lifecycle_len = f.controller.host().effects.len();
+    f.clock.advance(100);
+    let intent = FrontendIntent::SendMessage {
+        room_id: RoomId::new("r"),
+        parent_id: None,
+        body: ComposedBody::PlainText("body".into()),
+    };
+    assert!(matches!(
+        f.controller.dispatch_write(intent).await,
+        Err(SessionWriteError::Expired)
+    ));
+    assert_eq!(f.writer_calls.load(Ordering::SeqCst), 0);
+    assert_eq!(f.controller.host().phases.len(), phase_len + 1);
+    assert_eq!(f.controller.host().effects.len(), lifecycle_len + 1);
+    assert_eq!(
+        f.controller.host().phases.last(),
+        Some(&SessionPhase::Expired)
+    );
+    assert_eq!(
+        f.controller.host().last_local,
+        Some(ConnectionState::Disconnected)
+    );
+}
+
+#[tokio::test]
 async fn connect_ready_requests_neutral_snapshot_refresh_without_changing_selected_room() {
     let mut f = fixture();
     let id = f.controller.connect("synthetic-secret").await.unwrap();

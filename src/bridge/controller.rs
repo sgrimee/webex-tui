@@ -49,9 +49,9 @@ impl<B: SessionBackend, C: SessionClock, H: PresentationHost> HostController<B, 
         &mut self,
         intent: FrontendIntent,
     ) -> Result<FrontendResult, SessionWriteError> {
-        let before = self.session.phase();
+        let had_active = self.session.subscription().is_some();
         let result = self.session.dispatch_write(intent).await;
-        if self.session.phase() != before {
+        if had_active && self.session.subscription().is_none() {
             self.phase_changed();
         }
         result
