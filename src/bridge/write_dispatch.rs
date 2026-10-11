@@ -270,6 +270,9 @@ mod tests {
             message: "safe".into(),
         }
     }
+    fn transport() -> ClientError {
+        ClientError::Transport(anyhow::anyhow!("transport"))
+    }
     fn rejected() -> ClientError {
         ClientError::Api {
             status: reqwest::StatusCode::BAD_REQUEST,
@@ -356,5 +359,67 @@ mod tests {
             FrontendResult::SendMessage(WriteOutcome::DeliveryUnknown(_))
         ));
         assert_eq!(d.backend.calls, 1);
+    }
+    #[tokio::test]
+    async fn transport_uncertainty_is_once_for_each_write() {
+        let mut send_d = fake(Err(transport()), Ok(msg()), Ok(()), Ok(()));
+        assert!(matches!(
+            send_d.dispatch(send()).await,
+            FrontendResult::SendMessage(WriteOutcome::DeliveryUnknown(_))
+        ));
+        assert_eq!(send_d.backend.calls, 1);
+        let mut edit_d = fake(Ok(msg()), Err(transport()), Ok(()), Ok(()));
+        assert!(matches!(
+            edit_d.dispatch(edit()).await,
+            FrontendResult::EditMessage(WriteOutcome::DeliveryUnknown(_))
+        ));
+        assert_eq!(edit_d.backend.calls, 1);
+        let mut delete_d = fake(Ok(msg()), Ok(msg()), Err(transport()), Ok(()));
+        assert!(matches!(
+            delete_d
+                .dispatch(FrontendIntent::DeleteMessage {
+                    message_id: MessageId::new("m"),
+                    room_id: RoomId::new("r")
+                })
+                .await,
+            FrontendResult::DeleteMessage(WriteOutcome::DeliveryUnknown(_))
+        ));
+        assert_eq!(delete_d.backend.calls, 1);
+        let mut leave_d = fake(Ok(msg()), Ok(msg()), Ok(()), Err(transport()));
+        assert!(matches!(
+            leave_d
+                .dispatch(FrontendIntent::LeaveRoom(RoomId::new("r")))
+                .await,
+            FrontendResult::LeaveRoom(WriteOutcome::DeliveryUnknown(_))
+        ));
+        assert_eq!(leave_d.backend.calls, 1);
+    }
+    #[tokio::test]
+    async fn accepted_uncertainty_is_once_for_each_write() {
+        let mut edit_d = fake(Ok(msg()), Err(unknown()), Ok(()), Ok(()));
+        assert!(matches!(
+            edit_d.dispatch(edit()).await,
+            FrontendResult::EditMessage(WriteOutcome::DeliveryUnknown(_))
+        ));
+        assert_eq!(edit_d.backend.calls, 1);
+        let mut delete_d = fake(Ok(msg()), Ok(msg()), Err(unknown()), Ok(()));
+        assert!(matches!(
+            delete_d
+                .dispatch(FrontendIntent::DeleteMessage {
+                    message_id: MessageId::new("m"),
+                    room_id: RoomId::new("r")
+                })
+                .await,
+            FrontendResult::DeleteMessage(WriteOutcome::DeliveryUnknown(_))
+        ));
+        assert_eq!(delete_d.backend.calls, 1);
+        let mut leave_d = fake(Ok(msg()), Ok(msg()), Ok(()), Err(unknown()));
+        assert!(matches!(
+            leave_d
+                .dispatch(FrontendIntent::LeaveRoom(RoomId::new("r")))
+                .await,
+            FrontendResult::LeaveRoom(WriteOutcome::DeliveryUnknown(_))
+        ));
+        assert_eq!(leave_d.backend.calls, 1);
     }
 }
