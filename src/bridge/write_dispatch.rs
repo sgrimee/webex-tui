@@ -271,7 +271,7 @@ mod tests {
         }
     }
     fn transport() -> ClientError {
-        ClientError::Transport(anyhow::anyhow!("transport"))
+        ClientError::Transport(std::io::Error::other("transport").into())
     }
     fn rejected() -> ClientError {
         ClientError::Api {
