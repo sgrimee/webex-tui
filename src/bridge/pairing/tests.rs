@@ -94,6 +94,7 @@ struct Session {
 impl SessionBackend for Session {
     type Client = ();
     type Stream = ();
+    type Writer = ();
     type SnapshotReader<'a> = ();
 
     async fn issue(&mut self, secret: &str) -> Result<(), SessionFailure> {
@@ -117,6 +118,7 @@ impl SessionBackend for Session {
         600
     }
 
+    fn writer(_: &()) {}
     fn snapshot_reader(_: &()) {}
 }
 
@@ -329,6 +331,7 @@ struct FailingSession {
 impl SessionBackend for FailingSession {
     type Client = ();
     type Stream = ();
+    type Writer = ();
     type SnapshotReader<'a> = ();
 
     async fn issue(&mut self, _: &str) -> Result<(), SessionFailure> {
@@ -351,6 +354,7 @@ impl SessionBackend for FailingSession {
         600
     }
 
+    fn writer(_: &()) {}
     fn snapshot_reader(_: &()) {}
 }
 

@@ -26,9 +26,18 @@ pub(crate) trait UiWriteBackend: Send {
     fn delete(&mut self, message: &str) -> impl Future<Output = Result<(), ClientError>> + Send;
     fn leave(&mut self, room: &str) -> impl Future<Output = Result<(), ClientError>> + Send;
 }
-struct BridgeUiWriteBackend {
+pub(crate) struct BridgeUiWriteBackend {
     client: UiClient,
 }
+
+impl BridgeUiWriteBackend {
+    pub(super) fn from_client(client: &UiClient) -> Self {
+        Self {
+            client: client.clone(),
+        }
+    }
+}
+
 impl UiWriteBackend for BridgeUiWriteBackend {
     async fn send(
         &mut self,

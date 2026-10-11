@@ -5,7 +5,9 @@
 //! explicit connect/renew; this owner never stores it, pairs or accesses Keychain.
 //! No message write is dispatched/retried here. Snapshot data stays host-owned.
 
-use super::{events::project_continuity, projection::valid_id};
+use super::{
+    events::project_continuity, projection::valid_id, write_dispatch::BridgeUiWriteBackend,
+};
 use crate::frontend::{
     continuity::{
         ContinuityBoundary, DaemonInstanceId, LifecycleControl, SnapshotRelation, UiLifecycleFrame,
@@ -52,6 +54,9 @@ fn io_failure(error: ClientError) -> SessionFailure {
 pub(crate) trait SessionBackend: Send {
     type Client: Send + Sync;
     type Stream: Send;
+    /// Private mutation capability created from an active client. It is retained
+    /// by the lifecycle and is never returned through this trait's public API.
+    type Writer: Send;
     /// Read-only view of a client, scoped to a current snapshot ticket.
     /// Implementations must not expose a cloneable write client or bearer token.
     type SnapshotReader<'a>
@@ -70,6 +75,7 @@ pub(crate) trait SessionBackend: Send {
         client: &Self::Client,
     ) -> impl Future<Output = Result<ContinuityBoundary, SessionFailure>> + Send;
     fn lease_ttl(client: &Self::Client) -> u64;
+    fn writer(client: &Self::Client) -> Self::Writer;
     fn snapshot_reader(client: &Self::Client) -> Self::SnapshotReader<'_>;
 }
 
@@ -158,6 +164,7 @@ impl BridgeSessionBackend {
 impl SessionBackend for BridgeSessionBackend {
     type Client = UiClient;
     type Stream = EventStream;
+    type Writer = BridgeUiWriteBackend;
     type SnapshotReader<'a> = UiSnapshotReader<'a>;
     async fn issue(&mut self, secret: &str) -> Result<UiClient, SessionFailure> {
         self.bridge
@@ -177,6 +184,9 @@ impl SessionBackend for BridgeSessionBackend {
     }
     fn lease_ttl(client: &UiClient) -> u64 {
         client.lease_ttl()
+    }
+    fn writer(client: &UiClient) -> BridgeUiWriteBackend {
+        BridgeUiWriteBackend::from_client(client)
     }
     fn snapshot_reader(client: &UiClient) -> UiSnapshotReader<'_> {
         UiSnapshotReader { client }
@@ -241,9 +251,11 @@ pub(crate) struct ConnectAttempt {
     started: Instant,
 }
 
-struct Active<C, S> {
+struct Active<C, S, W> {
     client: C,
     stream: S,
+    // Retained privately until the active session is replaced or dropped.
+    _writer: W,
     subscription: SubscriptionId,
     lease_deadline: Instant,
     renew_at: Instant,
@@ -257,7 +269,7 @@ pub(crate) struct SessionLifecycle<B: SessionBackend, C: SessionClock> {
     backend: B,
     clock: C,
     phase: SessionPhase,
-    active: Option<Active<B::Client, B::Stream>>,
+    active: Option<Active<B::Client, B::Stream, B::Writer>>,
     last_subscription: u64,
     last_instance: Option<DaemonInstanceId>,
 }
@@ -402,9 +414,11 @@ impl<B: SessionBackend, C: SessionClock> SessionLifecycle<B, C> {
             return Err(self.fail(SessionFailure::Expired));
         }
         let subscription = attempt.subscription;
+        let writer = B::writer(&client);
         self.active = Some(Active {
             client,
             stream,
+            _writer: writer,
             subscription,
             lease_deadline,
             renew_at,

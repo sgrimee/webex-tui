@@ -42,6 +42,7 @@ struct Backend {
 impl SessionBackend for Backend {
     type Client = ();
     type Stream = ();
+    type Writer = ();
     type SnapshotReader<'a> = ();
     async fn issue(&mut self, secret: &str) -> Result<(), SessionFailure> {
         assert_eq!(secret, "synthetic-secret");
@@ -66,6 +67,7 @@ impl SessionBackend for Backend {
     fn lease_ttl(_: &()) -> u64 {
         100
     }
+    fn writer(_: &()) {}
     fn snapshot_reader(_: &()) {}
 }
 

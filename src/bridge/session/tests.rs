@@ -32,6 +32,8 @@ impl SessionClock for Clock {
 struct Counts {
     clients_dropped: AtomicUsize,
     streams_dropped: AtomicUsize,
+    writers_created: AtomicUsize,
+    writers_dropped: AtomicUsize,
 }
 struct Client {
     id: usize,
@@ -47,6 +49,12 @@ struct Stream(Arc<Counts>);
 impl Drop for Stream {
     fn drop(&mut self) {
         self.0.streams_dropped.fetch_add(1, Ordering::SeqCst);
+    }
+}
+struct Writer(Arc<Counts>);
+impl Drop for Writer {
+    fn drop(&mut self) {
+        self.0.writers_dropped.fetch_add(1, Ordering::SeqCst);
     }
 }
 
@@ -66,6 +74,7 @@ struct Backend {
 impl SessionBackend for Backend {
     type Client = Client;
     type Stream = Stream;
+    type Writer = Writer;
     type SnapshotReader<'a> = ();
     async fn issue(&mut self, secret: &str) -> Result<Client, SessionFailure> {
         assert!(!secret.is_empty()); // fixture input is used, never retained in the backend
@@ -100,6 +109,10 @@ impl SessionBackend for Backend {
     }
     fn lease_ttl(client: &Client) -> u64 {
         client.ttl
+    }
+    fn writer(client: &Client) -> Writer {
+        client.counts.writers_created.fetch_add(1, Ordering::SeqCst);
+        Writer(Arc::clone(&client.counts))
     }
     fn snapshot_reader(_: &Client) {}
 }
@@ -178,6 +191,14 @@ async fn connect_owns_client_stream_deadlines_but_waits_for_ready_before_access(
         Err(SessionFailure::NotReady)
     ));
     assert_eq!(owner.backend.calls, ["issue", "subscribe"]);
+    assert_eq!(
+        owner.backend.counts.writers_created.load(Ordering::SeqCst),
+        1
+    );
+    assert_eq!(
+        owner.backend.counts.writers_dropped.load(Ordering::SeqCst),
+        0
+    );
     assert!(owner.stream_mut().is_some());
 }
 
@@ -223,6 +244,14 @@ async fn renewal_is_caller_scheduled_at_eighty_percent_and_replaces_handles() {
     );
     assert_eq!(
         owner.backend.counts.streams_dropped.load(Ordering::SeqCst),
+        1
+    );
+    assert_eq!(
+        owner.backend.counts.writers_created.load(Ordering::SeqCst),
+        2
+    );
+    assert_eq!(
+        owner.backend.counts.writers_dropped.load(Ordering::SeqCst),
         1
     );
 }
@@ -300,6 +329,10 @@ async fn auth_and_stream_setup_failures_fail_closed_and_do_not_auto_retry() {
     );
     assert!(owner.active.is_none());
     assert_eq!(owner.backend.calls, ["issue"]);
+    assert_eq!(
+        owner.backend.counts.writers_created.load(Ordering::SeqCst),
+        0
+    );
     owner.backend.stream_failure = Some(SessionFailure::Transport);
     assert_eq!(owner.connect(SECRET).await, Err(SessionFailure::Transport));
     assert_eq!(
@@ -312,6 +345,10 @@ async fn auth_and_stream_setup_failures_fail_closed_and_do_not_auto_retry() {
         1
     );
     assert_eq!(owner.backend.calls, ["issue", "issue", "subscribe"]);
+    assert_eq!(
+        owner.backend.counts.writers_created.load(Ordering::SeqCst),
+        0
+    );
 }
 
 #[tokio::test]
