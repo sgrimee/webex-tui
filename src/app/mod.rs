@@ -15,7 +15,6 @@ use self::state::AppState;
 use crate::app::actions::Action;
 use crate::app::rooms_list::SearchState;
 use crate::app::state::ActivePane;
-use crate::bridge::legacy;
 use crate::frontend::models::MessagePresentation;
 use crate::inputs::key::Key;
 use crate::teams::app_handler::AppCmdEvent;
@@ -426,10 +425,7 @@ impl App<'_> {
         let lines = self.state.message_editor.lines().to_vec();
         if let Some(msg_to_edit) = self.state.message_editor.editing_of() {
             // Editing a message
-            let msg_id = msg_to_edit
-                .id
-                .clone()
-                .ok_or(eyre!("Cannot edit message without id"))?;
+            let msg_id = msg_to_edit.id.as_str().to_owned();
             let intent = crate::frontend::envelopes::FrontendIntent::EditMessage {
                 message_id: crate::frontend::data::MessageId::new(msg_id),
                 room_id: crate::frontend::data::RoomId::new(room.id.clone()),
@@ -443,8 +439,7 @@ impl App<'_> {
                     .state
                     .message_editor
                     .response_to()
-                    .and_then(|message| message.id.as_ref())
-                    .map(crate::frontend::data::MessageId::new),
+                    .map(|message| message.id.clone()),
                 body: crate::frontend::data::ComposedBody::PlainText(lines.join("\n")),
             };
             self.dispatch_to_teams(AppCmdEvent::SendMessage(intent), &Priority::High);
@@ -530,13 +525,13 @@ impl App<'_> {
         let message = self.state.selected_message()?;
         self.state
             .message_editor
-            .set_response_to(Some(legacy::message_for_editor(message)));
+            .set_response_to(Some(message.clone()));
         Ok(())
     }
 
     /// Prepeares the message editor with the contents of the selected message
     fn edit_selected_message(&mut self) -> Result<()> {
-        let message = self.state.selected_message()?;
+        let message = self.state.selected_message()?.clone();
         if !self
             .state
             .cache
@@ -544,13 +539,9 @@ impl App<'_> {
         {
             return Err(eyre!("Cannot edit message, it was not authored by self"));
         }
-        let legacy_message = legacy::message_for_editor(message);
-        self.state
-            .message_editor
-            .reset_with_text(legacy_message.text.clone().unwrap_or_default());
-        self.state
-            .message_editor
-            .set_editing_of(Some(legacy_message));
+        let text = MessagePresentation::from(&message).body.copy_text()?;
+        self.state.message_editor.reset_with_text(text);
+        self.state.message_editor.set_editing_of(Some(message));
         Ok(())
     }
 
