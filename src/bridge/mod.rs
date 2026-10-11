@@ -4,6 +4,7 @@
 //! session IO only when explicitly called; no startup/task is installed here,
 //! and pairing/Keychain/Teams remain untouched. Only this boundary imports DTOs.
 
+pub(crate) mod controller;
 pub(crate) mod events;
 pub(crate) mod projection;
 pub(crate) mod session;
