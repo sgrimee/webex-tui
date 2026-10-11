@@ -1,10 +1,9 @@
 //! Frontend-neutral message cache; legacy Webex values are projected in `bridge`.
-use crate::frontend::data::MessageSnapshot;
+use crate::frontend::data::{MessageSnapshot, PersonSnapshot};
 use chrono::{DateTime, Utc};
 use color_eyre::{eyre::eyre, Result};
 use fuzzy_matcher::{skim::SkimMatcherV2, FuzzyMatcher};
 use std::collections::HashMap;
-use webex::Person;
 pub(crate) mod msg_thread;
 pub(crate) mod persons;
 pub(crate) mod room;
@@ -24,15 +23,15 @@ pub(crate) struct Cache {
     pub(crate) rooms: Rooms,
     rooms_content: HashMap<RoomId, RoomContent>,
     pub(crate) teams: Teams,
-    pub(crate) me: Option<Person>,
+    pub(crate) me: Option<PersonSnapshot>,
     pub(crate) persons: Persons,
 }
 impl Cache {
-    pub(crate) fn set_me(&mut self, me: &Person) {
-        self.me = Some(me.clone())
+    pub(crate) fn set_me(&mut self, me: PersonSnapshot) {
+        self.me = Some(me)
     }
     pub(crate) fn is_me(&self, id: &Option<String>) -> bool {
-        matches!((&self.me,id),(Some(me),Some(id)) if me.id==*id)
+        matches!((&self.me,id),(Some(me),Some(id)) if me.id.as_str()==id)
     }
     pub(crate) fn add_message(&mut self, msg: &MessageSnapshot) -> Result<()> {
         let room_id = msg.room_id.as_str().to_owned();

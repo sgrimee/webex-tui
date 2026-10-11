@@ -25,7 +25,13 @@ impl App<'_> {
     /// Saves `me` as the user of the client
     /// This is used to identify when a message was originated by that user.
     pub(crate) fn cb_set_me(&mut self, person: &Person) {
-        self.state.cache.set_me(person);
+        match legacy::person(person) {
+            Ok(person) => self.state.cache.set_me(person),
+            Err(_) => {
+                error!("Ignoring legacy self identity with invalid metadata");
+                return;
+            }
+        }
         self.cb_person_updated(person.to_owned());
     }
 
@@ -173,19 +179,30 @@ impl App<'_> {
     /// Callback when room information is received.
     /// Saves the room info in the store and updates cursor to follow active room.
     pub(crate) fn cb_room_updated(&mut self, webex_room: webex::Room) {
-        let team_id = webex_room.team_id.clone();
-        let room_title = webex_room.title.clone().unwrap_or_default();
-        self.state.cache.rooms.update_with_room(&webex_room.into());
-        // Update cursor to follow active room since list order may have changed
+        let snapshot = match legacy::room(&webex_room) {
+            Ok(snapshot) => snapshot,
+            Err(_) => {
+                error!("Ignoring legacy room with invalid metadata");
+                return;
+            }
+        };
+        let team_id = snapshot.team_id.as_ref().map(|id| id.as_str().to_owned());
+        let room_title = snapshot.title.clone().unwrap_or_default();
+        let room = match crate::app::cache::room::Room::from_snapshot(&snapshot) {
+            Ok(room) => room,
+            Err(error) => {
+                error!("Ignoring legacy room with invalid activity timestamp: {error}");
+                return;
+            }
+        };
+        self.state.cache.rooms.update_with_room(&room);
         self.state.update_room_selection_with_active_room();
-
-        // If the webex_room has a team_id, and the team is not already requested, request it and add it to the list of requested teams.
         if let Some(team_id) = team_id {
             if !self.state.cache.teams.exists_or_requested(&team_id) {
                 debug!("Requesting team {team_id} identified by room: {room_title}");
                 self.state.cache.teams.add_requested(team_id.clone());
                 self.dispatch_to_teams(
-                    AppCmdEvent::UpdateTeam(team_id, Some(room_title.clone())),
+                    AppCmdEvent::UpdateTeam(team_id, Some(room_title)),
                     &Priority::Low,
                 );
             }

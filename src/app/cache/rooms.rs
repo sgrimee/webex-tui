@@ -5,7 +5,7 @@ use super::room_list_filter::RoomsListFilter;
 
 use chrono::Duration;
 use log::*;
-#[derive(Default, Debug)]
+#[derive(Default)]
 pub(crate) struct Rooms {
     /// RoomInfo sorted by last activity.
     sorted_rooms: Vec<Room>,
