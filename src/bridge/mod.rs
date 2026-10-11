@@ -12,6 +12,7 @@ pub(crate) mod pairing;
 pub(crate) mod projection;
 pub(crate) mod session;
 mod text;
+pub(crate) mod write_coordinator;
 pub(crate) mod write_dispatch;
 
 #[cfg(test)]
