@@ -65,6 +65,7 @@ impl Cache {
     pub(crate) fn nb_messages_in_room(&self, id: &RoomId) -> usize {
         self.rooms_content.get(id).map_or(0, RoomContent::len)
     }
+    #[allow(dead_code)]
     pub(crate) fn delete_message(&mut self, id: &MessageId, room: &RoomId) -> Result<()> {
         if let Some(content) = self.rooms_content.get_mut(room) {
             content.delete_message(id)?;

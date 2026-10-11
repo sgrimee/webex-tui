@@ -73,6 +73,7 @@ impl MsgThread {
     pub(crate) fn id(&self) -> Option<&str> {
         self.id.as_deref()
     }
+    #[allow(dead_code)]
     pub(crate) fn delete_message(&mut self, id: &MessageId) -> bool {
         if let Some(index) = self
             .messages

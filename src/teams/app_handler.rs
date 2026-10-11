@@ -21,7 +21,7 @@ use webex::{
 /// Commands the main `App` can send to the `Teams` thread.
 #[derive(Clone)]
 pub(crate) enum AppCmdEvent {
-    DeleteMessage(MessageId),
+    DeleteMessage(FrontendIntent),
     /// Temporary neutral-to-legacy edit boundary; only this Teams edge builds edit params.
     EditMessage(FrontendIntent),
     Initialize(),
@@ -34,7 +34,7 @@ pub(crate) enum AppCmdEvent {
     UpdateMessage(MessageId),
     UpdateChildrenMessages(MessageId, RoomId),
     UpdatePerson(PersonId),
-    LeaveRoom(RoomId),
+    LeaveRoom(FrontendIntent),
     WhoAmI(),
 }
 
@@ -61,6 +61,22 @@ fn legacy_message_out(intent: &FrontendIntent) -> Option<MessageOut> {
     Some(message)
 }
 
+fn legacy_delete_id(intent: &FrontendIntent) -> Option<&str> {
+    let FrontendIntent::DeleteMessage {
+        message_id,
+        room_id,
+    } = intent
+    else {
+        return None;
+    };
+    (!message_id.as_str().is_empty() && !room_id.as_str().is_empty()).then_some(message_id.as_str())
+}
+fn legacy_leave_room_id(intent: &FrontendIntent) -> Option<&str> {
+    let FrontendIntent::LeaveRoom(room_id) = intent else {
+        return None;
+    };
+    (!room_id.as_str().is_empty()).then_some(room_id.as_str())
+}
 fn legacy_edit_fields(intent: &FrontendIntent) -> Option<(&str, &str, &ComposedBody)> {
     let FrontendIntent::EditMessage {
         message_id,
@@ -89,7 +105,10 @@ impl Teams<'_> {
         }
         let should_retry = app_cmd_event.should_retry_on_failure();
         if let Err(error) = match app_cmd_event {
-            AppCmdEvent::DeleteMessage(msg_id) => self.delete_message(&msg_id).await,
+            AppCmdEvent::DeleteMessage(intent) => match legacy_delete_id(&intent) {
+                Some(message_id) => self.delete_message(message_id).await,
+                None => Err(eyre!("invalid delete intent")),
+            },
             AppCmdEvent::EditMessage(intent) => match legacy_edit_fields(&intent) {
                 Some((message_id, room_id, body)) => {
                     self.do_edit_message(message_id, room_id, body).await
@@ -115,7 +134,10 @@ impl Teams<'_> {
             AppCmdEvent::UpdateTeam(team_id, room_context) => {
                 self.do_update_team(&team_id, room_context.as_deref()).await
             }
-            AppCmdEvent::LeaveRoom(room_id) => self.do_leave_room(&room_id).await,
+            AppCmdEvent::LeaveRoom(intent) => match legacy_leave_room_id(&intent) {
+                Some(room_id) => self.do_leave_room(room_id).await,
+                None => Err(eyre!("invalid leave intent")),
+            },
             AppCmdEvent::WhoAmI() => self.get_me_user().await,
         } {
             error!("Error handling app event: {error}");
@@ -143,7 +165,7 @@ impl Teams<'_> {
     }
 
     /// Deletes the message with given id
-    async fn delete_message(&self, id: &MessageId) -> Result<()> {
+    async fn delete_message(&self, id: &str) -> Result<()> {
         let global_id = GlobalId::new(GlobalIdType::Message, id.to_owned()).unwrap();
         match self.client.delete::<Message>(&global_id).await {
             Ok(_) => {
@@ -405,15 +427,16 @@ impl Teams<'_> {
     }
 
     /// Leave a room by deleting our membership
-    async fn do_leave_room(&mut self, room_id: &RoomId) -> Result<()> {
-        let global_id = GlobalId::new(GlobalIdType::Room, room_id.to_owned()).unwrap();
+    async fn do_leave_room(&mut self, room_id: &str) -> Result<()> {
+        let room_id = room_id.to_owned();
+        let global_id = GlobalId::new(GlobalIdType::Room, room_id.clone()).unwrap();
         debug!("=== STARTING LEAVE ROOM PROCESS ===");
         debug!("Leaving room with local id {room_id} and global id: {global_id:?}");
 
         // Get room info for better logging and validation
         let (room_title, is_locked) = {
             let app = self.app.lock().await;
-            let room = app.state.cache.rooms.room_with_id(room_id);
+            let room = app.state.cache.rooms.room_with_id(&room_id);
             (
                 room.and_then(|r| r.title.clone())
                     .unwrap_or_else(|| "Unknown".to_string()),
@@ -439,7 +462,7 @@ impl Teams<'_> {
                 debug!("✅ Successfully left room: {room_title} ({room_id})");
                 // Remove the room from the cache
                 debug!("Calling cb_space_left callback...");
-                self.app.lock().await.cb_space_left(room_id);
+                self.app.lock().await.cb_space_left(&room_id);
                 debug!("=== LEAVE ROOM PROCESS COMPLETED ===");
                 Ok(())
             }
@@ -471,6 +494,26 @@ mod tests {
     #[test]
     fn non_send_intent_never_becomes_legacy_message() {
         assert!(legacy_message_out(&FrontendIntent::WhoAmI).is_none());
+    }
+    #[test]
+    #[test]
+    fn neutral_delete_and_leave_validate_matching_intents() {
+        let delete = FrontendIntent::DeleteMessage {
+            message_id: crate::frontend::data::MessageId::new("message"),
+            room_id: crate::frontend::data::RoomId::new("room"),
+        };
+        assert_eq!(legacy_delete_id(&delete), Some("message"));
+        assert!(legacy_delete_id(&FrontendIntent::LeaveRoom(
+            crate::frontend::data::RoomId::new("room")
+        ))
+        .is_none());
+        assert_eq!(
+            legacy_leave_room_id(&FrontendIntent::LeaveRoom(
+                crate::frontend::data::RoomId::new("room")
+            )),
+            Some("room")
+        );
+        assert!(legacy_leave_room_id(&delete).is_none());
     }
     #[test]
     fn neutral_edit_intent_maps_exact_fields_only_at_legacy_edge() {

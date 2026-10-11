@@ -52,6 +52,7 @@ impl RoomContent {
         }
         Ok(())
     }
+    #[allow(dead_code)]
     pub(crate) fn delete_message(&mut self, id: &MessageId) -> Result<()> {
         for thread in &mut self.threads {
             if thread.delete_message(id) {

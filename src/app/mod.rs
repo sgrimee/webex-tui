@@ -475,8 +475,14 @@ impl App<'_> {
 
         // Dispatch a delete event and remove the message from the store
         self.state.messages_list.select_previous_message();
-        self.dispatch_to_teams(AppCmdEvent::DeleteMessage(msg_id.clone()), &Priority::High);
-        self.state.cache.delete_message(&msg_id, &room_id)?;
+        self.dispatch_to_teams(
+            AppCmdEvent::DeleteMessage(crate::frontend::envelopes::FrontendIntent::DeleteMessage {
+                message_id: crate::frontend::data::MessageId::new(msg_id),
+                room_id: crate::frontend::data::RoomId::new(room_id),
+            }),
+            &Priority::High,
+        );
+        // Keep cache content until the existing legacy confirmation/event path updates it.
         Ok(())
     }
 
@@ -667,7 +673,12 @@ impl App<'_> {
                     debug!("Room title: {title}");
                 }
             }
-            self.dispatch_to_teams(AppCmdEvent::LeaveRoom(room_id), &Priority::High);
+            self.dispatch_to_teams(
+                AppCmdEvent::LeaveRoom(crate::frontend::envelopes::FrontendIntent::LeaveRoom(
+                    crate::frontend::data::RoomId::new(room_id),
+                )),
+                &Priority::High,
+            );
         }
 
         // Clear selections after sending the commands
