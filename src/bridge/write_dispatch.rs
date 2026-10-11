@@ -16,6 +16,14 @@ pub(crate) trait UiWriteBackend: Send {
         parent: Option<&str>,
         body: &dto::MessageBodyInput,
     ) -> impl Future<Output = Result<dto::Message, ClientError>> + Send;
+    fn edit(
+        &mut self,
+        message: &str,
+        room: &str,
+        body: &dto::MessageBodyInput,
+    ) -> impl Future<Output = Result<dto::Message, ClientError>> + Send;
+    fn delete(&mut self, message: &str) -> impl Future<Output = Result<(), ClientError>> + Send;
+    fn leave(&mut self, room: &str) -> impl Future<Output = Result<(), ClientError>> + Send;
 }
 struct BridgeUiWriteBackend {
     client: UiClient,
@@ -29,6 +37,20 @@ impl UiWriteBackend for BridgeUiWriteBackend {
     ) -> Result<dto::Message, ClientError> {
         self.client.create_message_body(room, parent, body).await
     }
+    async fn edit(
+        &mut self,
+        message: &str,
+        room: &str,
+        body: &dto::MessageBodyInput,
+    ) -> Result<dto::Message, ClientError> {
+        self.client.edit_message_body(message, room, body).await
+    }
+    async fn delete(&mut self, message: &str) -> Result<(), ClientError> {
+        self.client.delete_message(message).await
+    }
+    async fn leave(&mut self, room: &str) -> Result<(), ClientError> {
+        self.client.leave_room(room).await
+    }
 }
 /// Holds the mutation capability privately; it exposes neither client nor bearer.
 pub(crate) struct WriteDispatcher<B: UiWriteBackend> {
@@ -39,47 +61,94 @@ impl<B: UiWriteBackend> WriteDispatcher<B> {
         Self { backend }
     }
     pub(crate) async fn dispatch(&mut self, intent: FrontendIntent) -> FrontendResult {
-        let FrontendIntent::SendMessage {
-            room_id,
-            parent_id,
-            body,
-        } = intent
-        else {
-            return FrontendResult::SendMessage(WriteOutcome::Rejected(error("invalid_intent")));
-        };
-        let input = match body {
-            ComposedBody::PlainText(content) => dto::MessageBodyInput {
-                kind: "plainText".into(),
-                content,
-            },
-            ComposedBody::Markdown(content) => dto::MessageBodyInput {
-                kind: "markdown".into(),
-                content,
-            },
-        };
-        match self
-            .backend
-            .send(
-                room_id.as_str(),
-                parent_id.as_ref().map(MessageId::as_str),
-                &input,
-            )
-            .await
-        {
-            Ok(message) => match project(message, room_id.as_str()) {
-                Some(message) => FrontendResult::SendMessage(WriteOutcome::Success(message)),
-                None => FrontendResult::SendMessage(WriteOutcome::DeliveryUnknown(error(
-                    "invalid_response",
-                ))),
-            },
-            Err(error_value) => {
-                FrontendResult::SendMessage(if error_value.is_definitely_rejected() {
-                    WriteOutcome::Rejected(error("webex_rejected"))
-                } else {
-                    WriteOutcome::DeliveryUnknown(error("delivery_unknown"))
-                })
+        match intent {
+            FrontendIntent::SendMessage {
+                room_id,
+                parent_id,
+                body,
+            } => {
+                let input = input(body);
+                FrontendResult::SendMessage(message_outcome(
+                    self.backend
+                        .send(
+                            room_id.as_str(),
+                            parent_id.as_ref().map(MessageId::as_str),
+                            &input,
+                        )
+                        .await,
+                    room_id.as_str(),
+                ))
             }
+            FrontendIntent::EditMessage {
+                message_id,
+                room_id,
+                body,
+            } => {
+                let input = input(body);
+                FrontendResult::EditMessage(message_outcome(
+                    self.backend
+                        .edit(message_id.as_str(), room_id.as_str(), &input)
+                        .await,
+                    room_id.as_str(),
+                ))
+            }
+            FrontendIntent::DeleteMessage {
+                message_id,
+                room_id,
+            } => FrontendResult::DeleteMessage(unit_outcome(
+                self.backend.delete(message_id.as_str()).await,
+                message_id,
+                room_id,
+            )),
+            FrontendIntent::LeaveRoom(room_id) => FrontendResult::LeaveRoom(unit_outcome(
+                self.backend.leave(room_id.as_str()).await,
+                room_id.clone(),
+                room_id,
+            )),
+            _ => FrontendResult::SendMessage(WriteOutcome::Rejected(error("invalid_intent"))),
         }
+    }
+}
+fn input(body: ComposedBody) -> dto::MessageBodyInput {
+    match body {
+        ComposedBody::PlainText(content) => dto::MessageBodyInput {
+            kind: "plainText".into(),
+            content,
+        },
+        ComposedBody::Markdown(content) => dto::MessageBodyInput {
+            kind: "markdown".into(),
+            content,
+        },
+    }
+}
+fn message_outcome(
+    reply: Result<dto::Message, ClientError>,
+    room: &str,
+) -> WriteOutcome<MessageSnapshot> {
+    match reply {
+        Ok(message) => project(message, room)
+            .map(WriteOutcome::Success)
+            .unwrap_or_else(|| WriteOutcome::DeliveryUnknown(error("invalid_response"))),
+        Err(error_value) => failure(error_value),
+    }
+}
+fn unit_outcome<T>(reply: Result<(), ClientError>, value: T, _room: RoomId) -> WriteOutcome<T> {
+    match reply {
+        Ok(()) => WriteOutcome::Success(value),
+        Err(error_value) => match failure::<MessageSnapshot>(error_value) {
+            WriteOutcome::Rejected(error_value) => WriteOutcome::Rejected(error_value),
+            WriteOutcome::DeliveryUnknown(error_value) => {
+                WriteOutcome::DeliveryUnknown(error_value)
+            }
+            WriteOutcome::Success(_) => unreachable!(),
+        },
+    }
+}
+fn failure<T>(error_value: ClientError) -> WriteOutcome<T> {
+    if error_value.is_definitely_rejected() {
+        WriteOutcome::Rejected(error("webex_rejected"))
+    } else {
+        WriteOutcome::DeliveryUnknown(error("delivery_unknown"))
     }
 }
 fn error(code: &str) -> FrontendError {
@@ -140,6 +209,23 @@ mod tests {
         ) -> Result<dto::Message, ClientError> {
             self.calls += 1;
             self.reply.take().unwrap()
+        }
+        async fn edit(
+            &mut self,
+            _: &str,
+            _: &str,
+            _: &dto::MessageBodyInput,
+        ) -> Result<dto::Message, ClientError> {
+            self.calls += 1;
+            self.reply.take().unwrap()
+        }
+        async fn delete(&mut self, _: &str) -> Result<(), ClientError> {
+            self.calls += 1;
+            Ok(())
+        }
+        async fn leave(&mut self, _: &str) -> Result<(), ClientError> {
+            self.calls += 1;
+            Ok(())
         }
     }
     fn msg() -> dto::Message {
