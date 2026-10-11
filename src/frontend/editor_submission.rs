@@ -7,6 +7,10 @@
 //! format or target change. Focus changes do not invalidate a submitted write.
 //! No body-bearing type implements Debug/Display or performs logging.
 
+#[cfg(test)]
+use super::write_rules::{
+    MAX_OPAQUE_ID_BYTES as MAX_ID_BYTES, MAX_WRITE_BODY_BYTES as MAX_BODY_BYTES,
+};
 use super::{
     data::{ComposedBody, MessageId, MessageSnapshot, RoomId},
     editor_write::{EditorWriteState, EditorWriteStatus},
@@ -14,10 +18,8 @@ use super::{
         FrontendError, FrontendIntent, FrontendResult, RequestContext, RequestEnvelope,
         ResultEnvelope, WriteOutcome,
     },
+    write_rules::{valid_opaque_id as valid_id, valid_write_body, write_success_matches},
 };
-
-const MAX_BODY_BYTES: usize = 7439;
-const MAX_ID_BYTES: usize = 1024;
 
 #[derive(Clone, Copy, Default, Debug, Eq, PartialEq)]
 pub(crate) struct DraftRevision(u64);
@@ -60,22 +62,6 @@ impl DraftTarget {
             } => valid_id(room_id.as_str()) && valid_id(message_id.as_str()),
         }
     }
-
-    fn matches_message(&self, message: &MessageSnapshot) -> bool {
-        if !valid_id(message.id.as_str()) {
-            return false;
-        }
-        match self {
-            Self::Send { room_id } => message.room_id == *room_id && message.parent_id.is_none(),
-            Self::Reply { room_id, parent_id } => {
-                message.room_id == *room_id && message.parent_id.as_ref() == Some(parent_id)
-            }
-            Self::Edit {
-                room_id,
-                message_id,
-            } => message.room_id == *room_id && message.id == *message_id,
-        }
-    }
 }
 
 #[derive(Clone, Eq, PartialEq)]
@@ -99,16 +85,25 @@ pub(crate) enum SubmissionError {
     CounterExhausted,
     QueueFull,
     QueueClosed,
+    QueueNotReady,
+    QueueInvalidRequest,
     AdmissionMismatch,
     AlreadyAdmitted,
 }
 
 /// A pure report of the caller's actual queue decision, not a queue capability.
+/// The single-write mailbox returns this exact type, so every conclusive refusal
+/// it can make has a ledger mapping. Only Accepted transfers ownership; every
+/// other variant is a pre-ownership refusal that proves zero write I/O.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum QueueAdmission {
     Accepted,
     Full,
     Closed,
+    /// Worker-published session/snapshot admission is not ready.
+    NotReady,
+    /// Shared write rules refused the owned copy before queue ownership.
+    InvalidRequest,
 }
 
 /// Only an adapter that proves zero write I/O may report these reasons.
@@ -229,7 +224,7 @@ impl EditorSubmission {
         if self.review.is_some() {
             return Err(SubmissionError::ReviewNeeded);
         }
-        if !valid_body(&draft.body) {
+        if !valid_write_body(&draft.body) {
             return Err(SubmissionError::InvalidBody);
         }
         if !draft.stamp.target.valid() {
@@ -282,15 +277,17 @@ impl EditorSubmission {
                 pending.admitted = true;
                 Ok(())
             }
-            QueueAdmission::Full | QueueAdmission::Closed => {
+            refusal => {
                 let pending = self.pending.take().expect("matched pending submission");
                 self.state.unavailable(&pending.request);
                 // The caller still owns the unchanged draft, so no review slot
                 // is needed for a queue that conclusively refused ownership.
-                Err(if admission == QueueAdmission::Full {
-                    SubmissionError::QueueFull
-                } else {
-                    SubmissionError::QueueClosed
+                Err(match refusal {
+                    QueueAdmission::Full => SubmissionError::QueueFull,
+                    QueueAdmission::Closed => SubmissionError::QueueClosed,
+                    QueueAdmission::NotReady => SubmissionError::QueueNotReady,
+                    QueueAdmission::InvalidRequest => SubmissionError::QueueInvalidRequest,
+                    QueueAdmission::Accepted => unreachable!("handled above"),
                 })
             }
         }
@@ -324,7 +321,7 @@ impl EditorSubmission {
             }
             SubmissionTerminal::Result(envelope) => {
                 if envelope.result.operation() != pending.request.intent.operation()
-                    || !valid_success(&pending.draft.stamp.target, &envelope.result)
+                    || !write_success_matches(&pending.request.intent, &envelope.result)
                 {
                     uncertain_result(&pending.request.intent)
                 } else {
@@ -393,25 +390,6 @@ impl EditorSubmission {
             canonical,
             clear_current,
         }
-    }
-}
-
-fn valid_id(value: &str) -> bool {
-    !value.is_empty() && value.len() <= MAX_ID_BYTES && !value.chars().any(char::is_control)
-}
-
-fn valid_body(body: &ComposedBody) -> bool {
-    let (ComposedBody::PlainText(content) | ComposedBody::Markdown(content)) = body;
-    !content.is_empty() && content.len() <= MAX_BODY_BYTES && !content.contains('\0')
-}
-
-fn valid_success(target: &DraftTarget, result: &FrontendResult) -> bool {
-    match result {
-        FrontendResult::SendMessage(WriteOutcome::Success(message))
-        | FrontendResult::EditMessage(WriteOutcome::Success(message)) => {
-            target.matches_message(message)
-        }
-        _ => true,
     }
 }
 
@@ -674,6 +652,11 @@ mod tests {
         for (admission, error) in [
             (QueueAdmission::Full, SubmissionError::QueueFull),
             (QueueAdmission::Closed, SubmissionError::QueueClosed),
+            (QueueAdmission::NotReady, SubmissionError::QueueNotReady),
+            (
+                QueueAdmission::InvalidRequest,
+                SubmissionError::QueueInvalidRequest,
+            ),
         ] {
             let request = ledger.prepare(&draft).unwrap();
             if let Some(previous) = previous {

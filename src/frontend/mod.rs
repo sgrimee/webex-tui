@@ -24,3 +24,5 @@ pub(crate) mod lifecycle;
 pub(crate) mod requests;
 #[allow(dead_code)]
 pub(crate) mod threads;
+#[allow(dead_code)]
+pub(crate) mod write_rules;

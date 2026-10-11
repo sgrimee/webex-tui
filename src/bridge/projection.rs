@@ -14,6 +14,7 @@ use crate::frontend::{
     },
     events::{ConnectionLayer, ConnectionState, LifecycleEvent, SyncProgress},
     threads::{ThreadPage, ThreadParent},
+    write_rules::valid_opaque_id,
 };
 use std::collections::HashSet;
 use webex_bridge::{client::ClientError, dto};
@@ -49,8 +50,9 @@ pub(crate) enum ClientResponse {
     LeaveRoom(Reply<()>),
 }
 
+/// Shares the frontend's single opaque-ID bound; IDs are never decoded.
 pub(super) fn valid_id(value: &str) -> Project<()> {
-    if value.is_empty() || value.len() > 1024 || value.chars().any(char::is_control) {
+    if !valid_opaque_id(value) {
         Err(ProjectionError::Identity)
     } else {
         Ok(())

@@ -290,6 +290,15 @@ impl WriteAdmissionStamp {
     pub(super) fn ready(self) -> bool {
         self.ready
     }
+
+    /// Same identity, never admissible. Used for synchronous revocation when a
+    /// non-Active phase is published; only the actual stamp can restore Active.
+    pub(super) fn revoked(self) -> Self {
+        Self {
+            ready: false,
+            ..self
+        }
+    }
 }
 
 /// Every error here is proven before backend mutation I/O. Once a backend write

@@ -16,27 +16,26 @@
 
 use super::{
     controller::{HostController, PresentationHost},
-    projection::valid_id,
-    session::{SessionBackend, SessionClock, SessionWriteError, WriteAdmissionStamp},
+    session::{
+        FrameAction, LeaseAction, SessionBackend, SessionClock, SessionFailure, SessionLifecycle,
+        SessionPhase, SessionWriteError, SnapshotTicket, SubscriptionId, WriteAdmissionStamp,
+    },
     write_dispatch::DispatchError,
 };
 use crate::frontend::{
-    data::ComposedBody,
-    editor_submission::{NotDispatchedReason, SubmissionTerminal, UncertainReason},
-    envelopes::{FrontendIntent, FrontendResult, RequestContext, RequestEnvelope, WriteOutcome},
+    editor_submission::{NotDispatchedReason, QueueAdmission, SubmissionTerminal, UncertainReason},
+    envelopes::{FrontendResult, RequestContext, RequestEnvelope},
+    lifecycle::{LifecycleProjection, ProjectionEffects},
+    write_rules::{valid_editor_write, write_success_matches},
 };
 use std::sync::{Arc, Mutex, MutexGuard};
+use webex_bridge::client::events::BridgeEvent;
 
-/// Conclusive pre-ownership decisions only. A lost worker/result after Accepted
-/// must be reduced as missing completion, NEVER reported as a queue refusal.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum CommandAdmission {
-    Accepted,
-    Full,
-    Closed,
-    NotReady,
-    InvalidRequest,
-}
+/// Conclusive pre-ownership decisions only. This is the ledger's own report
+/// type, so every mailbox refusal maps directly onto `EditorSubmission::admit`
+/// and releases the prepared slot. A lost worker/result after Accepted must be
+/// reduced as missing completion, NEVER reported as a queue refusal.
+pub(crate) type CommandAdmission = QueueAdmission;
 
 struct QueuedCommand {
     request: RequestEnvelope,
@@ -103,30 +102,172 @@ impl CommandMailbox {
     }
 }
 
+/// Host wrapper owned inside the controller. Every non-Active phase publication,
+/// including the one HostController makes before the first await of connect or
+/// renewal, synchronously revokes mailbox admission, so a dropped lifecycle
+/// future cannot leave a stale ready hint behind. Active is restored only by the
+/// worker after a completed controller call, using the actual stamp.
+struct AdmissionHost<H> {
+    inner: H,
+    shared: Shared,
+}
+
+impl<H: PresentationHost> PresentationHost for AdmissionHost<H> {
+    type Snapshot = H::Snapshot;
+    fn session_phase(&mut self, phase: SessionPhase) {
+        if phase != SessionPhase::Active {
+            let mut mailbox = lock(&self.shared);
+            mailbox.published = mailbox.published.revoked();
+        }
+        self.inner.session_phase(phase);
+    }
+    fn lifecycle(&mut self, projection: &LifecycleProjection, effects: ProjectionEffects) {
+        self.inner.lifecycle(projection, effects);
+    }
+    fn install_snapshot(&mut self, snapshot: Self::Snapshot) {
+        self.inner.install_snapshot(snapshot);
+    }
+}
+
+/// Sole owner of HostController. Lifecycle methods are explicit, caller-
+/// scheduled forwards (no task, timer or reconnect policy) and republish the
+/// actual admission stamp after every completed controller call. The published
+/// stamp stays a hint: dequeue still checks the actual lease-aware state.
 pub(crate) struct CommandWorker<B: SessionBackend, C: SessionClock, H: PresentationHost> {
-    controller: HostController<B, C, H>,
+    controller: HostController<B, C, AdmissionHost<H>>,
     shared: Shared,
 }
 
 impl<B: SessionBackend, C: SessionClock, H: PresentationHost> CommandWorker<B, C, H> {
-    pub(crate) fn new(controller: HostController<B, C, H>) -> (CommandMailbox, Self) {
+    pub(crate) fn new(session: SessionLifecycle<B, C>, host: H) -> (CommandMailbox, Self) {
+        let published = session.write_admission_stamp();
         let shared = Arc::new(Mutex::new(Mailbox {
             open: true,
-            published: controller.write_admission_stamp(),
+            published,
             slot: Slot::Empty,
         }));
+        let host = AdmissionHost {
+            inner: host,
+            shared: Arc::clone(&shared),
+        };
         (
             CommandMailbox {
                 shared: Arc::clone(&shared),
             },
-            Self { controller, shared },
+            Self {
+                controller: HostController::new(session, host),
+                shared,
+            },
         )
     }
 
     /// Worker-side publication after lifecycle/snapshot work. This is only a
     /// pre-admission hint; actual readiness/generation is checked again at dequeue.
-    pub(crate) fn publish_admission(&mut self) {
+    fn publish(&mut self) {
         lock(&self.shared).published = self.controller.write_admission_stamp();
+    }
+
+    pub(crate) fn phase(&self) -> SessionPhase {
+        self.controller.phase()
+    }
+    pub(crate) fn subscription(&self) -> Option<SubscriptionId> {
+        self.controller.subscription()
+    }
+    pub(crate) fn projection(&self) -> &LifecycleProjection {
+        self.controller.projection()
+    }
+    pub(crate) fn host(&self) -> &H {
+        &self.controller.host().inner
+    }
+
+    /// The caller borrows its own paired secret for this call only.
+    pub(crate) async fn connect(
+        &mut self,
+        paired_secret: &str,
+    ) -> Result<SubscriptionId, SessionFailure> {
+        let result = self.controller.connect(paired_secret).await;
+        self.publish();
+        result
+    }
+
+    pub(crate) async fn renew_if_due(
+        &mut self,
+        paired_secret: &str,
+    ) -> Result<bool, SessionFailure> {
+        let result = self.controller.renew_if_due(paired_secret).await;
+        self.publish();
+        result
+    }
+
+    pub(crate) fn check_lease(&mut self) -> LeaseAction {
+        let action = self.controller.check_lease();
+        self.publish();
+        action
+    }
+
+    pub(crate) fn disconnect(&mut self) {
+        self.controller.disconnect();
+        self.publish();
+    }
+
+    pub(crate) fn bridge_event(
+        &mut self,
+        subscription: SubscriptionId,
+        event: &BridgeEvent,
+    ) -> Result<FrameAction, SessionFailure> {
+        let result = self.controller.bridge_event(subscription, event);
+        self.publish();
+        result
+    }
+
+    pub(crate) fn frame(
+        &mut self,
+        subscription: SubscriptionId,
+        frame: crate::frontend::continuity::UiLifecycleFrame,
+    ) -> Result<FrameAction, SessionFailure> {
+        let result = self.controller.frame(subscription, frame);
+        self.publish();
+        result
+    }
+
+    pub(crate) fn stream_failed(
+        &mut self,
+        subscription: SubscriptionId,
+        failure: SessionFailure,
+    ) -> FrameAction {
+        let action = self.controller.stream_failed(subscription, failure);
+        self.publish();
+        action
+    }
+
+    pub(crate) async fn begin_snapshot(&mut self) -> Result<SnapshotTicket, SessionFailure> {
+        let result = self.controller.begin_snapshot().await;
+        self.publish();
+        result
+    }
+
+    /// Read-only, ticket-fenced facade; no write-capable client crosses here.
+    pub(crate) fn snapshot_reader(
+        &self,
+        ticket: &SnapshotTicket,
+    ) -> Result<B::SnapshotReader<'_>, SessionFailure> {
+        self.controller.snapshot_reader(ticket)
+    }
+
+    pub(crate) fn commit_snapshot(
+        &mut self,
+        ticket: SnapshotTicket,
+        snapshot: H::Snapshot,
+    ) -> Result<usize, SessionFailure> {
+        let result = self.controller.commit_snapshot(ticket, snapshot);
+        self.publish();
+        result
+    }
+
+    /// Lease-checked stream access. Publication precedes the returned borrow.
+    pub(crate) fn stream_mut(&mut self) -> Option<&mut B::Stream> {
+        self.check_lease();
+        self.controller.stream_mut()
     }
 
     /// Explicit fake-callable single operation, not a spawned task/runtime loop.
@@ -144,13 +285,13 @@ impl<B: SessionBackend, C: SessionClock, H: PresentationHost> CommandWorker<B, C
                 context: command.request.context,
                 reason: NotDispatchedReason::NotReady,
             });
-            self.publish_admission();
+            self.publish();
             return true;
         }
         let terminal =
             dispatch_envelope(&mut self.controller, command.request, &mut reservation).await;
         reservation.finish(terminal);
-        self.publish_admission();
+        self.publish();
         true
     }
 
@@ -270,7 +411,7 @@ fn complete(
             },
         },
         Ok(result) => {
-            if !valid_success(&request.intent, &result) {
+            if !write_success_matches(&request.intent, &result) {
                 return SubmissionTerminal::Uncertain {
                     context: request.context,
                     reason: UncertainReason::CompletionMismatch,
@@ -289,60 +430,12 @@ fn complete(
 }
 
 fn valid_request(request: &RequestEnvelope) -> bool {
-    if request.context.operation != request.intent.operation()
-        || request.context.room_view.as_ref().is_some_and(|view| {
-            request.intent.room_id().map(|id| id.as_str()) != Some(view.room_id.as_str())
+    request.context.operation == request.intent.operation()
+        && request.context.room_view.as_ref().is_none_or(|view| {
+            request.intent.room_id().map(|id| id.as_str()) == Some(view.room_id.as_str())
         })
-    {
-        return false;
-    }
-    let (room, anchor, body) = match &request.intent {
-        FrontendIntent::SendMessage {
-            room_id,
-            parent_id,
-            body,
-        } => (room_id, parent_id.as_ref(), body),
-        FrontendIntent::EditMessage {
-            room_id,
-            message_id,
-            body,
-        } => (room_id, Some(message_id), body),
-        _ => return false, // No reads/delete/leave or scope expansion.
-    };
-    let (ComposedBody::PlainText(content) | ComposedBody::Markdown(content)) = body;
-    valid_id(room.as_str()).is_ok()
-        && anchor.is_none_or(|id| valid_id(id.as_str()).is_ok())
-        && !content.is_empty()
-        && content.len() <= 7439
-        && !content.contains('\0')
-}
-
-fn valid_success(intent: &FrontendIntent, result: &FrontendResult) -> bool {
-    match (intent, result) {
-        (
-            FrontendIntent::SendMessage {
-                room_id, parent_id, ..
-            },
-            FrontendResult::SendMessage(WriteOutcome::Success(message)),
-        ) => {
-            valid_id(message.id.as_str()).is_ok()
-                && message.room_id == *room_id
-                && message.parent_id == *parent_id
-        }
-        (
-            FrontendIntent::EditMessage {
-                room_id,
-                message_id,
-                ..
-            },
-            FrontendResult::EditMessage(WriteOutcome::Success(message)),
-        ) => {
-            valid_id(message.id.as_str()).is_ok()
-                && message.room_id == *room_id
-                && message.id == *message_id
-        }
-        _ => true, // RequestEnvelope::complete separately checks exact operations.
-    }
+        // Shared with the ledger: no reads/delete/leave or scope expansion.
+        && valid_editor_write(&request.intent)
 }
 
 #[cfg(test)]

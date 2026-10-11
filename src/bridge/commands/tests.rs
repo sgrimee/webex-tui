@@ -7,13 +7,15 @@ use crate::{
     },
     frontend::{
         continuity::{ContinuityBoundary, DaemonInstanceId, LifecycleControl, UiLifecycleFrame},
-        data::{MessageId, MessageSnapshot, MessageStatus, RoomId},
+        data::{ComposedBody, MessageId, MessageSnapshot, MessageStatus, RoomId},
         editor_submission::{
             DraftRevision, DraftSnapshot, DraftStamp, DraftTarget, EditorSubmission,
             QueueAdmission, SubmissionError,
         },
         editor_write::EditorWriteStatus,
-        envelopes::{FrontendError, Operation, ReadOutcome, RequestSequence},
+        envelopes::{
+            FrontendError, FrontendIntent, Operation, ReadOutcome, RequestSequence, WriteOutcome,
+        },
         events::{ChangeScope, ResyncReason},
         lifecycle::{LifecycleProjection, ProjectionEffects},
         requests::RoomViewRequests,
@@ -200,11 +202,10 @@ fn fixture() -> Fixture {
         now: Instant::now(),
         expire_after_reads: None,
     })));
-    let controller = HostController::new(
+    let (endpoint, worker) = CommandWorker::new(
         SessionLifecycle::new(Backend(Arc::clone(&control)), clock.clone()),
         Host::default(),
     );
-    let (endpoint, worker) = CommandWorker::new(controller);
     Fixture {
         endpoint,
         worker,
@@ -227,19 +228,12 @@ fn lag() -> UiLifecycleFrame {
     })
 }
 async fn install(worker: &mut Worker) {
-    let ticket = worker.controller.begin_snapshot().await.unwrap();
-    worker.controller.commit_snapshot(ticket, ()).unwrap();
-    worker.publish_admission();
+    let ticket = worker.begin_snapshot().await.unwrap();
+    worker.commit_snapshot(ticket, ()).unwrap();
 }
 async fn active(f: &mut Fixture) -> SubscriptionId {
-    let sub = f
-        .worker
-        .controller
-        .connect("fake-paired-secret")
-        .await
-        .unwrap();
+    let sub = f.worker.connect("fake-paired-secret").await.unwrap();
     f.worker
-        .controller
         .frame(
             sub,
             UiLifecycleFrame::Control(LifecycleControl::Ready(marker())),
@@ -479,12 +473,14 @@ async fn closed_full_not_ready_reports_preserve_ledger_draft_and_sequence() {
         let mut ledger = EditorSubmission::default();
         let first = ledger.prepare(&original).unwrap();
         assert_eq!(f.endpoint.try_submit(copy(&first)), refusal);
-        let report = if refusal == CommandAdmission::Full {
-            QueueAdmission::Full
-        } else {
-            QueueAdmission::Closed
+        // Mailbox refusals ARE ledger reports: no lossy mapping step.
+        let expected = match refusal {
+            CommandAdmission::Full => SubmissionError::QueueFull,
+            CommandAdmission::Closed => SubmissionError::QueueClosed,
+            _ => SubmissionError::QueueNotReady,
         };
-        assert!(ledger.admit(&first.context, report).is_err());
+        assert_eq!(ledger.admit(&first.context, refusal), Err(expected));
+        assert_eq!(ledger.status(), EditorWriteStatus::Unavailable);
         assert!(ledger.pending_context().is_none());
         assert!(ledger.review().is_none());
         let next = ledger.prepare(&original).unwrap();
@@ -824,8 +820,7 @@ async fn completed_success_and_rejection_survive_backpressure_worker_drop_and_sh
         assert_eq!(f.endpoint.try_submit(request()), CommandAdmission::Full);
         assert!(!f.worker.handle_one().await);
         f.clock.advance(100);
-        f.worker.controller.check_lease();
-        f.worker.publish_admission();
+        f.worker.check_lease();
         f.worker.shutdown();
         f.worker.shutdown();
         drop(f.worker);
@@ -990,4 +985,152 @@ fn endpoints_worker_and_concrete_handle_future_are_send_without_exposing_capabil
     let handle = f.worker.handle_one();
     assert_send(&handle);
     drop(handle);
+    // Worker-owned lifecycle futures stay spawnable by a later runtime.
+    let connect = f.worker.connect("fake-paired-secret");
+    assert_send(&connect);
+    drop(connect);
+    let renew = f.worker.renew_if_due("fake-paired-secret");
+    assert_send(&renew);
+    drop(renew);
+    let snapshot = f.worker.begin_snapshot();
+    assert_send(&snapshot);
+    drop(snapshot);
+}
+
+fn published_ready(worker: &Worker) -> bool {
+    lock(&worker.shared).published.ready()
+}
+
+#[tokio::test]
+async fn invalid_owned_copy_refusal_releases_ledger_slot_without_io() {
+    let mut f = fixture();
+    active(&mut f).await;
+    let original = plain();
+    let mut ledger = EditorSubmission::default();
+    let first = ledger.prepare(&original).unwrap();
+    // Models validator drift between ledger and mailbox: the owned copy is
+    // refused before ownership, so the ledger must release its prepared slot.
+    let mut owned = copy(&first);
+    if let FrontendIntent::SendMessage { body, .. } = &mut owned.intent {
+        *body = ComposedBody::PlainText(String::new());
+    }
+    let refusal = f.endpoint.try_submit(owned);
+    assert_eq!(refusal, CommandAdmission::InvalidRequest);
+    assert_eq!(
+        ledger.admit(&first.context, refusal),
+        Err(SubmissionError::QueueInvalidRequest)
+    );
+    assert!(ledger.pending_context().is_none());
+    assert!(ledger.review().is_none());
+    assert_eq!(ledger.status(), EditorWriteStatus::Unavailable);
+    let next = ledger.prepare(&original).unwrap();
+    assert_ne!(next.context.id, first.context.id);
+    assert_eq!(
+        f.endpoint.try_submit(copy(&next)),
+        CommandAdmission::Accepted
+    );
+    assert!(f.endpoint.drain().is_none());
+    assert_eq!(count(&f.control), 0);
+    f.worker.shutdown();
+}
+
+#[tokio::test]
+async fn worker_lifecycle_methods_republish_actual_admission_after_each_mutation() {
+    let mut f = fixture();
+    assert!(!published_ready(&f.worker));
+    assert_eq!(f.endpoint.try_submit(request()), CommandAdmission::NotReady);
+
+    let sub = f.worker.connect("fake-paired-secret").await.unwrap();
+    assert_eq!(f.worker.phase(), SessionPhase::AwaitingReady);
+    assert!(!published_ready(&f.worker));
+    f.worker
+        .frame(
+            sub,
+            UiLifecycleFrame::Control(LifecycleControl::Ready(marker())),
+        )
+        .unwrap();
+    assert_eq!(f.worker.phase(), SessionPhase::SnapshotRequired);
+    assert!(!published_ready(&f.worker));
+    install(&mut f.worker).await; // no manual publication anywhere
+    assert!(published_ready(&f.worker));
+    let first = lock(&f.worker.shared).published;
+
+    // Lag resync: revoked, then a new generation is published on reinstall.
+    f.worker.frame(sub, lag()).unwrap();
+    assert!(!published_ready(&f.worker));
+    install(&mut f.worker).await;
+    assert!(published_ready(&f.worker));
+    assert!(lock(&f.worker.shared).published != first);
+
+    // A renewal tick that is not due must not revoke admission spuriously.
+    assert!(!f.worker.renew_if_due("fake-paired-secret").await.unwrap());
+    assert!(published_ready(&f.worker));
+    assert_eq!(f.worker.check_lease(), LeaseAction::None);
+    assert!(published_ready(&f.worker));
+    // A due renewal replaces the session: not ready until its own snapshot.
+    f.clock.advance(85);
+    assert!(f.worker.renew_if_due("fake-paired-secret").await.unwrap());
+    assert_eq!(f.worker.phase(), SessionPhase::AwaitingReady);
+    assert!(!published_ready(&f.worker));
+
+    for step in 0..4 {
+        let sub = active(&mut f).await;
+        assert!(published_ready(&f.worker));
+        match step {
+            0 => {
+                f.worker.stream_failed(sub, SessionFailure::Transport);
+            }
+            1 => f.worker.disconnect(),
+            2 => {
+                f.clock.advance(100);
+                assert_eq!(f.worker.check_lease(), LeaseAction::Reconnect);
+            }
+            _ => {
+                f.clock.advance(100);
+                assert!(f.worker.stream_mut().is_none());
+            }
+        }
+        assert!(!published_ready(&f.worker), "step {step}");
+        assert_eq!(f.endpoint.try_submit(request()), CommandAdmission::NotReady);
+    }
+    assert_eq!(count(&f.control), 0);
+}
+
+#[tokio::test]
+async fn host_phase_hook_revokes_without_worker_publication_and_never_restores() {
+    // Direct controller calls bypass the worker's post-call publication, as a
+    // lifecycle future dropped after its first phase publication would.
+    let mut f = fixture();
+    active(&mut f).await;
+    assert!(published_ready(&f.worker));
+    f.worker.controller.disconnect();
+    assert!(!published_ready(&f.worker));
+
+    let mut f = fixture();
+    let sub2 = active(&mut f).await;
+    // Connecting is published before the first await of connect.
+    f.worker
+        .controller
+        .connect("fake-paired-secret")
+        .await
+        .unwrap();
+    assert!(!published_ready(&f.worker));
+    let replacement = f.worker.subscription().unwrap();
+    assert_ne!(replacement, sub2);
+    f.worker
+        .controller
+        .frame(
+            replacement,
+            UiLifecycleFrame::Control(LifecycleControl::Ready(marker())),
+        )
+        .unwrap();
+    let ticket = f.worker.controller.begin_snapshot().await.unwrap();
+    f.worker.controller.commit_snapshot(ticket, ()).unwrap();
+    assert_eq!(f.worker.phase(), SessionPhase::Active);
+    // Active is never restored by the host hook; only an actual worker stamp.
+    assert!(!published_ready(&f.worker));
+    assert_eq!(f.endpoint.try_submit(request()), CommandAdmission::NotReady);
+    assert_eq!(f.worker.check_lease(), LeaseAction::None);
+    assert!(published_ready(&f.worker));
+    assert_eq!(f.worker.host().snapshots, 2);
 }
