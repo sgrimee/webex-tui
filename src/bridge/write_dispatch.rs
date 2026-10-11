@@ -1,6 +1,7 @@
 //! Private, unconnected paired-UI send capability.
+use super::projection::{project_write_message, write_failure};
 use crate::frontend::{
-    data::{ComposedBody, MessageId, MessageSnapshot, MessageStatus, OwnedMessageBody, RoomId},
+    data::{ComposedBody, MessageId, MessageSnapshot, RoomId},
     envelopes::{FrontendError, FrontendIntent, FrontendResult, WriteOutcome},
 };
 use std::future::Future;
@@ -126,16 +127,16 @@ fn message_outcome(
     room: &str,
 ) -> WriteOutcome<MessageSnapshot> {
     match reply {
-        Ok(message) => project(message, room)
+        Ok(message) => project_write_message(message, &RoomId::new(room))
             .map(WriteOutcome::Success)
-            .unwrap_or_else(|| WriteOutcome::DeliveryUnknown(error("invalid_response"))),
-        Err(error_value) => failure(error_value),
+            .unwrap_or_else(|_| WriteOutcome::DeliveryUnknown(error("invalid_response"))),
+        Err(error_value) => write_failure(error_value),
     }
 }
 fn unit_outcome<T>(reply: Result<(), ClientError>, value: T, _room: RoomId) -> WriteOutcome<T> {
     match reply {
         Ok(()) => WriteOutcome::Success(value),
-        Err(error_value) => match failure::<MessageSnapshot>(error_value) {
+        Err(error_value) => match write_failure::<T>(error_value) {
             WriteOutcome::Rejected(error_value) => WriteOutcome::Rejected(error_value),
             WriteOutcome::DeliveryUnknown(error_value) => {
                 WriteOutcome::DeliveryUnknown(error_value)
@@ -144,53 +145,11 @@ fn unit_outcome<T>(reply: Result<(), ClientError>, value: T, _room: RoomId) -> W
         },
     }
 }
-fn failure<T>(error_value: ClientError) -> WriteOutcome<T> {
-    if error_value.is_definitely_rejected() {
-        WriteOutcome::Rejected(error("webex_rejected"))
-    } else {
-        WriteOutcome::DeliveryUnknown(error("delivery_unknown"))
-    }
-}
 fn error(code: &str) -> FrontendError {
     FrontendError {
         code: code.into(),
         message: "Write outcome requires review".into(),
     }
-}
-fn project(value: dto::Message, room: &str) -> Option<MessageSnapshot> {
-    if value.id.is_empty()
-        || value.room_id != room
-        || value.status != "active"
-        || value.revision < 0
-    {
-        return None;
-    }
-    let body = value.body.and_then(|body| match body.kind.as_str() {
-        "plainText" => Some(OwnedMessageBody::Forms {
-            text: Some(body.content),
-            markdown: None,
-            html: None,
-        }),
-        "markdown" => Some(OwnedMessageBody::Forms {
-            text: None,
-            markdown: Some(body.content),
-            html: None,
-        }),
-        _ => None,
-    });
-    Some(MessageSnapshot {
-        id: MessageId::new(value.id),
-        room_id: RoomId::new(value.room_id),
-        revision: Some(value.revision as u64),
-        parent_id: value.parent_id.map(MessageId::new),
-        sender_id: value.sender_id.map(crate::frontend::data::PersonId::new),
-        sender_email: None,
-        created_at: value.created_at,
-        updated_at: value.updated_at,
-        status: MessageStatus::Active,
-        body,
-        attachment_count: Some(value.attachment_count as usize),
-    })
 }
 #[cfg(test)]
 mod tests {
