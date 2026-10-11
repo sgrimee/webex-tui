@@ -267,6 +267,177 @@ async fn explicit_pair_denial_reuses_secret_without_overwriting_then_fails_close
     assert_eq!(session.phase(), SessionPhase::Disconnected);
 }
 
+type Events = Arc<Mutex<Vec<&'static str>>>;
+
+/// These fakes record only control flow. They intentionally have no field that
+/// can retain a borrowed secret or pairing hash, so failure/state assertions
+/// below exercise the same no-retention contract required of real adapters.
+struct OneShotStore {
+    secret: Option<UiSecret>,
+    events: Events,
+}
+
+impl UiSecretStore for OneShotStore {
+    async fn load(&mut self) -> Result<Option<UiSecret>, SecretStoreFailure> {
+        self.events.lock().unwrap().push("load");
+        Ok(self.secret.take())
+    }
+
+    async fn persist(&mut self, _: &UiSecret) -> Result<(), SecretStoreFailure> {
+        self.events.lock().unwrap().push("persist");
+        Ok(())
+    }
+}
+
+struct NoRetainBackend {
+    events: Events,
+    pair: Result<(), PairingBackendFailure>,
+}
+
+impl PairingBackend for NoRetainBackend {
+    async fn status(&mut self) -> Result<u32, PairingBackendFailure> {
+        self.events.lock().unwrap().push("status");
+        Ok(SUPPORTED_API_VERSION)
+    }
+
+    async fn pair(&mut self, _: &str) -> Result<(), PairingBackendFailure> {
+        self.events.lock().unwrap().push("pair");
+        self.pair
+    }
+}
+
+struct FixedRandom {
+    events: Events,
+    byte: u8,
+}
+
+impl RandomSource for FixedRandom {
+    fn fill_256(&mut self, bytes: &mut [u8; 32]) -> Result<(), RandomFailure> {
+        self.events.lock().unwrap().push("random");
+        bytes.fill(self.byte);
+        Ok(())
+    }
+}
+
+struct FailingSession {
+    events: Events,
+}
+
+impl SessionBackend for FailingSession {
+    type Client = ();
+    type Stream = ();
+    type SnapshotReader<'a> = ();
+
+    async fn issue(&mut self, _: &str) -> Result<(), SessionFailure> {
+        self.events.lock().unwrap().push("issue");
+        Err(SessionFailure::Transport)
+    }
+
+    async fn subscribe(&mut self, _: &()) -> Result<(), SessionFailure> {
+        unreachable!("the issue failure prevents subscription")
+    }
+
+    async fn continuity(
+        &mut self,
+        _: &(),
+    ) -> Result<crate::frontend::continuity::ContinuityBoundary, SessionFailure> {
+        unreachable!("the issue failure prevents continuity")
+    }
+
+    fn lease_ttl(_: &()) -> u64 {
+        600
+    }
+
+    fn snapshot_reader(_: &()) {}
+}
+
+fn assert_secret_free<T: std::fmt::Debug>(value: &T, secret: &str) {
+    assert!(
+        !format!("{value:?}").contains(secret),
+        "secret escaped through an observable failure/state value"
+    );
+}
+
+#[tokio::test]
+async fn fresh_secret_is_not_observable_through_pair_failure_or_state() {
+    let secret = encoded([0xD1; 32]);
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let mut bootstrap = PairingBootstrap::new(
+        OneShotStore {
+            secret: None,
+            events: Arc::clone(&events),
+        },
+        NoRetainBackend {
+            events: Arc::clone(&events),
+            pair: Err(PairingBackendFailure::Denied),
+        },
+        FixedRandom {
+            events: Arc::clone(&events),
+            byte: 0xD1,
+        },
+    );
+    let mut session = SessionLifecycle::new(
+        Session {
+            calls: Arc::new(Mutex::new(Vec::new())),
+        },
+        Clock,
+    );
+
+    let result = bootstrap.connect(&mut session).await;
+
+    assert_eq!(result, Err(BootstrapFailure::PairDenied));
+    assert_eq!(
+        bootstrap.state(),
+        PairingState::Failed(BootstrapFailure::PairDenied)
+    );
+    assert_secret_free(&result, &secret);
+    assert_secret_free(&bootstrap.state(), &secret);
+    assert_eq!(
+        *events.lock().unwrap(),
+        ["status", "load", "random", "persist", "pair"]
+    );
+}
+
+#[tokio::test]
+async fn existing_secret_is_not_observable_through_session_failure_or_state() {
+    let secret = encoded([0xE2; 32]);
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let mut bootstrap = PairingBootstrap::new(
+        OneShotStore {
+            secret: Some(UiSecret::from_persisted(secret.clone()).unwrap()),
+            events: Arc::clone(&events),
+        },
+        NoRetainBackend {
+            events: Arc::clone(&events),
+            pair: Ok(()),
+        },
+        FixedRandom {
+            events: Arc::clone(&events),
+            byte: 0xFF,
+        },
+    );
+    let mut session = SessionLifecycle::new(
+        FailingSession {
+            events: Arc::clone(&events),
+        },
+        Clock,
+    );
+
+    let result = bootstrap.connect(&mut session).await;
+
+    assert_eq!(
+        result,
+        Err(BootstrapFailure::Session(SessionFailure::Transport))
+    );
+    assert_eq!(
+        bootstrap.state(),
+        PairingState::Failed(BootstrapFailure::Session(SessionFailure::Transport))
+    );
+    assert_secret_free(&result, &secret);
+    assert_secret_free(&bootstrap.state(), &secret);
+    assert_eq!(*events.lock().unwrap(), ["status", "load", "pair", "issue"]);
+}
+
 #[tokio::test]
 async fn version_mismatch_stops_before_secret_read_or_pairing() {
     let (mut bootstrap, mut session, calls) = bootstrap(

@@ -16,6 +16,7 @@ use webex_bridge::{
     client::{BridgeClient, ClientError},
     dto,
 };
+use zeroize::Zeroize;
 
 /// The bridge API revision understood by this bounded bootstrap seam.
 pub(crate) const SUPPORTED_API_VERSION: u32 = 1;
@@ -27,17 +28,49 @@ pub(crate) const SUPPORTED_API_VERSION: u32 = 1;
 /// construction of the daemon's hash request.
 pub(crate) struct UiSecret(String);
 
+impl Drop for UiSecret {
+    fn drop(&mut self) {
+        self.0.zeroize();
+    }
+}
+
+/// Short-lived D19 pairing credential. Like [`UiSecret`], it is deliberately
+/// neither cloneable nor formattable and clears itself if the bootstrap future
+/// is cancelled while pairing is in flight.
+struct PairingHash(String);
+
+impl Drop for PairingHash {
+    fn drop(&mut self) {
+        self.0.zeroize();
+    }
+}
+
+impl PairingHash {
+    fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
 impl UiSecret {
-    fn from_random(bytes: [u8; 32]) -> Self {
-        Self(URL_SAFE_NO_PAD.encode(bytes))
+    fn from_random(mut bytes: [u8; 32]) -> Self {
+        let encoded = URL_SAFE_NO_PAD.encode(bytes);
+        bytes.zeroize();
+        Self(encoded)
     }
 
     /// Validate a canonical secret loaded from the future TUI-only secret store.
-    pub(crate) fn from_persisted(value: String) -> Result<Self, SecretStoreFailure> {
-        let bytes = URL_SAFE_NO_PAD
-            .decode(value.as_bytes())
-            .map_err(|_| SecretStoreFailure::Unavailable)?;
-        if bytes.len() != 32 || URL_SAFE_NO_PAD.encode(&bytes) != value {
+    pub(crate) fn from_persisted(mut value: String) -> Result<Self, SecretStoreFailure> {
+        let mut bytes = match URL_SAFE_NO_PAD.decode(value.as_bytes()) {
+            Ok(bytes) => bytes,
+            Err(_) => {
+                value.zeroize();
+                return Err(SecretStoreFailure::Unavailable);
+            }
+        };
+        let valid = bytes.len() == 32 && URL_SAFE_NO_PAD.encode(&bytes) == value;
+        bytes.zeroize();
+        if !valid {
+            value.zeroize();
             return Err(SecretStoreFailure::Unavailable);
         }
         Ok(Self(value))
@@ -48,9 +81,13 @@ impl UiSecret {
     }
 
     /// D19's exact request format: SHA-256 over the encoded secret, then
-    /// URL-safe base64 without padding.
-    fn pair_hash(&self) -> String {
-        URL_SAFE_NO_PAD.encode(Sha256::digest(self.0.as_bytes()))
+    /// URL-safe base64 without padding. The returned credential is only valid
+    /// for the immediately following pairing call.
+    fn pair_hash(&self) -> PairingHash {
+        let mut digest = Sha256::digest(self.0.as_bytes());
+        let encoded = URL_SAFE_NO_PAD.encode(digest.as_slice());
+        digest.as_mut_slice().zeroize();
+        PairingHash(encoded)
     }
 }
 
@@ -76,6 +113,7 @@ pub(crate) enum PairingBackendFailure {
 
 /// TUI-owned secret persistence. A production implementation will use the
 /// TUI's dedicated Keychain item; this seam deliberately supplies none yet.
+/// Implementations must not format, log, clone, or retain the borrowed secret.
 pub(crate) trait UiSecretStore: Send {
     fn load(&mut self)
         -> impl Future<Output = Result<Option<UiSecret>, SecretStoreFailure>> + Send;
@@ -91,6 +129,8 @@ pub(crate) trait RandomSource: Send {
 }
 
 /// Bounded local API calls needed before a secret reaches a UI session.
+/// `pair` may use the borrowed pairing credential only for its request and
+/// must not format, log, clone, or retain it.
 pub(crate) trait PairingBackend: Send {
     fn status(&mut self) -> impl Future<Output = Result<u32, PairingBackendFailure>> + Send;
     fn pair(
@@ -220,6 +260,7 @@ impl<S: UiSecretStore, P: PairingBackend, R: RandomSource> PairingBootstrap<S, P
                 self.state = PairingState::GeneratingSecret;
                 let mut bytes = [0_u8; 32];
                 if self.random.fill_256(&mut bytes).is_err() {
+                    bytes.zeroize();
                     return self.fail(BootstrapFailure::RandomUnavailable);
                 }
                 let secret = UiSecret::from_random(bytes);
@@ -241,8 +282,11 @@ impl<S: UiSecretStore, P: PairingBackend, R: RandomSource> PairingBootstrap<S, P
         };
 
         self.state = PairingState::Pairing;
-        let secret_hash = secret.pair_hash();
-        match self.backend.pair(&secret_hash).await {
+        let pairing = {
+            let secret_hash = secret.pair_hash();
+            self.backend.pair(secret_hash.as_str()).await
+        };
+        match pairing {
             Ok(()) => {}
             Err(PairingBackendFailure::Denied) => return self.fail(BootstrapFailure::PairDenied),
             Err(PairingBackendFailure::Unavailable) => {

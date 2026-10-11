@@ -15,6 +15,7 @@ version = "0.8.0"
 arboard = { version = "3.6" }
 base64 = "0.22"
 sha2 = "0.10"
+zeroize = "1.8"
 chrono = "0.4"
 clap = { version = "4", features = ["cargo"] }
 color-eyre = "0.6"
