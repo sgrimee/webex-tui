@@ -103,7 +103,14 @@ impl<B: SessionBackend, C: SessionClock, H: PresentationHost> HostController<B, 
         &mut self,
         paired_secret: &str,
     ) -> Result<SubscriptionId, SessionFailure> {
-        let result = self.session.connect(paired_secret).await;
+        // Publish before the first await so a dropped future cannot leave the
+        // presentation host showing a stale active/disconnected phase.
+        let attempt = self.session.begin_connect();
+        self.phase_changed();
+        let result = match attempt {
+            Ok(attempt) => self.session.complete_connect(attempt, paired_secret).await,
+            Err(error) => Err(error),
+        };
         self.phase_changed();
         result
     }
@@ -112,10 +119,26 @@ impl<B: SessionBackend, C: SessionClock, H: PresentationHost> HostController<B, 
         &mut self,
         paired_secret: &str,
     ) -> Result<bool, SessionFailure> {
-        let result = self.session.renew_if_due(paired_secret).await;
-        if !matches!(result, Ok(false)) {
-            self.phase_changed();
-        }
+        // Only an active lease that is due may enter Connecting here. Expired,
+        // explicitly disconnected and failed states require an explicit caller
+        // reconnect decision rather than a leftover renewal tick.
+        let attempt = self.session.begin_renew_if_due();
+        let Some(attempt) = (match attempt {
+            Ok(attempt) => attempt,
+            Err(error) => {
+                self.phase_changed();
+                return Err(error);
+            }
+        }) else {
+            return Ok(false);
+        };
+        self.phase_changed();
+        let result = self
+            .session
+            .complete_connect(attempt, paired_secret)
+            .await
+            .map(|_| true);
+        self.phase_changed();
         result
     }
 
@@ -134,10 +157,14 @@ impl<B: SessionBackend, C: SessionClock, H: PresentationHost> HostController<B, 
         self.phase_changed();
     }
 
-    /// Borrow only for prepared mirror-read snapshots; host never receives this
-    /// capability. No frontend write dispatch is provided by this interface.
-    pub(crate) fn read_client(&self) -> Option<&B::Client> {
-        self.session.read_client()
+    /// Borrow a non-cloneable, backend-defined read facade only for the exact
+    /// snapshot ticket currently being prepared. The raw `UiClient` and its
+    /// write-capable bearer never cross this controller boundary.
+    pub(crate) fn snapshot_reader(
+        &self,
+        ticket: &SnapshotTicket,
+    ) -> Result<B::SnapshotReader<'_>, SessionFailure> {
+        self.session.snapshot_reader(ticket)
     }
     pub(crate) fn stream_mut(&mut self) -> Option<&mut B::Stream> {
         self.check_lease();

@@ -9,7 +9,10 @@ use crate::frontend::{
 };
 use serde_json::json;
 use std::{
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
     time::{Duration, Instant},
 };
 
@@ -33,14 +36,19 @@ impl SessionClock for Clock {
 struct Backend {
     calls: Arc<Mutex<Vec<&'static str>>>,
     fail: Arc<Mutex<Option<SessionFailure>>>,
+    pending_issue: Arc<AtomicBool>,
     boundary: Arc<Mutex<ContinuityBoundary>>,
 }
 impl SessionBackend for Backend {
     type Client = ();
     type Stream = ();
+    type SnapshotReader<'a> = ();
     async fn issue(&mut self, secret: &str) -> Result<(), SessionFailure> {
         assert_eq!(secret, "synthetic-secret");
         self.calls.lock().unwrap().push("issue");
+        if self.pending_issue.load(Ordering::SeqCst) {
+            std::future::pending::<()>().await;
+        }
         if let Some(e) = self.fail.lock().unwrap().take() {
             Err(e)
         } else {
@@ -58,6 +66,7 @@ impl SessionBackend for Backend {
     fn lease_ttl(_: &()) -> u64 {
         100
     }
+    fn snapshot_reader(_: &()) {}
 }
 
 #[derive(Default)]
@@ -97,6 +106,7 @@ struct Fixture {
     clock: Clock,
     calls: Arc<Mutex<Vec<&'static str>>>,
     fail: Arc<Mutex<Option<SessionFailure>>>,
+    pending_issue: Arc<AtomicBool>,
     boundary: Arc<Mutex<ContinuityBoundary>>,
 }
 fn marker(watermark: u64) -> ContinuityBoundary {
@@ -109,10 +119,12 @@ fn fixture() -> Fixture {
     let clock = Clock::new();
     let calls = Arc::new(Mutex::new(Vec::new()));
     let fail = Arc::new(Mutex::new(None));
+    let pending_issue = Arc::new(AtomicBool::new(false));
     let boundary = Arc::new(Mutex::new(marker(0)));
     let backend = Backend {
         calls: Arc::clone(&calls),
         fail: Arc::clone(&fail),
+        pending_issue: Arc::clone(&pending_issue),
         boundary: Arc::clone(&boundary),
     };
     let host = Host {
@@ -124,6 +136,7 @@ fn fixture() -> Fixture {
         clock,
         calls,
         fail,
+        pending_issue,
         boundary,
     }
 }
@@ -165,7 +178,6 @@ async fn connect_ready_requests_neutral_snapshot_refresh_without_changing_select
     let mut f = fixture();
     let id = f.controller.connect("synthetic-secret").await.unwrap();
     assert_eq!(f.controller.phase(), SessionPhase::AwaitingReady);
-    assert!(f.controller.read_client().is_none());
     let action = f.controller.frame(id, ready()).unwrap();
     assert_eq!(
         action,
@@ -191,6 +203,7 @@ async fn commit_installs_ticket_validated_snapshot_before_replaying_newer_metada
     f.controller.frame(id, ready()).unwrap();
     *f.boundary.lock().unwrap() = marker(5);
     let ticket = f.controller.begin_snapshot().await.unwrap();
+    assert!(f.controller.snapshot_reader(&ticket).is_ok());
     assert_eq!(
         f.controller
             .frame(id, message(3, MessageChange::Updated))
@@ -338,6 +351,40 @@ async fn terminal_expiry_notifies_local_session_without_guessing_upstream_oauth(
 }
 
 #[tokio::test]
+async fn cancelled_connect_publishes_connecting_before_its_first_io_await() {
+    use std::{
+        future::Future,
+        task::{Context, Poll, Wake, Waker},
+    };
+
+    struct Noop;
+    impl Wake for Noop {
+        fn wake(self: Arc<Self>) {}
+    }
+
+    let mut f = fixture();
+    f.pending_issue.store(true, Ordering::SeqCst);
+    let waker = Waker::from(Arc::new(Noop));
+    let mut context = Context::from_waker(&waker);
+    let mut future = Box::pin(f.controller.connect("synthetic-secret"));
+    assert!(matches!(future.as_mut().poll(&mut context), Poll::Pending));
+    drop(future);
+
+    // Cancellation leaves the owner in Connecting, but the host has already
+    // seen that transition and cannot retain the old presentation state.
+    assert_eq!(f.controller.phase(), SessionPhase::Connecting);
+    assert_eq!(
+        f.controller.host().phases.last(),
+        Some(&SessionPhase::Connecting)
+    );
+    assert_eq!(
+        f.controller.host().last_local,
+        Some(ConnectionState::Connecting)
+    );
+    assert_eq!(*f.calls.lock().unwrap(), ["issue"]);
+}
+
+#[tokio::test]
 async fn renewal_and_renewal_failure_are_explicit_without_auto_retry_or_snapshot_install() {
     let mut f = fixture();
     active(&mut f).await;
@@ -358,7 +405,6 @@ async fn renewal_and_renewal_failure_are_explicit_without_auto_retry_or_snapshot
         f.controller.phase(),
         SessionPhase::Failed(SessionFailure::AuthRequired)
     );
-    assert!(f.controller.read_client().is_none());
     assert_eq!(
         f.controller.host().last_local,
         Some(ConnectionState::Disconnected)
@@ -382,7 +428,7 @@ async fn lease_tick_and_eof_fail_closed_and_keep_existing_snapshot_data() {
     let old = active(&mut f).await;
     f.clock.advance(100);
     assert_eq!(f.controller.check_lease(), LeaseAction::Reconnect);
-    assert!(f.controller.read_client().is_none());
+    assert_eq!(f.controller.phase(), SessionPhase::Expired);
     assert_eq!(f.controller.host().installed, ["initial"]);
     assert_eq!(
         f.controller.stream_failed(old, SessionFailure::StreamEnded),

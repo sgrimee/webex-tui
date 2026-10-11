@@ -17,7 +17,10 @@ use std::{
     future::Future,
     time::{Duration, Instant},
 };
-use webex_bridge::client::{events::EventStream, ui::UiClient, BridgeClient, ClientError};
+use webex_bridge::{
+    client::{events::EventStream, ui::UiClient, BridgeClient, ClientError},
+    dto,
+};
 
 const MAX_PENDING: usize = 256;
 
@@ -49,6 +52,11 @@ fn io_failure(error: ClientError) -> SessionFailure {
 pub(crate) trait SessionBackend: Send {
     type Client: Send + Sync;
     type Stream: Send;
+    /// Read-only view of a client, scoped to a current snapshot ticket.
+    /// Implementations must not expose a cloneable write client or bearer token.
+    type SnapshotReader<'a>
+    where
+        Self: 'a;
     fn issue(
         &mut self,
         secret: &str,
@@ -62,6 +70,79 @@ pub(crate) trait SessionBackend: Send {
         client: &Self::Client,
     ) -> impl Future<Output = Result<ContinuityBoundary, SessionFailure>> + Send;
     fn lease_ttl(client: &Self::Client) -> u64;
+    fn snapshot_reader(client: &Self::Client) -> Self::SnapshotReader<'_>;
+}
+
+/// Non-cloneable, read-only UI capability held only while preparing a fenced
+/// snapshot. It deliberately exposes neither the bearer nor mutation/event
+/// methods from [`UiClient`].
+pub(crate) struct UiSnapshotReader<'a> {
+    client: &'a UiClient,
+}
+
+impl UiSnapshotReader<'_> {
+    pub(crate) async fn me(&self) -> Result<dto::Person, ClientError> {
+        self.client.me().await
+    }
+
+    pub(crate) async fn rooms(&self) -> Result<Vec<dto::Room>, ClientError> {
+        self.client.rooms().await
+    }
+
+    pub(crate) async fn room(&self, room_id: &str) -> Result<dto::Room, ClientError> {
+        self.client.room(room_id).await
+    }
+
+    pub(crate) async fn team(&self, team_id: &str) -> Result<dto::Team, ClientError> {
+        self.client.team(team_id).await
+    }
+
+    pub(crate) async fn room_messages_page(
+        &self,
+        room_id: &str,
+        before: Option<&str>,
+        max: Option<u32>,
+    ) -> Result<dto::MessagePage, ClientError> {
+        self.client.room_messages_page(room_id, before, max).await
+    }
+
+    pub(crate) async fn thread_parent(
+        &self,
+        message_id: &str,
+    ) -> Result<dto::ThreadParent, ClientError> {
+        self.client.thread_parent(message_id).await
+    }
+
+    pub(crate) async fn thread_children(
+        &self,
+        parent_id: &str,
+        before: Option<&str>,
+        max: Option<u32>,
+    ) -> Result<dto::ThreadChildren, ClientError> {
+        self.client.thread_children(parent_id, before, max).await
+    }
+
+    pub(crate) async fn message_read(
+        &self,
+        message_id: &str,
+    ) -> Result<dto::MessageRead, ClientError> {
+        self.client.message_read(message_id).await
+    }
+
+    pub(crate) async fn message(&self, message_id: &str) -> Result<dto::Message, ClientError> {
+        self.client.message(message_id).await
+    }
+
+    pub(crate) async fn person_read(
+        &self,
+        person_id: &str,
+    ) -> Result<dto::PersonRead, ClientError> {
+        self.client.person_read(person_id).await
+    }
+
+    pub(crate) async fn person(&self, person_id: &str) -> Result<dto::Person, ClientError> {
+        self.client.person(person_id).await
+    }
 }
 
 pub(crate) struct BridgeSessionBackend {
@@ -77,6 +158,7 @@ impl BridgeSessionBackend {
 impl SessionBackend for BridgeSessionBackend {
     type Client = UiClient;
     type Stream = EventStream;
+    type SnapshotReader<'a> = UiSnapshotReader<'a>;
     async fn issue(&mut self, secret: &str) -> Result<UiClient, SessionFailure> {
         self.bridge
             .create_ui_session(secret)
@@ -95,6 +177,9 @@ impl SessionBackend for BridgeSessionBackend {
     }
     fn lease_ttl(client: &UiClient) -> u64 {
         client.lease_ttl()
+    }
+    fn snapshot_reader(client: &UiClient) -> UiSnapshotReader<'_> {
+        UiSnapshotReader { client }
     }
 }
 
@@ -149,6 +234,11 @@ pub(crate) struct SnapshotTicket {
     subscription: SubscriptionId,
     generation: u64,
     boundary: ContinuityBoundary,
+}
+
+pub(crate) struct ConnectAttempt {
+    subscription: SubscriptionId,
+    started: Instant,
 }
 
 struct Active<C, S> {
@@ -206,26 +296,21 @@ impl<B: SessionBackend, C: SessionClock> SessionLifecycle<B, C> {
         self.active.as_ref().map(|a| a.renew_at)
     }
 
-    /// Snapshot/read access only; the controller still owns operation dispatch.
-    pub(crate) fn read_client(&self) -> Option<&B::Client> {
-        if matches!(
-            self.phase(),
-            SessionPhase::SnapshotRequired | SessionPhase::Active
-        ) {
-            self.active.as_ref().map(|a| &a.client)
-        } else {
-            None
+    /// Borrow a non-cloneable read facade only while preparing this exact
+    /// snapshot. The ticket fence prevents an old/replaced subscription from
+    /// retaining a write-capable `UiClient` beyond reconciliation.
+    pub(crate) fn snapshot_reader(
+        &self,
+        ticket: &SnapshotTicket,
+    ) -> Result<B::SnapshotReader<'_>, SessionFailure> {
+        let active = self.active.as_ref().ok_or(SessionFailure::NotReady)?;
+        if self.phase() != SessionPhase::SnapshotRequired
+            || ticket.subscription != active.subscription
+            || ticket.generation != active.snapshot_generation
+        {
+            return Err(SessionFailure::StaleSnapshot);
         }
-    }
-
-    /// The host may enable user-write controls only after snapshot reconciliation.
-    /// This returns a typed client, never a raw bearer token or an automatic write.
-    pub(crate) fn active_client(&self) -> Option<&B::Client> {
-        if self.phase() == SessionPhase::Active {
-            self.read_client()
-        } else {
-            None
-        }
+        Ok(B::snapshot_reader(&active.client))
     }
 
     /// A future host may poll this owned stream and feed projected frames back
@@ -260,10 +345,11 @@ impl<B: SessionBackend, C: SessionClock> SessionLifecycle<B, C> {
         self.phase = SessionPhase::Disconnected;
     }
 
-    /// Explicit initial connect or reconnect. Old handles are dropped first;
-    /// failure/cancellation cannot leave an old token available for new work.
-    /// The host must validate daemon/API compatibility before supplying a secret.
-    pub(crate) async fn connect(&mut self, secret: &str) -> Result<SubscriptionId, SessionFailure> {
+    /// Start an explicit initial-connect or reconnect attempt. Old handles are
+    /// dropped before any IO so cancellation cannot leave their token available
+    /// for new work. Controllers call this synchronously before awaiting to
+    /// publish `Connecting` to their presentation host.
+    pub(crate) fn begin_connect(&mut self) -> Result<ConnectAttempt, SessionFailure> {
         self.active = None;
         self.phase = SessionPhase::Connecting;
         let next = match self.last_subscription.checked_add(1) {
@@ -272,7 +358,24 @@ impl<B: SessionBackend, C: SessionClock> SessionLifecycle<B, C> {
         };
         // Reserve before IO so a cancelled attempt can never reuse its epoch.
         self.last_subscription = next;
-        let started = self.clock.now();
+        Ok(ConnectAttempt {
+            subscription: SubscriptionId(next),
+            started: self.clock.now(),
+        })
+    }
+
+    /// Complete a previously announced explicit connection attempt.
+    pub(crate) async fn complete_connect(
+        &mut self,
+        attempt: ConnectAttempt,
+        secret: &str,
+    ) -> Result<SubscriptionId, SessionFailure> {
+        if self.phase != SessionPhase::Connecting
+            || self.active.is_some()
+            || self.last_subscription != attempt.subscription.0
+        {
+            return Err(SessionFailure::NotReady);
+        }
         let client = match self.backend.issue(secret).await {
             Ok(client) => client,
             Err(error) => return Err(self.fail(error)),
@@ -282,10 +385,10 @@ impl<B: SessionBackend, C: SessionClock> SessionLifecycle<B, C> {
             return Err(self.fail(SessionFailure::InvalidLease));
         }
         let lease = Duration::from_secs(ttl);
-        let Some(lease_deadline) = started.checked_add(lease) else {
+        let Some(lease_deadline) = attempt.started.checked_add(lease) else {
             return Err(self.fail(SessionFailure::InvalidLease));
         };
-        let Some(renew_at) = started.checked_add(lease - lease / 5) else {
+        let Some(renew_at) = attempt.started.checked_add(lease - lease / 5) else {
             return Err(self.fail(SessionFailure::InvalidLease));
         };
         if self.clock.now() >= lease_deadline {
@@ -298,7 +401,7 @@ impl<B: SessionBackend, C: SessionClock> SessionLifecycle<B, C> {
         if self.clock.now() >= lease_deadline {
             return Err(self.fail(SessionFailure::Expired));
         }
-        let subscription = SubscriptionId(next);
+        let subscription = attempt.subscription;
         self.active = Some(Active {
             client,
             stream,
@@ -314,10 +417,22 @@ impl<B: SessionBackend, C: SessionClock> SessionLifecycle<B, C> {
         Ok(subscription)
     }
 
+    /// Explicit initial connect or reconnect. The controller-facing path uses
+    /// `begin_connect` first so presentation can observe `Connecting` before
+    /// this future reaches its first cancellation point.
+    pub(crate) async fn connect(&mut self, secret: &str) -> Result<SubscriptionId, SessionFailure> {
+        let attempt = self.begin_connect()?;
+        self.complete_connect(attempt, secret).await
+    }
+
     /// Caller-scheduled lease tick; there is no background timer/retry loop here.
     pub(crate) fn check_lease(&mut self) -> LeaseAction {
         let Some(active) = &self.active else {
-            return LeaseAction::Reconnect;
+            return if self.phase == SessionPhase::Expired {
+                LeaseAction::Reconnect
+            } else {
+                LeaseAction::None
+            };
         };
         let now = self.clock.now();
         if now >= active.lease_deadline {
@@ -331,11 +446,22 @@ impl<B: SessionBackend, C: SessionClock> SessionLifecycle<B, C> {
         }
     }
 
-    pub(crate) async fn renew_if_due(&mut self, secret: &str) -> Result<bool, SessionFailure> {
-        if self.check_lease() == LeaseAction::None {
-            return Ok(false);
+    /// Start an eligible renewal. A periodic tick never reconnects an explicit
+    /// disconnect, a failed attempt, or any no-active state; callers must use
+    /// the explicit `connect` policy for those transitions.
+    pub(crate) fn begin_renew_if_due(&mut self) -> Result<Option<ConnectAttempt>, SessionFailure> {
+        if self.check_lease() == LeaseAction::Renew {
+            self.begin_connect().map(Some)
+        } else {
+            Ok(None)
         }
-        self.connect(secret).await.map(|_| true)
+    }
+
+    pub(crate) async fn renew_if_due(&mut self, secret: &str) -> Result<bool, SessionFailure> {
+        let Some(attempt) = self.begin_renew_if_due()? else {
+            return Ok(false);
+        };
+        self.complete_connect(attempt, secret).await.map(|_| true)
     }
 
     fn valid_lease(&mut self) -> Result<(), SessionFailure> {

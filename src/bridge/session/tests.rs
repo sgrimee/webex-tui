@@ -66,6 +66,7 @@ struct Backend {
 impl SessionBackend for Backend {
     type Client = Client;
     type Stream = Stream;
+    type SnapshotReader<'a> = ();
     async fn issue(&mut self, secret: &str) -> Result<Client, SessionFailure> {
         assert!(!secret.is_empty()); // fixture input is used, never retained in the backend
         self.calls.push("issue");
@@ -100,6 +101,7 @@ impl SessionBackend for Backend {
     fn lease_ttl(client: &Client) -> u64 {
         client.ttl
     }
+    fn snapshot_reader(_: &Client) {}
 }
 
 type Owner = SessionLifecycle<Backend, Clock>;
@@ -170,8 +172,7 @@ async fn connect_owns_client_stream_deadlines_but_waits_for_ready_before_access(
         Some(start + Duration::from_secs(100))
     );
     assert_eq!(owner.renew_at(), Some(start + Duration::from_secs(80)));
-    assert!(owner.read_client().is_none());
-    assert!(owner.active_client().is_none());
+    assert!(owner.active.is_some());
     assert!(matches!(
         owner.begin_snapshot().await,
         Err(SessionFailure::NotReady)
@@ -192,12 +193,14 @@ async fn ready_then_subscribe_first_snapshot_enables_client_without_any_write() 
         }
     );
     assert_eq!(owner.phase(), SessionPhase::SnapshotRequired);
-    assert!(owner.read_client().is_some());
-    assert!(owner.active_client().is_none());
     let ticket = owner.begin_snapshot().await.unwrap();
-    assert!(owner.finish_snapshot(ticket).unwrap().is_empty());
+    assert!(owner.snapshot_reader(&ticket).is_ok());
+    assert!(owner.finish_snapshot(ticket.clone()).unwrap().is_empty());
     assert_eq!(owner.phase(), SessionPhase::Active);
-    assert!(owner.active_client().is_some());
+    assert_eq!(
+        owner.snapshot_reader(&ticket),
+        Err(SessionFailure::StaleSnapshot)
+    );
     assert_eq!(owner.backend.calls, ["issue", "subscribe", "continuity"]);
 }
 
@@ -205,7 +208,7 @@ async fn ready_then_subscribe_first_snapshot_enables_client_without_any_write() 
 async fn renewal_is_caller_scheduled_at_eighty_percent_and_replaces_handles() {
     let mut owner = owner();
     let old = active(&mut owner).await;
-    let old_client = owner.active_client().unwrap().id;
+    let old_client = owner.active.as_ref().unwrap().client.id;
     owner.clock.advance(Duration::from_secs(79));
     assert!(!owner.renew_if_due(SECRET).await.unwrap());
     owner.clock.advance(Duration::from_secs(1));
@@ -213,7 +216,6 @@ async fn renewal_is_caller_scheduled_at_eighty_percent_and_replaces_handles() {
     assert!(owner.renew_if_due(SECRET).await.unwrap());
     assert_ne!(owner.subscription(), Some(old));
     assert_eq!(owner.phase(), SessionPhase::AwaitingReady);
-    assert!(owner.active_client().is_none());
     assert_ne!(owner.active.as_ref().unwrap().client.id, old_client);
     assert_eq!(
         owner.backend.counts.clients_dropped.load(Ordering::SeqCst),
@@ -231,8 +233,7 @@ async fn lease_expiry_hides_client_without_waiting_for_sse_and_tick_drops_handle
     active(&mut owner).await;
     owner.clock.advance(Duration::from_secs(100));
     assert_eq!(owner.phase(), SessionPhase::Expired);
-    assert!(owner.read_client().is_none());
-    assert!(owner.active_client().is_none());
+    assert!(owner.active.is_some());
     assert_eq!(owner.check_lease(), LeaseAction::Reconnect);
     assert_eq!(owner.phase(), SessionPhase::Expired);
     assert!(owner.subscription().is_none());
@@ -262,7 +263,7 @@ async fn terminal_expiry_is_processed_before_deadline_or_snapshot_filtering() {
         FrameAction::Expired
     );
     assert_eq!(owner.phase(), SessionPhase::Expired);
-    assert!(owner.active_client().is_none());
+    assert!(owner.active.is_none());
     assert_eq!(owner.backend.calls, ["issue", "subscribe", "continuity"]);
 }
 
@@ -314,6 +315,39 @@ async fn auth_and_stream_setup_failures_fail_closed_and_do_not_auto_retry() {
 }
 
 #[tokio::test]
+async fn periodic_renewal_never_reconnects_without_an_eligible_active_lease() {
+    let mut owner = owner();
+    // A leftover timer cannot turn an initial/no-active owner into a session.
+    assert!(!owner.renew_if_due(SECRET).await.unwrap());
+    assert!(owner.backend.calls.is_empty());
+
+    active(&mut owner).await;
+    owner.disconnect();
+    let calls = owner.backend.calls.len();
+    assert!(!owner.renew_if_due(SECRET).await.unwrap());
+    assert_eq!(owner.phase(), SessionPhase::Disconnected);
+    assert_eq!(owner.backend.calls.len(), calls);
+
+    let id = active(&mut owner).await;
+    owner.stream_failed(id, SessionFailure::StreamEnded);
+    let calls = owner.backend.calls.len();
+    assert!(!owner.renew_if_due(SECRET).await.unwrap());
+    assert_eq!(
+        owner.phase(),
+        SessionPhase::Failed(SessionFailure::StreamEnded)
+    );
+    assert_eq!(owner.backend.calls.len(), calls);
+
+    active(&mut owner).await;
+    owner.clock.advance(Duration::from_secs(100));
+    assert_eq!(owner.check_lease(), LeaseAction::Reconnect);
+    let calls = owner.backend.calls.len();
+    assert!(!owner.renew_if_due(SECRET).await.unwrap());
+    assert_eq!(owner.phase(), SessionPhase::Expired);
+    assert_eq!(owner.backend.calls.len(), calls);
+}
+
+#[tokio::test]
 async fn failed_renewal_never_restores_old_token_or_subscription() {
     let mut owner = owner();
     active(&mut owner).await;
@@ -324,7 +358,6 @@ async fn failed_renewal_never_restores_old_token_or_subscription() {
         Err(SessionFailure::Transport)
     );
     assert!(owner.active.is_none());
-    assert!(owner.read_client().is_none());
     assert_eq!(
         owner.backend.counts.clients_dropped.load(Ordering::SeqCst),
         1
@@ -419,11 +452,11 @@ async fn lag_invalidates_inflight_snapshot_and_requires_a_new_whole_state_fence(
         owner.finish_snapshot(stale),
         Err(SessionFailure::StaleSnapshot)
     ));
-    assert!(owner.active_client().is_none());
+    assert!(owner.active.is_some());
     owner.backend.boundary = boundary("instance-a", 10);
     let current = owner.begin_snapshot().await.unwrap();
     owner.finish_snapshot(current).unwrap();
-    assert!(owner.active_client().is_some());
+    assert_eq!(owner.phase(), SessionPhase::Active);
 }
 
 #[tokio::test]
@@ -438,7 +471,7 @@ async fn changed_daemon_instance_drops_old_session_then_reconnect_marks_restart(
         FrameAction::ReconnectRequired
     );
     assert_eq!(owner.phase(), SessionPhase::Disconnected);
-    assert!(owner.active_client().is_none());
+    assert!(owner.active.is_none());
     let new = owner.connect(SECRET).await.unwrap();
     assert_eq!(
         owner.observe(new, ready("instance-b", 0)).unwrap(),
@@ -541,7 +574,7 @@ async fn disconnect_drops_owned_client_and_stream_without_stopping_any_daemon() 
     active(&mut owner).await;
     owner.disconnect();
     assert_eq!(owner.phase(), SessionPhase::Disconnected);
-    assert!(owner.active_client().is_none());
+    assert!(owner.active.is_none());
     assert_eq!(
         owner.backend.counts.clients_dropped.load(Ordering::SeqCst),
         1
@@ -571,7 +604,7 @@ async fn old_eof_cannot_close_replacement_but_current_eof_requires_reconnect() {
         owner.phase(),
         SessionPhase::Failed(SessionFailure::StreamEnded)
     );
-    assert!(owner.read_client().is_none());
+    assert!(owner.active.is_none());
 }
 
 #[tokio::test]
@@ -587,7 +620,7 @@ async fn stale_snapshot_from_replaced_subscription_cannot_activate_new_client() 
         Err(SessionFailure::StaleSnapshot)
     ));
     assert_eq!(owner.phase(), SessionPhase::SnapshotRequired);
-    assert!(owner.active_client().is_none());
+    assert!(owner.active.is_some());
 }
 
 #[tokio::test]
@@ -625,7 +658,6 @@ async fn cancelled_connect_reserves_epoch_and_never_leaves_old_handles_exposed()
     assert!(matches!(future.as_mut().poll(&mut context), Poll::Pending));
     drop(future);
     assert_eq!(owner.phase(), SessionPhase::Connecting);
-    assert!(owner.active_client().is_none());
     assert!(owner.active.is_none());
     owner.backend.pending_issue = false;
     let replacement = owner.connect(SECRET).await.unwrap();
