@@ -397,6 +397,10 @@ async fn lease_expiry_hides_client_without_waiting_for_sse_and_tick_drops_handle
         owner.backend.counts.streams_dropped.load(Ordering::SeqCst),
         1
     );
+    assert_eq!(
+        owner.backend.counts.writers_dropped.load(Ordering::SeqCst),
+        1
+    );
 }
 
 #[tokio::test]
