@@ -1,6 +1,9 @@
 //! Deterministic synthetic fixtures only; no I/O, logging or terminal.
 use super::*;
-use crate::frontend::data::{OwnedMessageBody, PageCursor};
+use crate::frontend::{
+    data::{OwnedMessageBody, PageCursor},
+    threads::{ThreadPage, ThreadParent},
+};
 
 const ROOM: &str = "room/a?opaque";
 
@@ -379,4 +382,94 @@ fn write_success_echo_after_history_page_is_one_row() {
     v.apply_page(&page(vec![msg("root", None, at(1), 0), canonical]))
         .unwrap();
     assert_eq!(ids(&v), ["root", "mine"]);
+}
+
+fn thread(parent: ThreadParent, replies: Vec<MessageSnapshot>) -> ThreadPage {
+    ThreadPage::new(
+        &MessageId::new("root"),
+        &RoomId::new(ROOM),
+        parent,
+        page(replies),
+    )
+    .unwrap()
+}
+
+#[test]
+fn thread_pages_apply_parent_states_without_inferring_deletion() {
+    let replies = || {
+        vec![
+            msg("r1", Some("root"), at(2), 0),
+            msg("r2", Some("root"), at(3), 0),
+        ]
+    };
+    let mut v = view();
+    let outcome = v
+        .apply_thread_page(&thread(
+            ThreadParent::Active(msg("root", None, at(1), 0)),
+            replies(),
+        ))
+        .unwrap();
+    assert_eq!(outcome.inserted, 3);
+    assert_eq!(ids(&v), ["root", "r1", "r2"]);
+
+    // Missing/unavailable parent never deletes or hides a stored active root.
+    for parent in [
+        ThreadParent::Missing(MessageId::new("root")),
+        ThreadParent::Unavailable(MessageId::new("root")),
+    ] {
+        let outcome = v.apply_thread_page(&thread(parent, replies())).unwrap();
+        assert_eq!(outcome.ignored, 2);
+        assert_eq!(ids(&v), ["root", "r1", "r2"]);
+        assert!(!v.is_tombstoned(&MessageId::new("root")));
+    }
+
+    // Deleted parent applies a tombstone and keeps replies under a placeholder.
+    let outcome = v
+        .apply_thread_page(&thread(
+            ThreadParent::Deleted(deleted("root", None, at(1), 1)),
+            replies(),
+        ))
+        .unwrap();
+    assert_eq!(outcome.tombstoned, 1);
+    assert_eq!(ids(&v), ["deleted:root", "r1", "r2"]);
+
+    // Unknown root in a fresh view: explicit missing placeholder.
+    let mut fresh = view();
+    fresh
+        .apply_thread_page(&thread(
+            ThreadParent::Unavailable(MessageId::new("root")),
+            replies(),
+        ))
+        .unwrap();
+    assert_eq!(ids(&fresh), ["missing:root", "r1", "r2"]);
+}
+
+#[test]
+fn thread_pages_validate_atomically() {
+    let mut v = view();
+    v.upsert(&msg("root", None, at(1), 0)).unwrap();
+    let before = state(&v);
+    let mut legacy = msg("r2", Some("root"), at(3), 0);
+    legacy.revision = None;
+    let invalid = thread(
+        ThreadParent::Active(msg("root", None, at(1), 5)),
+        vec![msg("r1", Some("root"), at(2), 0), legacy],
+    );
+    assert_eq!(v.apply_thread_page(&invalid), Err(ViewError::Revision));
+    assert!(state(&v) == before);
+    assert_eq!(text(&v, "root").as_deref(), Some("root r0"));
+
+    let mut other = view();
+    let mut foreign = thread(ThreadParent::Missing(MessageId::new("root")), vec![]);
+    foreign.replies.room_id = RoomId::new("room/b");
+    assert_eq!(other.apply_thread_page(&foreign), Err(ViewError::Room));
+    let bad_parent = ThreadPage {
+        parent: ThreadParent::Missing(MessageId::new("bad\nid")),
+        replies: page(vec![]),
+    };
+    assert_eq!(
+        other.apply_thread_page(&bad_parent),
+        Err(ViewError::Identity)
+    );
+    assert!(other.is_empty() && other.tombstones.is_empty());
 }

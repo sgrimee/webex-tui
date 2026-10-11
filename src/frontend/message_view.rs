@@ -27,6 +27,7 @@
 
 use super::{
     data::{MessageId, MessagePage, MessageSnapshot, MessageStatus, RoomId},
+    threads::{ThreadPage, ThreadParent},
     write_rules::valid_opaque_id,
 };
 use std::collections::{HashMap, HashSet};
@@ -184,11 +185,43 @@ impl RoomMessageView {
         if page.room_id != self.room_id {
             return Err(ViewError::Room);
         }
-        for snapshot in &page.messages {
+        self.apply_batch(&page.messages)
+    }
+
+    /// Bounded children read. An active or deleted parent snapshot is applied
+    /// with its replies; a missing/unavailable parent is never inferred to be
+    /// deleted and never removes a stored root — grouping shows a placeholder
+    /// only when the root is genuinely absent from this view.
+    pub(crate) fn apply_thread_page(
+        &mut self,
+        page: &ThreadPage,
+    ) -> Result<PageOutcome, ViewError> {
+        if page.replies.room_id != self.room_id {
+            return Err(ViewError::Room);
+        }
+        let parent = match &page.parent {
+            ThreadParent::Active(message) | ThreadParent::Deleted(message) => Some(message),
+            ThreadParent::Missing(id) | ThreadParent::Unavailable(id) => {
+                if !valid_opaque_id(id.as_str()) {
+                    return Err(ViewError::Identity);
+                }
+                None
+            }
+        };
+        let batch: Vec<&MessageSnapshot> =
+            parent.into_iter().chain(&page.replies.messages).collect();
+        self.apply_batch(batch)
+    }
+
+    fn apply_batch<'a>(
+        &mut self,
+        snapshots: impl IntoIterator<Item = &'a MessageSnapshot> + Clone,
+    ) -> Result<PageOutcome, ViewError> {
+        for snapshot in snapshots.clone() {
             self.validate(snapshot)?;
         }
         let mut outcome = PageOutcome::default();
-        for snapshot in &page.messages {
+        for snapshot in snapshots {
             match self.apply(snapshot) {
                 UpsertOutcome::Inserted => outcome.inserted += 1,
                 UpsertOutcome::Revised => outcome.revised += 1,
