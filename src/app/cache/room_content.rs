@@ -64,7 +64,7 @@ impl RoomContent {
         self.threads.iter().map(MsgThread::len).sum()
     }
     pub(crate) fn is_empty(&self) -> bool {
-        self.threads.is_empty()
+        self.len() == 0
     }
     pub(crate) fn wipe(&mut self) -> usize {
         let count = self.len();
@@ -125,5 +125,33 @@ mod tests {
                 .display(),
             DisplayBody::Missing
         );
+    }
+    #[test]
+    fn update_without_parent_keeps_thread() {
+        let mut c = RoomContent::default();
+        c.add(&message("root", None, "2026-01-01T00:00:00Z"))
+            .unwrap();
+        c.add(&message("child", Some("root"), "2026-01-01T00:01:00Z"))
+            .unwrap();
+        c.add(&message("child", None, "2026-01-01T00:02:00Z"))
+            .unwrap();
+        assert_eq!(c.len(), 2);
+    }
+    #[test]
+    fn nth_missing_is_error() {
+        assert!(RoomContent::default().nth_message(0).is_err());
+    }
+    #[test]
+    fn delete_missing_is_error() {
+        assert!(RoomContent::default()
+            .delete_message(&"missing".into())
+            .is_err());
+    }
+    #[test]
+    fn wipe_returns_count() {
+        let mut c = RoomContent::default();
+        c.add(&message("a", None, "2026-01-01T00:00:00Z")).unwrap();
+        assert_eq!(c.wipe(), 1);
+        assert!(c.is_empty());
     }
 }

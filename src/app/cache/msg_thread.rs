@@ -137,4 +137,62 @@ mod tests {
             "root"
         );
     }
+    #[test]
+    fn duplicate_does_not_grow() {
+        let mut t = MsgThread::default();
+        let m = message("a", None, "2026-01-01T00:00:00Z");
+        t.update_or_add(&m).unwrap();
+        t.update_or_add(&m).unwrap();
+        assert_eq!(t.len(), 1);
+    }
+    #[test]
+    fn different_root_is_rejected() {
+        let mut t = MsgThread::default();
+        t.update_or_add(&message("a", None, "2026-01-01T00:00:00Z"))
+            .unwrap();
+        assert!(t
+            .update_or_add(&message("b", None, "2026-01-01T00:01:00Z"))
+            .is_err());
+    }
+    #[test]
+    fn mismatched_parent_is_rejected() {
+        let mut t = MsgThread::default();
+        t.update_or_add(&message("a", None, "2026-01-01T00:00:00Z"))
+            .unwrap();
+        assert!(t
+            .update_or_add(&message("b", Some("other"), "2026-01-01T00:01:00Z"))
+            .is_err());
+    }
+    #[test]
+    fn missing_created_is_rejected() {
+        let mut t = MsgThread::default();
+        let mut m = message("a", None, "2026-01-01T00:00:00Z");
+        m.created_at = None;
+        assert!(t.update_if_exists(&m).is_err());
+    }
+    #[test]
+    fn creation_time_uses_first() {
+        let mut t = MsgThread::default();
+        t.update_or_add(&message("a", None, "2026-01-01T00:00:00Z"))
+            .unwrap();
+        assert_eq!(
+            t.creation_time_of_first_message(),
+            Some("2026-01-01T00:00:00Z")
+        );
+    }
+    #[test]
+    fn delete_returns_boolean() {
+        let mut t = MsgThread::default();
+        t.update_or_add(&message("a", None, "2026-01-01T00:00:00Z"))
+            .unwrap();
+        assert!(t.delete_message(&"a".into()));
+        assert!(!t.delete_message(&"a".into()));
+    }
+    #[test]
+    fn child_first_sets_parent_thread() {
+        let mut t = MsgThread::default();
+        t.update_or_add(&message("child", Some("root"), "2026-01-01T00:00:00Z"))
+            .unwrap();
+        assert_eq!(t.id(), Some("root"));
+    }
 }

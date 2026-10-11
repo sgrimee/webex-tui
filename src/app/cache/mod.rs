@@ -184,4 +184,82 @@ mod tests {
             ["root", "reply", "second"]
         );
     }
+    #[test]
+    fn unknown_room_is_created() {
+        let mut cache = Cache::default();
+        cache
+            .add_message(&message("a", None, "2026-01-01T00:00:00Z"))
+            .unwrap();
+        assert_eq!(cache.nb_messages_in_room(&"room".into()), 1);
+    }
+    #[test]
+    fn duplicate_id_revises_without_duplication() {
+        let mut cache = Cache::default();
+        cache
+            .add_message(&message("a", None, "2026-01-01T00:00:00Z"))
+            .unwrap();
+        let mut revised = message("a", None, "2026-01-01T00:01:00Z");
+        revised.revision = Some(2);
+        cache.add_message(&revised).unwrap();
+        assert_eq!(cache.nb_messages_in_room(&"room".into()), 1);
+        assert_eq!(
+            cache.nth_message_in_room(0, "room").unwrap().revision,
+            Some(2)
+        );
+    }
+    #[test]
+    fn delete_removes_existing_message() {
+        let mut cache = Cache::default();
+        cache
+            .add_message(&message("a", None, "2026-01-01T00:00:00Z"))
+            .unwrap();
+        cache.delete_message(&"a".into(), &"room".into()).unwrap();
+        assert!(cache.room_is_empty(&"room".into()));
+    }
+    #[test]
+    fn existence_tracks_message_id() {
+        let mut cache = Cache::default();
+        cache
+            .add_message(&message("a", None, "2026-01-01T00:00:00Z"))
+            .unwrap();
+        assert!(cache.message_exists_in_room(&"a".into(), &"room".into()));
+        assert!(!cache.message_exists_in_room(&"b".into(), &"room".into()));
+    }
+    #[test]
+    fn nth_and_index_follow_display_order() {
+        let mut cache = Cache::default();
+        cache
+            .add_message(&message("b", None, "2026-01-01T00:02:00Z"))
+            .unwrap();
+        cache
+            .add_message(&message("a", None, "2026-01-01T00:01:00Z"))
+            .unwrap();
+        assert_eq!(
+            cache.nth_message_in_room(0, "room").unwrap().id.as_str(),
+            "a"
+        );
+        assert_eq!(
+            cache.index_of_message_in_room(&"b".into(), &"room".into()),
+            Some(1)
+        );
+    }
+    #[test]
+    fn empty_unknown_room_is_empty() {
+        assert!(Cache::default().room_is_empty(&"missing".into()));
+    }
+    #[test]
+    fn count_unknown_room_is_zero() {
+        assert_eq!(Cache::default().nb_messages_in_room(&"missing".into()), 0);
+    }
+    #[test]
+    fn missing_created_is_rejected() {
+        let mut cache = Cache::default();
+        let mut message = message("a", None, "2026-01-01T00:00:00Z");
+        message.created_at = None;
+        assert!(cache.add_message(&message).is_err());
+    }
+    #[test]
+    fn wipe_missing_room_is_an_error() {
+        assert!(Cache::default().wipe_messages_in_room("missing").is_err());
+    }
 }
