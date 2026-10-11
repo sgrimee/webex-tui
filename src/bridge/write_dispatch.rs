@@ -53,6 +53,12 @@ impl UiWriteBackend for BridgeUiWriteBackend {
         self.client.leave_room(room).await
     }
 }
+/// Dispatch failures are metadata-only and never contain body or backend detail.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum DispatchError {
+    WrongIntent,
+}
+
 /// Holds the mutation capability privately; it exposes neither client nor bearer.
 pub(crate) struct WriteDispatcher<B: UiWriteBackend> {
     backend: B,
@@ -61,8 +67,11 @@ impl<B: UiWriteBackend> WriteDispatcher<B> {
     pub(crate) fn new(backend: B) -> Self {
         Self { backend }
     }
-    pub(crate) async fn dispatch(&mut self, intent: FrontendIntent) -> FrontendResult {
-        match intent {
+    pub(crate) async fn dispatch(
+        &mut self,
+        intent: FrontendIntent,
+    ) -> Result<FrontendResult, DispatchError> {
+        Ok(match intent {
             FrontendIntent::SendMessage {
                 room_id,
                 parent_id,
@@ -106,8 +115,8 @@ impl<B: UiWriteBackend> WriteDispatcher<B> {
                 room_id.clone(),
                 room_id,
             )),
-            _ => FrontendResult::SendMessage(WriteOutcome::Rejected(error("invalid_intent"))),
-        }
+            _ => return Err(DispatchError::WrongIntent),
+        })
     }
 }
 fn input(body: ComposedBody) -> dto::MessageBodyInput {
@@ -257,12 +266,12 @@ mod tests {
     async fn send_success_and_wrong_intent_do_not_leak_capability() {
         let mut d = fake(Ok(msg()), Ok(msg()), Ok(()), Ok(()));
         assert!(matches!(
-            d.dispatch(send()).await,
+            d.dispatch(send()).await.unwrap(),
             FrontendResult::SendMessage(WriteOutcome::Success(_))
         ));
         assert!(matches!(
             d.dispatch(FrontendIntent::WhoAmI).await,
-            FrontendResult::SendMessage(WriteOutcome::Rejected(_))
+            Err(DispatchError::WrongIntent)
         ));
         assert_eq!(d.backend.calls, 1);
     }
@@ -270,11 +279,11 @@ mod tests {
     async fn each_write_dispatches_once_and_projects_success() {
         let mut d = fake(Ok(msg()), Ok(msg()), Ok(()), Ok(()));
         assert!(matches!(
-            d.dispatch(send()).await,
+            d.dispatch(send()).await.unwrap(),
             FrontendResult::SendMessage(WriteOutcome::Success(_))
         ));
         assert!(matches!(
-            d.dispatch(edit()).await,
+            d.dispatch(edit()).await.unwrap(),
             FrontendResult::EditMessage(WriteOutcome::Success(_))
         ));
         assert!(matches!(
@@ -282,12 +291,14 @@ mod tests {
                 message_id: MessageId::new("m"),
                 room_id: RoomId::new("r")
             })
-            .await,
+            .await
+            .unwrap(),
             FrontendResult::DeleteMessage(WriteOutcome::Success(_))
         ));
         assert!(matches!(
             d.dispatch(FrontendIntent::LeaveRoom(RoomId::new("r")))
-                .await,
+                .await
+                .unwrap(),
             FrontendResult::LeaveRoom(WriteOutcome::Success(_))
         ));
         assert_eq!(d.backend.calls, 4);
@@ -296,12 +307,12 @@ mod tests {
     async fn rejection_and_uncertainty_are_not_retried_or_leaked() {
         let mut rejected_dispatcher = fake(Err(rejected()), Ok(msg()), Ok(()), Ok(()));
         assert!(matches!(
-            rejected_dispatcher.dispatch(send()).await,
+            rejected_dispatcher.dispatch(send()).await.unwrap(),
             FrontendResult::SendMessage(WriteOutcome::Rejected(_))
         ));
         assert_eq!(rejected_dispatcher.backend.calls, 1);
         let mut unknown_dispatcher = fake(Err(unknown()), Ok(msg()), Ok(()), Ok(()));
-        let result = unknown_dispatcher.dispatch(send()).await;
+        let result = unknown_dispatcher.dispatch(send()).await.unwrap();
         assert!(matches!(
             result,
             FrontendResult::SendMessage(WriteOutcome::DeliveryUnknown(_))
@@ -314,7 +325,7 @@ mod tests {
         bad.room_id = "other".into();
         let mut d = fake(Ok(bad), Ok(msg()), Ok(()), Ok(()));
         assert!(matches!(
-            d.dispatch(send()).await,
+            d.dispatch(send()).await.unwrap(),
             FrontendResult::SendMessage(WriteOutcome::DeliveryUnknown(_))
         ));
         assert_eq!(d.backend.calls, 1);
@@ -323,13 +334,13 @@ mod tests {
     async fn transport_uncertainty_is_once_for_each_write() {
         let mut send_d = fake(Err(transport()), Ok(msg()), Ok(()), Ok(()));
         assert!(matches!(
-            send_d.dispatch(send()).await,
+            send_d.dispatch(send()).await.unwrap(),
             FrontendResult::SendMessage(WriteOutcome::DeliveryUnknown(_))
         ));
         assert_eq!(send_d.backend.calls, 1);
         let mut edit_d = fake(Ok(msg()), Err(transport()), Ok(()), Ok(()));
         assert!(matches!(
-            edit_d.dispatch(edit()).await,
+            edit_d.dispatch(edit()).await.unwrap(),
             FrontendResult::EditMessage(WriteOutcome::DeliveryUnknown(_))
         ));
         assert_eq!(edit_d.backend.calls, 1);
@@ -340,7 +351,8 @@ mod tests {
                     message_id: MessageId::new("m"),
                     room_id: RoomId::new("r")
                 })
-                .await,
+                .await
+                .unwrap(),
             FrontendResult::DeleteMessage(WriteOutcome::DeliveryUnknown(_))
         ));
         assert_eq!(delete_d.backend.calls, 1);
@@ -348,7 +360,8 @@ mod tests {
         assert!(matches!(
             leave_d
                 .dispatch(FrontendIntent::LeaveRoom(RoomId::new("r")))
-                .await,
+                .await
+                .unwrap(),
             FrontendResult::LeaveRoom(WriteOutcome::DeliveryUnknown(_))
         ));
         assert_eq!(leave_d.backend.calls, 1);
@@ -357,7 +370,7 @@ mod tests {
     async fn accepted_uncertainty_is_once_for_each_write() {
         let mut edit_d = fake(Ok(msg()), Err(unknown()), Ok(()), Ok(()));
         assert!(matches!(
-            edit_d.dispatch(edit()).await,
+            edit_d.dispatch(edit()).await.unwrap(),
             FrontendResult::EditMessage(WriteOutcome::DeliveryUnknown(_))
         ));
         assert_eq!(edit_d.backend.calls, 1);
@@ -368,7 +381,8 @@ mod tests {
                     message_id: MessageId::new("m"),
                     room_id: RoomId::new("r")
                 })
-                .await,
+                .await
+                .unwrap(),
             FrontendResult::DeleteMessage(WriteOutcome::DeliveryUnknown(_))
         ));
         assert_eq!(delete_d.backend.calls, 1);
@@ -376,7 +390,8 @@ mod tests {
         assert!(matches!(
             leave_d
                 .dispatch(FrontendIntent::LeaveRoom(RoomId::new("r")))
-                .await,
+                .await
+                .unwrap(),
             FrontendResult::LeaveRoom(WriteOutcome::DeliveryUnknown(_))
         ));
         assert_eq!(leave_d.backend.calls, 1);
