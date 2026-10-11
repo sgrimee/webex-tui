@@ -22,7 +22,8 @@ use webex::{
 #[derive(Clone)]
 pub(crate) enum AppCmdEvent {
     DeleteMessage(MessageId),
-    EditMessage(MessageId, RoomId, String),
+    /// Temporary neutral-to-legacy edit boundary; only this Teams edge builds edit params.
+    EditMessage(FrontendIntent),
     Initialize(),
     ListAllRooms(),
     ListMessagesInRoom(RoomId, Option<MessageId>, u32),
@@ -60,6 +61,18 @@ fn legacy_message_out(intent: &FrontendIntent) -> Option<MessageOut> {
     Some(message)
 }
 
+fn legacy_edit_fields(intent: &FrontendIntent) -> Option<(&str, &str, &ComposedBody)> {
+    let FrontendIntent::EditMessage {
+        message_id,
+        room_id,
+        body,
+    } = intent
+    else {
+        return None;
+    };
+    Some((message_id.as_str(), room_id.as_str(), body))
+}
+
 impl AppCmdEvent {
     /// Returns true if this event should be retried on failure.
     /// Only critical read operations that don't modify state should be retried.
@@ -77,9 +90,12 @@ impl Teams<'_> {
         let should_retry = app_cmd_event.should_retry_on_failure();
         if let Err(error) = match app_cmd_event {
             AppCmdEvent::DeleteMessage(msg_id) => self.delete_message(&msg_id).await,
-            AppCmdEvent::EditMessage(msg_id, room_id, text) => {
-                self.do_edit_message(&msg_id, &room_id, &text).await
-            }
+            AppCmdEvent::EditMessage(intent) => match legacy_edit_fields(&intent) {
+                Some((message_id, room_id, body)) => {
+                    self.do_edit_message(message_id, room_id, body).await
+                }
+                None => Err(eyre!("invalid edit intent")),
+            },
             AppCmdEvent::Initialize() => self.do_initialize().await,
             AppCmdEvent::ListAllRooms() => self.do_list_all_rooms_with_retry().await,
             AppCmdEvent::ListMessagesInRoom(room_id, before_id, max) => {
@@ -198,15 +214,22 @@ impl Teams<'_> {
     /// Edits the message with given id and params
     async fn do_edit_message(
         &self,
-        message_id: &MessageId,
-        room_id: &RoomId,
-        text: &str,
+        message_id: &str,
+        room_id: &str,
+        body: &ComposedBody,
     ) -> Result<()> {
         let message_id = GlobalId::new(GlobalIdType::Message, message_id.to_owned()).unwrap();
         let room_id = GlobalId::new(GlobalIdType::Room, room_id.to_owned()).unwrap();
         let params = MessageEditParams {
             room_id: room_id.id(),
-            text: Some(text),
+            text: match body {
+                ComposedBody::PlainText(text) => Some(text),
+                ComposedBody::Markdown(_) => None,
+            },
+            markdown: match body {
+                ComposedBody::PlainText(_) => None,
+                ComposedBody::Markdown(text) => Some(text),
+            },
             ..Default::default()
         };
         match self.client.edit_message(&message_id, &params).await {
@@ -448,5 +471,17 @@ mod tests {
     #[test]
     fn non_send_intent_never_becomes_legacy_message() {
         assert!(legacy_message_out(&FrontendIntent::WhoAmI).is_none());
+    }
+    #[test]
+    fn neutral_edit_intent_maps_exact_fields_only_at_legacy_edge() {
+        let intent = FrontendIntent::EditMessage {
+            message_id: crate::frontend::data::MessageId::new("message"),
+            room_id: crate::frontend::data::RoomId::new("room"),
+            body: ComposedBody::PlainText("body".into()),
+        };
+        let (message, room, body) = legacy_edit_fields(&intent).unwrap();
+        assert_eq!((message, room), ("message", "room"));
+        assert!(matches!(body, ComposedBody::PlainText(text) if text == "body"));
+        assert!(legacy_edit_fields(&FrontendIntent::WhoAmI).is_none());
     }
 }

@@ -430,11 +430,12 @@ impl App<'_> {
                 .id
                 .clone()
                 .ok_or(eyre!("Cannot edit message without id"))?;
-            let new_text = lines.join("\n");
-            self.dispatch_to_teams(
-                AppCmdEvent::EditMessage(msg_id, room.id.clone(), new_text),
-                &Priority::High,
-            );
+            let intent = crate::frontend::envelopes::FrontendIntent::EditMessage {
+                message_id: crate::frontend::data::MessageId::new(msg_id),
+                room_id: crate::frontend::data::RoomId::new(room.id.clone()),
+                body: crate::frontend::data::ComposedBody::PlainText(lines.join("\n")),
+            };
+            self.dispatch_to_teams(AppCmdEvent::EditMessage(intent), &Priority::High);
         } else {
             let intent = crate::frontend::envelopes::FrontendIntent::SendMessage {
                 room_id: crate::frontend::data::RoomId::new(room.id.clone()),
