@@ -6,6 +6,7 @@
 
 pub(crate) mod controller;
 pub(crate) mod events;
+pub(crate) mod pairing;
 pub(crate) mod projection;
 pub(crate) mod session;
 mod text;
