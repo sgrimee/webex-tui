@@ -197,7 +197,10 @@ mod tests {
     use super::*;
     use webex_bridge::client::ClientError;
     struct Fake {
-        reply: Option<Result<dto::Message, ClientError>>,
+        send: Option<Result<dto::Message, ClientError>>,
+        edit: Option<Result<dto::Message, ClientError>>,
+        delete: Option<Result<(), ClientError>>,
+        leave: Option<Result<(), ClientError>>,
         calls: usize,
     }
     impl UiWriteBackend for Fake {
@@ -208,7 +211,7 @@ mod tests {
             _: &dto::MessageBodyInput,
         ) -> Result<dto::Message, ClientError> {
             self.calls += 1;
-            self.reply.take().unwrap()
+            self.send.take().unwrap()
         }
         async fn edit(
             &mut self,
@@ -217,15 +220,15 @@ mod tests {
             _: &dto::MessageBodyInput,
         ) -> Result<dto::Message, ClientError> {
             self.calls += 1;
-            self.reply.take().unwrap()
+            self.edit.take().unwrap()
         }
         async fn delete(&mut self, _: &str) -> Result<(), ClientError> {
             self.calls += 1;
-            Ok(())
+            self.delete.take().unwrap()
         }
         async fn leave(&mut self, _: &str) -> Result<(), ClientError> {
             self.calls += 1;
-            Ok(())
+            self.leave.take().unwrap()
         }
     }
     fn msg() -> dto::Message {
@@ -246,24 +249,112 @@ mod tests {
             attachment_count: 0,
         }
     }
+    fn fake(
+        send: Result<dto::Message, ClientError>,
+        edit: Result<dto::Message, ClientError>,
+        delete: Result<(), ClientError>,
+        leave: Result<(), ClientError>,
+    ) -> WriteDispatcher<Fake> {
+        WriteDispatcher::new(Fake {
+            send: Some(send),
+            edit: Some(edit),
+            delete: Some(delete),
+            leave: Some(leave),
+            calls: 0,
+        })
+    }
+    fn unknown() -> ClientError {
+        ClientError::Api {
+            status: reqwest::StatusCode::ACCEPTED,
+            code: "delivery_unknown".into(),
+            message: "safe".into(),
+        }
+    }
+    fn rejected() -> ClientError {
+        ClientError::Api {
+            status: reqwest::StatusCode::BAD_REQUEST,
+            code: "webex_rejected".into(),
+            message: "safe".into(),
+        }
+    }
+    fn send() -> FrontendIntent {
+        FrontendIntent::SendMessage {
+            room_id: RoomId::new("r"),
+            parent_id: None,
+            body: ComposedBody::PlainText("body".into()),
+        }
+    }
+    fn edit() -> FrontendIntent {
+        FrontendIntent::EditMessage {
+            message_id: MessageId::new("m"),
+            room_id: RoomId::new("r"),
+            body: ComposedBody::Markdown("body".into()),
+        }
+    }
     #[tokio::test]
     async fn send_success_and_wrong_intent_do_not_leak_capability() {
-        let mut d = WriteDispatcher::new(Fake {
-            reply: Some(Ok(msg())),
-            calls: 0,
-        });
+        let mut d = fake(Ok(msg()), Ok(msg()), Ok(()), Ok(()));
         assert!(matches!(
-            d.dispatch(FrontendIntent::SendMessage {
-                room_id: RoomId::new("r"),
-                parent_id: None,
-                body: ComposedBody::PlainText("x".into())
-            })
-            .await,
+            d.dispatch(send()).await,
             FrontendResult::SendMessage(WriteOutcome::Success(_))
         ));
         assert!(matches!(
             d.dispatch(FrontendIntent::WhoAmI).await,
             FrontendResult::SendMessage(WriteOutcome::Rejected(_))
         ));
+        assert_eq!(d.backend.calls, 1);
+    }
+    #[tokio::test]
+    async fn each_write_dispatches_once_and_projects_success() {
+        let mut d = fake(Ok(msg()), Ok(msg()), Ok(()), Ok(()));
+        assert!(matches!(
+            d.dispatch(send()).await,
+            FrontendResult::SendMessage(WriteOutcome::Success(_))
+        ));
+        assert!(matches!(
+            d.dispatch(edit()).await,
+            FrontendResult::EditMessage(WriteOutcome::Success(_))
+        ));
+        assert!(matches!(
+            d.dispatch(FrontendIntent::DeleteMessage {
+                message_id: MessageId::new("m"),
+                room_id: RoomId::new("r")
+            })
+            .await,
+            FrontendResult::DeleteMessage(WriteOutcome::Success(_))
+        ));
+        assert!(matches!(
+            d.dispatch(FrontendIntent::LeaveRoom(RoomId::new("r")))
+                .await,
+            FrontendResult::LeaveRoom(WriteOutcome::Success(_))
+        ));
+        assert_eq!(d.backend.calls, 4);
+    }
+    #[tokio::test]
+    async fn rejection_and_uncertainty_are_not_retried_or_leaked() {
+        let mut rejected_dispatcher = fake(Err(rejected()), Ok(msg()), Ok(()), Ok(()));
+        assert!(matches!(
+            rejected_dispatcher.dispatch(send()).await,
+            FrontendResult::SendMessage(WriteOutcome::Rejected(_))
+        ));
+        assert_eq!(rejected_dispatcher.backend.calls, 1);
+        let mut unknown_dispatcher = fake(Err(unknown()), Ok(msg()), Ok(()), Ok(()));
+        let result = unknown_dispatcher.dispatch(send()).await;
+        assert!(matches!(
+            result,
+            FrontendResult::SendMessage(WriteOutcome::DeliveryUnknown(_))
+        ));
+        assert_eq!(unknown_dispatcher.backend.calls, 1);
+    }
+    #[tokio::test]
+    async fn malformed_success_is_unknown_without_second_call() {
+        let mut bad = msg();
+        bad.room_id = "other".into();
+        let mut d = fake(Ok(bad), Ok(msg()), Ok(()), Ok(()));
+        assert!(matches!(
+            d.dispatch(send()).await,
+            FrontendResult::SendMessage(WriteOutcome::DeliveryUnknown(_))
+        ));
+        assert_eq!(d.backend.calls, 1);
     }
 }

@@ -496,7 +496,6 @@ mod tests {
         assert!(legacy_message_out(&FrontendIntent::WhoAmI).is_none());
     }
     #[test]
-    #[test]
     fn neutral_delete_and_leave_validate_matching_intents() {
         let delete = FrontendIntent::DeleteMessage {
             message_id: crate::frontend::data::MessageId::new("message"),
