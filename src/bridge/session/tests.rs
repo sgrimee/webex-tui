@@ -3,7 +3,8 @@
 use super::*;
 use crate::frontend::{
     continuity::DaemonInstanceId,
-    data::{MessageId, RoomId},
+    data::{ComposedBody, MessageId, RoomId},
+    envelopes::FrontendIntent,
     events::{ConnectionLayer, ConnectionState, MessageChange, MessageKey},
 };
 use std::sync::{
@@ -34,6 +35,7 @@ struct Counts {
     streams_dropped: AtomicUsize,
     writers_created: AtomicUsize,
     writers_dropped: AtomicUsize,
+    writer_calls: AtomicUsize,
 }
 struct Client {
     id: usize,
@@ -64,9 +66,8 @@ impl crate::bridge::write_dispatch::UiWriteBackend for Writer {
         _: Option<&str>,
         _: &webex_bridge::dto::MessageBodyInput,
     ) -> Result<webex_bridge::dto::Message, webex_bridge::client::ClientError> {
-        Err(webex_bridge::client::ClientError::Transport(
-            std::io::Error::other("fake writer").into(),
-        ))
+        self.0.writer_calls.fetch_add(1, Ordering::SeqCst);
+        Ok(write_message())
     }
     async fn edit(
         &mut self,
@@ -74,19 +75,35 @@ impl crate::bridge::write_dispatch::UiWriteBackend for Writer {
         _: &str,
         _: &webex_bridge::dto::MessageBodyInput,
     ) -> Result<webex_bridge::dto::Message, webex_bridge::client::ClientError> {
-        Err(webex_bridge::client::ClientError::Transport(
-            std::io::Error::other("fake writer").into(),
-        ))
+        self.0.writer_calls.fetch_add(1, Ordering::SeqCst);
+        Ok(write_message())
     }
     async fn delete(&mut self, _: &str) -> Result<(), webex_bridge::client::ClientError> {
-        Err(webex_bridge::client::ClientError::Transport(
-            std::io::Error::other("fake writer").into(),
-        ))
+        self.0.writer_calls.fetch_add(1, Ordering::SeqCst);
+        Ok(())
     }
     async fn leave(&mut self, _: &str) -> Result<(), webex_bridge::client::ClientError> {
-        Err(webex_bridge::client::ClientError::Transport(
-            std::io::Error::other("fake writer").into(),
-        ))
+        self.0.writer_calls.fetch_add(1, Ordering::SeqCst);
+        Ok(())
+    }
+}
+
+fn write_message() -> webex_bridge::dto::Message {
+    webex_bridge::dto::Message {
+        id: "m".into(),
+        room_id: "r".into(),
+        revision: 1,
+        parent_id: None,
+        sender_id: None,
+        created_at: None,
+        updated_at: None,
+        status: "active".into(),
+        markdown: None,
+        body: Some(webex_bridge::dto::MessageBody {
+            kind: "plainText".into(),
+            content: "x".into(),
+        }),
+        attachment_count: 0,
     }
 }
 
@@ -205,6 +222,14 @@ async fn active(owner: &mut Owner) -> SubscriptionId {
     id
 }
 
+fn send_intent() -> FrontendIntent {
+    FrontendIntent::SendMessage {
+        room_id: RoomId::new("r"),
+        parent_id: None,
+        body: ComposedBody::PlainText("body".into()),
+    }
+}
+
 #[tokio::test]
 async fn connect_owns_client_stream_deadlines_but_waits_for_ready_before_access() {
     let mut owner = owner();
@@ -232,6 +257,71 @@ async fn connect_owns_client_stream_deadlines_but_waits_for_ready_before_access(
         0
     );
     assert!(owner.stream_mut().is_some());
+}
+
+#[tokio::test]
+async fn lifecycle_dispatches_only_through_current_active_writer() {
+    let mut owner = owner();
+    active(&mut owner).await;
+    assert!(matches!(
+        owner.dispatch_write(send_intent()).await,
+        Ok(crate::frontend::envelopes::FrontendResult::SendMessage(_))
+    ));
+    assert_eq!(owner.backend.counts.writer_calls.load(Ordering::SeqCst), 1);
+    assert!(matches!(
+        owner.dispatch_write(FrontendIntent::WhoAmI).await,
+        Err(SessionWriteError::Dispatch(_))
+    ));
+    assert_eq!(owner.backend.counts.writer_calls.load(Ordering::SeqCst), 1);
+
+    let old = owner.subscription().unwrap();
+    let replacement = owner.connect(SECRET).await.unwrap();
+    assert_ne!(old, replacement);
+    assert_eq!(
+        owner.backend.counts.writers_created.load(Ordering::SeqCst),
+        2
+    );
+    assert_eq!(
+        owner.backend.counts.writers_dropped.load(Ordering::SeqCst),
+        1
+    );
+    assert!(matches!(
+        owner.dispatch_write(send_intent()).await,
+        Err(SessionWriteError::NotReady)
+    ));
+    assert_eq!(owner.backend.counts.writer_calls.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn lifecycle_write_rejects_nonactive_failed_and_expired_without_io() {
+    let mut lifecycle = owner();
+    assert!(matches!(
+        lifecycle.dispatch_write(send_intent()).await,
+        Err(SessionWriteError::NotReady)
+    ));
+    let id = lifecycle.connect(SECRET).await.unwrap();
+    lifecycle.observe(id, ready("instance-a", 0)).unwrap();
+    assert!(matches!(
+        lifecycle.dispatch_write(send_intent()).await,
+        Err(SessionWriteError::NotReady)
+    ));
+    let mut failed = owner();
+    failed.backend.issue_failure = Some(SessionFailure::Transport);
+    assert_eq!(failed.connect(SECRET).await, Err(SessionFailure::Transport));
+    assert!(matches!(
+        failed.dispatch_write(send_intent()).await,
+        Err(SessionWriteError::Failed)
+    ));
+    active(&mut lifecycle).await;
+    lifecycle.clock.advance(Duration::from_secs(100));
+    assert!(matches!(
+        lifecycle.dispatch_write(send_intent()).await,
+        Err(SessionWriteError::Expired)
+    ));
+    assert_eq!(
+        lifecycle.backend.counts.writer_calls.load(Ordering::SeqCst),
+        0
+    );
 }
 
 #[tokio::test]
