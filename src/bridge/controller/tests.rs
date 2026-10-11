@@ -3,14 +3,15 @@
 use super::*;
 use crate::frontend::{
     continuity::{ContinuityBoundary, DaemonInstanceId, LifecycleControl},
-    data::{MessageId, RoomId},
+    data::{ComposedBody, MessageId, RoomId},
+    envelopes::{FrontendIntent, FrontendResult, WriteOutcome},
     events::{ChangeScope, ConnectionLayer, MessageChange, MessageKey, ResyncReason, SyncProgress},
     lifecycle::RefreshTarget,
 };
 use serde_json::json;
 use std::{
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc, Mutex,
     },
     time::{Duration, Instant},
@@ -33,18 +34,60 @@ impl SessionClock for Clock {
     }
 }
 
+struct Writer(Arc<AtomicUsize>);
+
+impl crate::bridge::write_dispatch::UiWriteBackend for Writer {
+    async fn send(
+        &mut self,
+        _: &str,
+        _: Option<&str>,
+        _: &webex_bridge::dto::MessageBodyInput,
+    ) -> Result<webex_bridge::dto::Message, webex_bridge::client::ClientError> {
+        self.0.fetch_add(1, Ordering::SeqCst);
+        Err(webex_bridge::client::ClientError::Transport(
+            std::io::Error::other("controller fake writer").into(),
+        ))
+    }
+    async fn edit(
+        &mut self,
+        _: &str,
+        _: &str,
+        _: &webex_bridge::dto::MessageBodyInput,
+    ) -> Result<webex_bridge::dto::Message, webex_bridge::client::ClientError> {
+        self.0.fetch_add(1, Ordering::SeqCst);
+        Err(webex_bridge::client::ClientError::Transport(
+            std::io::Error::other("controller fake writer").into(),
+        ))
+    }
+    async fn delete(&mut self, _: &str) -> Result<(), webex_bridge::client::ClientError> {
+        self.0.fetch_add(1, Ordering::SeqCst);
+        Err(webex_bridge::client::ClientError::Transport(
+            std::io::Error::other("controller fake writer").into(),
+        ))
+    }
+    async fn leave(&mut self, _: &str) -> Result<(), webex_bridge::client::ClientError> {
+        self.0.fetch_add(1, Ordering::SeqCst);
+        Err(webex_bridge::client::ClientError::Transport(
+            std::io::Error::other("controller fake writer").into(),
+        ))
+    }
+}
+
+struct Client(Arc<AtomicUsize>);
+
 struct Backend {
     calls: Arc<Mutex<Vec<&'static str>>>,
+    writer_calls: Arc<AtomicUsize>,
     fail: Arc<Mutex<Option<SessionFailure>>>,
     pending_issue: Arc<AtomicBool>,
     boundary: Arc<Mutex<ContinuityBoundary>>,
 }
 impl SessionBackend for Backend {
-    type Client = ();
+    type Client = Client;
     type Stream = ();
-    type Writer = ();
+    type Writer = Writer;
     type SnapshotReader<'a> = ();
-    async fn issue(&mut self, secret: &str) -> Result<(), SessionFailure> {
+    async fn issue(&mut self, secret: &str) -> Result<Client, SessionFailure> {
         assert_eq!(secret, "synthetic-secret");
         self.calls.lock().unwrap().push("issue");
         if self.pending_issue.load(Ordering::SeqCst) {
@@ -53,22 +96,24 @@ impl SessionBackend for Backend {
         if let Some(e) = self.fail.lock().unwrap().take() {
             Err(e)
         } else {
-            Ok(())
+            Ok(Client(Arc::clone(&self.writer_calls)))
         }
     }
-    async fn subscribe(&mut self, _: &()) -> Result<(), SessionFailure> {
+    async fn subscribe(&mut self, _: &Client) -> Result<(), SessionFailure> {
         self.calls.lock().unwrap().push("subscribe");
         Ok(())
     }
-    async fn continuity(&mut self, _: &()) -> Result<ContinuityBoundary, SessionFailure> {
+    async fn continuity(&mut self, _: &Client) -> Result<ContinuityBoundary, SessionFailure> {
         self.calls.lock().unwrap().push("continuity");
         Ok(self.boundary.lock().unwrap().clone())
     }
-    fn lease_ttl(_: &()) -> u64 {
+    fn lease_ttl(_: &Client) -> u64 {
         100
     }
-    fn writer(_: &()) {}
-    fn snapshot_reader(_: &()) {}
+    fn writer(client: &Client) -> Writer {
+        Writer(Arc::clone(&client.0))
+    }
+    fn snapshot_reader(_: &Client) {}
 }
 
 #[derive(Default)]
@@ -110,6 +155,7 @@ struct Fixture {
     fail: Arc<Mutex<Option<SessionFailure>>>,
     pending_issue: Arc<AtomicBool>,
     boundary: Arc<Mutex<ContinuityBoundary>>,
+    writer_calls: Arc<AtomicUsize>,
 }
 fn marker(watermark: u64) -> ContinuityBoundary {
     ContinuityBoundary {
@@ -123,8 +169,10 @@ fn fixture() -> Fixture {
     let fail = Arc::new(Mutex::new(None));
     let pending_issue = Arc::new(AtomicBool::new(false));
     let boundary = Arc::new(Mutex::new(marker(0)));
+    let writer_calls = Arc::new(AtomicUsize::new(0));
     let backend = Backend {
         calls: Arc::clone(&calls),
+        writer_calls: Arc::clone(&writer_calls),
         fail: Arc::clone(&fail),
         pending_issue: Arc::clone(&pending_issue),
         boundary: Arc::clone(&boundary),
@@ -140,6 +188,7 @@ fn fixture() -> Fixture {
         fail,
         pending_issue,
         boundary,
+        writer_calls,
     }
 }
 fn ready() -> UiLifecycleFrame {
@@ -173,6 +222,28 @@ async fn active(f: &mut Fixture) -> SubscriptionId {
         .commit_snapshot(ticket, "initial".into())
         .unwrap();
     id
+}
+
+#[tokio::test]
+async fn host_active_write_uses_private_writer_once() {
+    let mut fixture = fixture();
+    active(&mut fixture).await;
+    let result = fixture
+        .controller
+        .dispatch_write(FrontendIntent::SendMessage {
+            room_id: RoomId::new("r"),
+            parent_id: None,
+            body: ComposedBody::PlainText("body".into()),
+        })
+        .await;
+    assert!(matches!(
+        result,
+        Ok(FrontendResult::SendMessage(WriteOutcome::DeliveryUnknown(
+            _
+        )))
+    ));
+    assert_eq!(fixture.writer_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(fixture.controller.host().installed, ["initial"]);
 }
 
 #[tokio::test]
