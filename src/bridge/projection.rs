@@ -237,21 +237,32 @@ fn read<T, U>(reply: Reply<T>, project: impl FnOnce(T) -> Project<U>) -> ReadOut
     }
 }
 
+/// Narrow canonical write projection shared by the standalone mutation seam.
+pub(crate) fn project_write_message(
+    value: dto::Message,
+    expected_room: &RoomId,
+) -> Project<MessageSnapshot> {
+    message(value, expected_room)
+}
+
+/// Classify every typed write failure without reflecting backend detail.
+pub(crate) fn write_failure<T>(error: ClientError) -> WriteOutcome<T> {
+    let rejected = matches!(&error, ClientError::Api { status, .. } if status.is_client_error())
+        && !error.is_delivery_unknown();
+    if rejected {
+        WriteOutcome::Rejected(client_error(&error))
+    } else {
+        WriteOutcome::DeliveryUnknown(client_error(&error))
+    }
+}
+
 fn write<T, U>(reply: Reply<T>, project: impl FnOnce(T) -> Project<U>) -> WriteOutcome<U> {
     match reply {
         Ok(value) => match project(value) {
             Ok(value) => WriteOutcome::Success(value),
             Err(_) => WriteOutcome::DeliveryUnknown(projection_error()),
         },
-        Err(error) => {
-            let rejected =
-                matches!(&error, ClientError::Api { status, .. } if status.is_client_error());
-            if rejected && !error.is_delivery_unknown() {
-                WriteOutcome::Rejected(client_error(&error))
-            } else {
-                WriteOutcome::DeliveryUnknown(client_error(&error))
-            }
-        }
+        Err(error) => write_failure(error),
     }
 }
 

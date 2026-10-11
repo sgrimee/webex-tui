@@ -1,7 +1,8 @@
 //! Compile-time tests against the actual bridge client DTOs, no daemon/Webex IO.
 
 use super::projection::{
-    composed_body, project_response, project_status, ClientResponse, ProjectionError,
+    composed_body, project_response, project_status, project_write_message, write_failure,
+    ClientResponse, ProjectionError,
 };
 use crate::frontend::{
     data::{ComposedBody, MessageId, MessageStatus, OwnedMessageBody, PersonId, RoomId, TeamId},
@@ -593,5 +594,56 @@ fn status_conversion_validates_version_counts_and_upstream_without_inventing_loc
     assert!(matches!(
         project_response(request, ClientResponse::Initialize(Ok(person()))),
         Err(ProjectionError::ResponseKind)
+    ));
+}
+
+#[test]
+fn shared_write_projection_sanitizes_and_rejects_bad_canonical_messages() {
+    let mut value = message("message-a", None);
+    value.body.as_mut().unwrap().content = "safe\x1b]8;;https://bad\x1b\\body\u{9b}2J".into();
+    let projected = project_write_message(value, &room_id()).unwrap();
+    assert_eq!(
+        projected.presentation().body.copy_text().unwrap(),
+        "safebody"
+    );
+    for mutate in [0, 1, 2, 3] {
+        let mut bad = message("message-a", None);
+        match mutate {
+            0 => bad.id.clear(),
+            1 => bad.room_id = "other".into(),
+            2 => bad.status = "unknown".into(),
+            _ => bad.revision = -1,
+        }
+        assert!(project_write_message(bad, &room_id()).is_err());
+    }
+    let mut unknown = message("message-a", None);
+    unknown.body = Some(dto::MessageBody {
+        kind: "legacyUnknown".into(),
+        content: "body".into(),
+    });
+    assert!(matches!(
+        project_write_message(unknown, &room_id()).unwrap().body,
+        Some(OwnedMessageBody::LegacyUnknown(_))
+    ));
+}
+
+#[test]
+fn shared_write_failure_classifies_all_client_4xx_and_sanitizes_error() {
+    for status in [400, 401, 403, 404] {
+        match write_failure::<()>(api_error(status, "other")) {
+            WriteOutcome::Rejected(error) => {
+                assert_eq!(error.code, "other");
+                assert!(!error.message.contains("secret-or-body"));
+            }
+            _ => panic!("expected rejected"),
+        }
+    }
+    assert!(matches!(
+        write_failure::<()>(api_error(202, "delivery_unknown")),
+        WriteOutcome::DeliveryUnknown(_)
+    ));
+    assert!(matches!(
+        write_failure::<()>(api_error(500, "server")),
+        WriteOutcome::DeliveryUnknown(_)
     ));
 }
