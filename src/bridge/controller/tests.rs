@@ -228,6 +228,8 @@ async fn active(f: &mut Fixture) -> SubscriptionId {
 async fn host_active_write_uses_private_writer_once() {
     let mut fixture = fixture();
     active(&mut fixture).await;
+    let phase_len = fixture.controller.host().phases.len();
+    let lifecycle_len = fixture.controller.host().effects.len();
     let result = fixture
         .controller
         .dispatch_write(FrontendIntent::SendMessage {
@@ -244,6 +246,8 @@ async fn host_active_write_uses_private_writer_once() {
     ));
     assert_eq!(fixture.writer_calls.load(Ordering::SeqCst), 1);
     assert_eq!(fixture.controller.host().installed, ["initial"]);
+    assert_eq!(fixture.controller.host().phases.len(), phase_len);
+    assert_eq!(fixture.controller.host().effects.len(), lifecycle_len);
 }
 
 #[tokio::test]
@@ -306,6 +310,18 @@ async fn host_write_expiry_publishes_one_disconnected_update() {
         f.controller.host().last_local,
         Some(ConnectionState::Disconnected)
     );
+    let intent = FrontendIntent::SendMessage {
+        room_id: RoomId::new("r"),
+        parent_id: None,
+        body: ComposedBody::PlainText("body".into()),
+    };
+    assert!(matches!(
+        f.controller.dispatch_write(intent).await,
+        Err(SessionWriteError::Expired)
+    ));
+    assert_eq!(f.writer_calls.load(Ordering::SeqCst), 0);
+    assert_eq!(f.controller.host().phases.len(), phase_len + 1);
+    assert_eq!(f.controller.host().effects.len(), lifecycle_len + 1);
 }
 
 #[tokio::test]
