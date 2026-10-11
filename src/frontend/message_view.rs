@@ -1,0 +1,378 @@
+//! Canonical, disposable per-room message view for the bridge-backed frontend.
+//!
+//! Dormant: nothing in App/main installs bridge data here yet, and the legacy
+//! `app::cache` (with its legacy-only parent repair) is untouched until cutover.
+//!
+//! Rules, all enforced before any mutation so a refused input changes nothing:
+//! - Every snapshot must belong to this room, carry valid opaque IDs and a
+//!   canonical daemon revision. Legacy (`revision: None`) data is refused.
+//! - Messages are keyed by ID. An older revision never replaces a newer one;
+//!   an equal revision is an idempotent duplicate (API result, write echo or
+//!   SSE refetch). A newer revision replaces the stored snapshot wholesale,
+//!   including its parent: canonical parentage comes from the daemon, and the
+//!   old "keep the cached parent" repair rule is deliberately not carried over.
+//! - Tombstones are terminal. Deleting purges body and attachment metadata
+//!   immediately, fences the ID against any later active snapshot (late write
+//!   success, stale page or SSE refetch) and never decreases the revision.
+//! - Timestamps are never fabricated. Untimed messages order after timed ones,
+//!   deterministically by ID, via an internal sort key that is never displayed.
+//!
+//! Grouping reuses the bridge's UI-neutral `webex_bridge::threads::group`, a
+//! pure function over IDs/timestamps (no DTO, transport or credential). On top:
+//! a missing root yields an explicit placeholder row; a deleted root with
+//! surviving replies yields a deleted placeholder row; deleted leaves and
+//! deleted roots without visible replies are hidden. Rows are addressed by ID
+//! so selection can be re-anchored after reordering. No body is logged and no
+//! body-bearing type implements Debug/Display.
+
+use super::{
+    data::{MessageId, MessagePage, MessageSnapshot, MessageStatus, RoomId},
+    write_rules::valid_opaque_id,
+};
+use std::collections::{HashMap, HashSet};
+use webex_bridge::threads::{group, ThreadMessage};
+
+/// Result of applying one canonical snapshot. Only `Inserted` of an active
+/// message is new activity; callers must not mark unread for anything else.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum UpsertOutcome {
+    /// First active snapshot for this ID.
+    Inserted,
+    /// Newer active revision replaced the stored snapshot.
+    Revised,
+    /// Message is now (or was first seen as) a tombstone.
+    Tombstoned,
+    /// Same revision already stored, or tombstone already applied.
+    Unchanged,
+    /// Older revision than stored; ignored.
+    Stale,
+    /// Active snapshot for a tombstoned ID; ignored, never resurrected.
+    Fenced,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ViewError {
+    /// Snapshot or page belongs to another room.
+    Room,
+    /// Invalid opaque message/parent ID, or a message naming itself as parent.
+    Identity,
+    /// Missing canonical revision (legacy/uncorrelated data).
+    Revision,
+}
+
+/// Counts for an atomically validated page application.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(crate) struct PageOutcome {
+    pub(crate) inserted: usize,
+    pub(crate) revised: usize,
+    pub(crate) tombstoned: usize,
+    pub(crate) ignored: usize,
+}
+
+/// One displayed row, in grouped display order.
+pub(crate) enum ViewRow<'a> {
+    Message(&'a MessageSnapshot),
+    /// Root known deleted but with visible replies; body is already purged.
+    DeletedRoot(&'a MessageSnapshot),
+    /// Replies whose root is not in this view (unloaded, missing or unavailable).
+    MissingRoot(&'a MessageId),
+}
+
+impl ViewRow<'_> {
+    pub(crate) fn id(&self) -> &MessageId {
+        match self {
+            Self::Message(message) | Self::DeletedRoot(message) => &message.id,
+            Self::MissingRoot(id) => id,
+        }
+    }
+}
+
+#[derive(Clone, Eq, PartialEq)]
+enum RowKey {
+    Message(MessageId),
+    DeletedRoot(MessageId),
+    MissingRoot(MessageId),
+}
+
+pub(crate) struct RoomMessageView {
+    room_id: RoomId,
+    messages: HashMap<MessageId, MessageSnapshot>,
+    /// Deleted IDs, including ones never loaded, so no late active snapshot
+    /// can resurrect them. Survives `clear_messages` for room resync.
+    tombstones: HashSet<MessageId>,
+    rows: Vec<RowKey>,
+}
+
+impl RoomMessageView {
+    pub(crate) fn new(room_id: RoomId) -> Self {
+        Self {
+            room_id,
+            messages: HashMap::new(),
+            tombstones: HashSet::new(),
+            rows: Vec::new(),
+        }
+    }
+
+    pub(crate) fn room_id(&self) -> &RoomId {
+        &self.room_id
+    }
+
+    /// Stored canonical snapshot (active or tombstone), displayed or not.
+    pub(crate) fn get(&self, id: &MessageId) -> Option<&MessageSnapshot> {
+        self.messages.get(id)
+    }
+
+    pub(crate) fn is_tombstoned(&self, id: &MessageId) -> bool {
+        self.tombstones.contains(id)
+    }
+
+    pub(crate) fn rows(&self) -> impl Iterator<Item = ViewRow<'_>> {
+        self.rows.iter().map(|key| self.resolve(key))
+    }
+
+    pub(crate) fn row(&self, index: usize) -> Option<ViewRow<'_>> {
+        self.rows.get(index).map(|key| self.resolve(key))
+    }
+
+    /// Re-anchor selection by ID after any reorder.
+    pub(crate) fn index_of(&self, id: &MessageId) -> Option<usize> {
+        self.rows.iter().position(|key| match key {
+            RowKey::Message(row) | RowKey::DeletedRoot(row) | RowKey::MissingRoot(row) => row == id,
+        })
+    }
+
+    pub(crate) fn len(&self) -> usize {
+        self.rows.len()
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.rows.is_empty()
+    }
+
+    pub(crate) fn upsert(
+        &mut self,
+        snapshot: &MessageSnapshot,
+    ) -> Result<UpsertOutcome, ViewError> {
+        self.validate(snapshot)?;
+        let outcome = self.apply(snapshot);
+        if changed(outcome) {
+            self.rebuild();
+        }
+        Ok(outcome)
+    }
+
+    /// ID-only tombstone (confirmed delete or metadata-only delete event).
+    /// An unknown ID is still fenced; nothing is fabricated for display.
+    pub(crate) fn tombstone(
+        &mut self,
+        id: &MessageId,
+        revision: Option<u64>,
+    ) -> Result<UpsertOutcome, ViewError> {
+        if !valid_opaque_id(id.as_str()) {
+            return Err(ViewError::Identity);
+        }
+        let outcome = self.apply_tombstone(id, revision);
+        if changed(outcome) {
+            self.rebuild();
+        }
+        Ok(outcome)
+    }
+
+    /// Validate the whole page first; a single invalid item refuses all of it.
+    /// Cursors/completeness are owned by the caller's history tracker.
+    pub(crate) fn apply_page(&mut self, page: &MessagePage) -> Result<PageOutcome, ViewError> {
+        if page.room_id != self.room_id {
+            return Err(ViewError::Room);
+        }
+        for snapshot in &page.messages {
+            self.validate(snapshot)?;
+        }
+        let mut outcome = PageOutcome::default();
+        for snapshot in &page.messages {
+            match self.apply(snapshot) {
+                UpsertOutcome::Inserted => outcome.inserted += 1,
+                UpsertOutcome::Revised => outcome.revised += 1,
+                UpsertOutcome::Tombstoned => outcome.tombstoned += 1,
+                UpsertOutcome::Unchanged | UpsertOutcome::Stale | UpsertOutcome::Fenced => {
+                    outcome.ignored += 1
+                }
+            }
+        }
+        if outcome.inserted + outcome.revised + outcome.tombstoned > 0 {
+            self.rebuild();
+        }
+        Ok(outcome)
+    }
+
+    /// Drop loaded messages for a room resync; tombstone fences are retained.
+    pub(crate) fn clear_messages(&mut self) -> usize {
+        let count = self.messages.len();
+        self.messages.clear();
+        self.rows.clear();
+        count
+    }
+
+    fn validate(&self, snapshot: &MessageSnapshot) -> Result<(), ViewError> {
+        if snapshot.room_id != self.room_id {
+            return Err(ViewError::Room);
+        }
+        if !valid_opaque_id(snapshot.id.as_str())
+            || snapshot
+                .parent_id
+                .as_ref()
+                .is_some_and(|parent| !valid_opaque_id(parent.as_str()) || *parent == snapshot.id)
+        {
+            return Err(ViewError::Identity);
+        }
+        if snapshot.revision.is_none() {
+            return Err(ViewError::Revision);
+        }
+        Ok(())
+    }
+
+    /// Pre-validated. Never partially mutates: each branch is one assignment.
+    fn apply(&mut self, snapshot: &MessageSnapshot) -> UpsertOutcome {
+        if snapshot.status == MessageStatus::Deleted {
+            return self.apply_deleted_snapshot(snapshot);
+        }
+        if self.tombstones.contains(&snapshot.id) {
+            return UpsertOutcome::Fenced;
+        }
+        match self.messages.get(&snapshot.id) {
+            None => {
+                self.messages.insert(snapshot.id.clone(), snapshot.clone());
+                UpsertOutcome::Inserted
+            }
+            Some(stored) => match snapshot.revision.cmp(&stored.revision) {
+                std::cmp::Ordering::Less => UpsertOutcome::Stale,
+                std::cmp::Ordering::Equal => UpsertOutcome::Unchanged,
+                std::cmp::Ordering::Greater => {
+                    self.messages.insert(snapshot.id.clone(), snapshot.clone());
+                    UpsertOutcome::Revised
+                }
+            },
+        }
+    }
+
+    fn apply_deleted_snapshot(&mut self, snapshot: &MessageSnapshot) -> UpsertOutcome {
+        let mut tombstone = purged(snapshot.clone());
+        match self.messages.get(&snapshot.id) {
+            Some(stored) if stored.status == MessageStatus::Deleted => {
+                if snapshot.revision > stored.revision {
+                    // Later tombstone metadata; still deleted, no body.
+                    self.messages.insert(snapshot.id.clone(), tombstone);
+                    return UpsertOutcome::Revised;
+                }
+                UpsertOutcome::Unchanged
+            }
+            Some(stored) => {
+                // Tombstone wins over any active revision; never lower it.
+                tombstone.revision = tombstone.revision.max(stored.revision);
+                self.tombstones.insert(snapshot.id.clone());
+                self.messages.insert(snapshot.id.clone(), tombstone);
+                UpsertOutcome::Tombstoned
+            }
+            None => {
+                let newly = self.tombstones.insert(snapshot.id.clone());
+                // Retain identity/parent so replies can show a deleted root.
+                self.messages.insert(snapshot.id.clone(), tombstone);
+                if newly {
+                    UpsertOutcome::Tombstoned
+                } else {
+                    UpsertOutcome::Unchanged
+                }
+            }
+        }
+    }
+
+    fn apply_tombstone(&mut self, id: &MessageId, revision: Option<u64>) -> UpsertOutcome {
+        let newly = self.tombstones.insert(id.clone());
+        match self.messages.get(id) {
+            Some(stored) if stored.status == MessageStatus::Deleted => {
+                if newly {
+                    UpsertOutcome::Tombstoned
+                } else {
+                    UpsertOutcome::Unchanged
+                }
+            }
+            Some(stored) => {
+                let mut tombstone = purged(stored.clone());
+                tombstone.revision = tombstone.revision.max(revision);
+                self.messages.insert(id.clone(), tombstone);
+                UpsertOutcome::Tombstoned
+            }
+            None if newly => UpsertOutcome::Tombstoned,
+            None => UpsertOutcome::Unchanged,
+        }
+    }
+
+    fn resolve<'a>(&'a self, key: &'a RowKey) -> ViewRow<'a> {
+        match key {
+            RowKey::Message(id) => ViewRow::Message(&self.messages[id]),
+            RowKey::DeletedRoot(id) => ViewRow::DeletedRoot(&self.messages[id]),
+            RowKey::MissingRoot(id) => ViewRow::MissingRoot(id),
+        }
+    }
+
+    fn rebuild(&mut self) {
+        let threads = group(self.messages.values().map(|message| ThreadMessage {
+            id: message.id.as_str().to_owned(),
+            parent_id: message.parent_id.as_ref().map(|id| id.as_str().to_owned()),
+            created_at: sort_key(message.created_at.as_deref()),
+        }));
+        let mut rows = Vec::with_capacity(self.messages.len());
+        for thread in threads {
+            let root = MessageId::new(thread.root_id);
+            let replies: Vec<MessageId> = thread
+                .messages
+                .into_iter()
+                .map(|message| MessageId::new(message.id))
+                .filter(|id| *id != root && self.active(id))
+                .collect();
+            let root_row = match self.messages.get(&root) {
+                Some(message) if message.status == MessageStatus::Active => {
+                    Some(RowKey::Message(root.clone()))
+                }
+                Some(_) if !replies.is_empty() => Some(RowKey::DeletedRoot(root.clone())),
+                Some(_) => None,
+                None if !replies.is_empty() => Some(RowKey::MissingRoot(root.clone())),
+                None => None,
+            };
+            rows.extend(root_row);
+            rows.extend(replies.into_iter().map(RowKey::Message));
+        }
+        self.rows = rows;
+    }
+
+    fn active(&self, id: &MessageId) -> bool {
+        self.messages
+            .get(id)
+            .is_some_and(|message| message.status == MessageStatus::Active)
+    }
+}
+
+fn changed(outcome: UpsertOutcome) -> bool {
+    matches!(
+        outcome,
+        UpsertOutcome::Inserted | UpsertOutcome::Revised | UpsertOutcome::Tombstoned
+    )
+}
+
+fn purged(mut snapshot: MessageSnapshot) -> MessageSnapshot {
+    snapshot.status = MessageStatus::Deleted;
+    snapshot.body = None;
+    snapshot.attachment_count = None;
+    snapshot
+}
+
+/// Internal ordering only: timed (prefix 0) before untimed (prefix 1); ties
+/// are broken by ID inside `group`. Never stored or displayed as a timestamp.
+fn sort_key(created_at: Option<&str>) -> String {
+    match created_at {
+        Some(timestamp) => format!("0{timestamp}"),
+        None => "1".into(),
+    }
+}
+
+#[cfg(test)]
+mod tests;

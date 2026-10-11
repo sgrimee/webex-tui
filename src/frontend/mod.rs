@@ -21,6 +21,8 @@ pub(crate) mod events;
 #[allow(dead_code)]
 pub(crate) mod lifecycle;
 #[allow(dead_code)]
+pub(crate) mod message_view;
+#[allow(dead_code)]
 pub(crate) mod requests;
 #[allow(dead_code)]
 pub(crate) mod threads;
