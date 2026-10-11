@@ -87,7 +87,7 @@ impl<'a> Teams<'a> {
         loop {
             tokio::select! {
                 Some(app_event) = app_to_teams_rx_highpri.recv() => {
-                    trace!("Got high priority app event: {app_event:#?}");
+                    trace!("Got high priority app event");
                     self.handle_app_event(app_event).await;
                 },
                 Some(webex_event) = wbx_stream_to_teams_rx.recv() => {
@@ -97,7 +97,7 @@ impl<'a> Teams<'a> {
                     }
                 },
                 Some(app_event) = app_to_teams_rx_lowpri.recv() => {
-                    trace!("Got low priority app event: {app_event:#?}");
+                    trace!("Got low priority app event");
                     self.handle_app_event(app_event).await;
                 }
             }

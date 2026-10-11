@@ -436,21 +436,17 @@ impl App<'_> {
                 &Priority::High,
             );
         } else {
-            let msg_to_send = match self.state.message_editor.response_to() {
-                Some(orig_msg) => {
-                    // Replying to a message
-                    let mut reply = orig_msg.reply();
-                    reply.text = Some(lines.join("\n"));
-                    reply
-                }
-                None => webex::types::MessageOut {
-                    // Sending a new message
-                    room_id: Some(room.id.clone()),
-                    text: Some(lines.join("\n")),
-                    ..Default::default()
-                },
+            let intent = crate::frontend::envelopes::FrontendIntent::SendMessage {
+                room_id: crate::frontend::data::RoomId::new(room.id.clone()),
+                parent_id: self
+                    .state
+                    .message_editor
+                    .response_to()
+                    .and_then(|message| message.id.as_ref())
+                    .map(crate::frontend::data::MessageId::new),
+                body: crate::frontend::data::ComposedBody::PlainText(lines.join("\n")),
             };
-            self.dispatch_to_teams(AppCmdEvent::SendMessage(msg_to_send), &Priority::High);
+            self.dispatch_to_teams(AppCmdEvent::SendMessage(intent), &Priority::High);
         }
         debug!("Sending message to room {:?}", room.title);
         self.state.cache.rooms.mark_read(&room.id.clone());

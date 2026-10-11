@@ -10,6 +10,7 @@ use crate::app::cache::room::RoomId;
 use crate::app::cache::teams::TeamId;
 use crate::app::cache::MessageId;
 use crate::app::state::ActivePane;
+use crate::frontend::{data::ComposedBody, envelopes::FrontendIntent};
 use color_eyre::eyre::{eyre, Result};
 use log::*;
 use webex::{
@@ -18,14 +19,15 @@ use webex::{
 };
 
 /// Commands the main `App` can send to the `Teams` thread.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) enum AppCmdEvent {
     DeleteMessage(MessageId),
     EditMessage(MessageId, RoomId, String),
     Initialize(),
     ListAllRooms(),
     ListMessagesInRoom(RoomId, Option<MessageId>, u32),
-    SendMessage(MessageOut),
+    /// Temporary neutral-to-legacy write boundary; only this Teams edge builds MessageOut.
+    SendMessage(FrontendIntent),
     UpdateRoom(RoomId),
     UpdateTeam(TeamId, Option<String>), // TeamId and optional room context
     UpdateMessage(MessageId),
@@ -33,6 +35,29 @@ pub(crate) enum AppCmdEvent {
     UpdatePerson(PersonId),
     LeaveRoom(RoomId),
     WhoAmI(),
+}
+
+/// Explicit old-transport adapter. It has no logging and accepts only a send
+/// intent, so read/edit/delete commands cannot accidentally become writes.
+fn legacy_message_out(intent: &FrontendIntent) -> Option<MessageOut> {
+    let FrontendIntent::SendMessage {
+        room_id,
+        parent_id,
+        body,
+    } = intent
+    else {
+        return None;
+    };
+    let mut message = MessageOut {
+        room_id: Some(room_id.as_str().to_owned()),
+        parent_id: parent_id.as_ref().map(|id| id.as_str().to_owned()),
+        ..Default::default()
+    };
+    match body {
+        ComposedBody::PlainText(text) => message.text = Some(text.clone()),
+        ComposedBody::Markdown(text) => message.markdown = Some(text.clone()),
+    }
+    Some(message)
 }
 
 impl AppCmdEvent {
@@ -61,7 +86,10 @@ impl Teams<'_> {
                 self.do_list_messages_in_room(&room_id, before_id, max)
                     .await
             }
-            AppCmdEvent::SendMessage(msg_to_send) => self.do_send_message(&msg_to_send).await,
+            AppCmdEvent::SendMessage(intent) => match legacy_message_out(&intent) {
+                Some(message) => self.do_send_message(&message).await,
+                None => Err(eyre!("invalid send intent")),
+            },
             AppCmdEvent::UpdateChildrenMessages(msg_id, room_id) => {
                 self.do_update_children_messages(&msg_id, &room_id).await
             }
@@ -398,5 +426,27 @@ impl Teams<'_> {
                 Err(eyre!("Error leaving room: {}", e))
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn neutral_send_intent_maps_only_at_legacy_edge() {
+        let intent = FrontendIntent::SendMessage {
+            room_id: crate::frontend::data::RoomId::new("room"),
+            parent_id: Some(crate::frontend::data::MessageId::new("parent")),
+            body: ComposedBody::Markdown("**body**".into()),
+        };
+        let message = legacy_message_out(&intent).unwrap();
+        assert_eq!(message.room_id.as_deref(), Some("room"));
+        assert_eq!(message.parent_id.as_deref(), Some("parent"));
+        assert_eq!(message.markdown.as_deref(), Some("**body**"));
+        assert!(message.text.is_none());
+    }
+    #[test]
+    fn non_send_intent_never_becomes_legacy_message() {
+        assert!(legacy_message_out(&FrontendIntent::WhoAmI).is_none());
     }
 }
