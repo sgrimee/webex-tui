@@ -6,7 +6,9 @@
 //! No message write is dispatched/retried here. Snapshot data stays host-owned.
 
 use super::{
-    events::project_continuity, projection::valid_id, write_dispatch::BridgeUiWriteBackend,
+    events::project_continuity,
+    projection::valid_id,
+    write_dispatch::{BridgeUiWriteBackend, UiWriteBackend},
 };
 use crate::frontend::{
     continuity::{
@@ -56,7 +58,7 @@ pub(crate) trait SessionBackend: Send {
     type Stream: Send;
     /// Private mutation capability created from an active client. It is retained
     /// by the lifecycle and is never returned through this trait's public API.
-    type Writer: Send;
+    type Writer: UiWriteBackend;
     /// Read-only view of a client, scoped to a current snapshot ticket.
     /// Implementations must not expose a cloneable write client or bearer token.
     type SnapshotReader<'a>

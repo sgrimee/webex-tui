@@ -26,6 +26,42 @@ pub(crate) trait UiWriteBackend: Send {
     fn delete(&mut self, message: &str) -> impl Future<Output = Result<(), ClientError>> + Send;
     fn leave(&mut self, room: &str) -> impl Future<Output = Result<(), ClientError>> + Send;
 }
+
+/// Test-only inert writer lets lifecycle fakes prove ownership without a usable capability.
+#[cfg(test)]
+impl UiWriteBackend for () {
+    async fn send(
+        &mut self,
+        _: &str,
+        _: Option<&str>,
+        _: &dto::MessageBodyInput,
+    ) -> Result<dto::Message, ClientError> {
+        Err(ClientError::Transport(
+            std::io::Error::other("inert writer").into(),
+        ))
+    }
+    async fn edit(
+        &mut self,
+        _: &str,
+        _: &str,
+        _: &dto::MessageBodyInput,
+    ) -> Result<dto::Message, ClientError> {
+        Err(ClientError::Transport(
+            std::io::Error::other("inert writer").into(),
+        ))
+    }
+    async fn delete(&mut self, _: &str) -> Result<(), ClientError> {
+        Err(ClientError::Transport(
+            std::io::Error::other("inert writer").into(),
+        ))
+    }
+    async fn leave(&mut self, _: &str) -> Result<(), ClientError> {
+        Err(ClientError::Transport(
+            std::io::Error::other("inert writer").into(),
+        ))
+    }
+}
+
 pub(crate) struct BridgeUiWriteBackend {
     client: UiClient,
 }

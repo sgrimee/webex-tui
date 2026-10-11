@@ -57,6 +57,38 @@ impl Drop for Writer {
         self.0.writers_dropped.fetch_add(1, Ordering::SeqCst);
     }
 }
+impl crate::bridge::write_dispatch::UiWriteBackend for Writer {
+    async fn send(
+        &mut self,
+        _: &str,
+        _: Option<&str>,
+        _: &webex_bridge::dto::MessageBodyInput,
+    ) -> Result<webex_bridge::dto::Message, webex_bridge::client::ClientError> {
+        Err(webex_bridge::client::ClientError::Transport(
+            std::io::Error::other("fake writer").into(),
+        ))
+    }
+    async fn edit(
+        &mut self,
+        _: &str,
+        _: &str,
+        _: &webex_bridge::dto::MessageBodyInput,
+    ) -> Result<webex_bridge::dto::Message, webex_bridge::client::ClientError> {
+        Err(webex_bridge::client::ClientError::Transport(
+            std::io::Error::other("fake writer").into(),
+        ))
+    }
+    async fn delete(&mut self, _: &str) -> Result<(), webex_bridge::client::ClientError> {
+        Err(webex_bridge::client::ClientError::Transport(
+            std::io::Error::other("fake writer").into(),
+        ))
+    }
+    async fn leave(&mut self, _: &str) -> Result<(), webex_bridge::client::ClientError> {
+        Err(webex_bridge::client::ClientError::Transport(
+            std::io::Error::other("fake writer").into(),
+        ))
+    }
+}
 
 struct Backend {
     clock: Clock,
