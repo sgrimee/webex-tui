@@ -47,6 +47,8 @@ pub(crate) struct PageRequest {
 }
 
 #[derive(Clone, PartialEq, Eq)]
+/// Cloneable only for private request correlation; intentionally no Debug,
+/// Display, or serialization implementation because variants may carry bodies.
 pub(crate) enum FrontendIntent {
     Initialize,
     WhoAmI,
@@ -544,6 +546,27 @@ mod tests {
         };
         let result = RequestSequence::default().begin(FrontendIntent::ListAllRooms, Some(view));
         assert!(matches!(result, Err(EnvelopeError::RoomContextMismatch)));
+    }
+
+    #[test]
+    fn cloned_body_intents_preserve_opaque_ids_and_format_without_debug_surface() {
+        let send = FrontendIntent::SendMessage {
+            room_id: RoomId::new("room"),
+            parent_id: Some(MessageId::new("parent")),
+            body: ComposedBody::PlainText("body".into()),
+        };
+        let edit = FrontendIntent::EditMessage {
+            message_id: MessageId::new("message"),
+            room_id: RoomId::new("room"),
+            body: ComposedBody::Markdown("body".into()),
+        };
+        assert!(
+            matches!(send.clone(), FrontendIntent::SendMessage { parent_id: Some(id), body: ComposedBody::PlainText(body), .. } if id.as_str() == "parent" && body == "body")
+        );
+        assert!(
+            matches!(edit.clone(), FrontendIntent::EditMessage { message_id, body: ComposedBody::Markdown(body), .. } if message_id.as_str() == "message" && body == "body")
+        );
+        // This test intentionally does not format the intent: it has no Debug/Display impl.
     }
 
     #[test]
