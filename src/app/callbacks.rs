@@ -8,7 +8,7 @@ use super::{
     cache::{room::RoomId, MessageId},
     App, Priority,
 };
-use crate::teams::app_handler::AppCmdEvent;
+use crate::{bridge::legacy, teams::app_handler::AppCmdEvent};
 
 use log::*;
 use webex::{Message, Person};
@@ -190,13 +190,19 @@ impl App<'_> {
     /// Callback when team information is received.
     /// Saves the team info in the store.
     pub(crate) fn cb_team_updated(&mut self, team: webex::Team) {
-        self.state.cache.teams.add(team);
+        match legacy::team(&team) {
+            Ok(team) => self.state.cache.teams.add(team),
+            Err(_) => error!("Ignoring legacy team with invalid metadata"),
+        }
     }
 
     /// Callback when person information is received.
     /// Saves the person info in the store.
     pub(crate) fn cb_person_updated(&mut self, person: Person) {
-        self.state.cache.persons.insert(person);
+        match legacy::person(&person) {
+            Ok(person) => self.state.cache.persons.insert(person),
+            Err(_) => error!("Ignoring legacy person with invalid metadata"),
+        }
     }
 
     /// Callback when a message is deleted in a room.

@@ -1,34 +1,31 @@
 use std::collections::{HashMap, HashSet};
 
-use webex::Team;
+use crate::frontend::data::TeamSnapshot;
 
-pub type TeamId = String;
+pub(crate) type TeamId = String;
 
-/// Cache for `Team` objects
-#[derive(Default, Debug)]
+/// Frontend-neutral team cache; legacy transport values are projected in `bridge`.
+#[derive(Default)]
 pub(crate) struct Teams {
-    teams_by_id: HashMap<TeamId, Team>,
+    teams_by_id: HashMap<TeamId, TeamSnapshot>,
     requested_teams: HashSet<TeamId>,
 }
 
 impl Teams {
-    /// Add a `Team` to the cache.
-    pub(crate) fn add(&mut self, team: Team) {
-        self.requested_teams.remove(&team.id);
-        self.teams_by_id.insert(team.id.clone(), team);
+    pub(crate) fn add(&mut self, team: TeamSnapshot) {
+        let id = team.id.as_str().to_owned();
+        self.requested_teams.remove(&id);
+        self.teams_by_id.insert(id, team);
     }
 
-    /// Returns a reference to the team for given id, if found.
-    pub(crate) fn team_with_id(&self, id: &TeamId) -> Option<&Team> {
+    pub(crate) fn team_with_id(&self, id: &TeamId) -> Option<&TeamSnapshot> {
         self.teams_by_id.get(id)
     }
 
-    /// Adds a `TeamId` to the set of requested teams
     pub(crate) fn add_requested(&mut self, team_id: TeamId) {
         self.requested_teams.insert(team_id);
     }
 
-    /// Returns whether the team is already present, or if it has already been requested.
     pub(crate) fn exists_or_requested(&self, id: &TeamId) -> bool {
         self.teams_by_id.contains_key(id) || self.requested_teams.contains(id)
     }
@@ -37,24 +34,25 @@ impl Teams {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::frontend::data::TeamId as FrontendTeamId;
 
     #[test]
-    fn test_teams() {
+    fn stores_neutral_team_snapshot_and_requested_marker() {
         let mut teams = Teams::default();
-        let team = Team {
-            id: "team_id".to_string(),
-            name: None,
-            created: "2020-01-01T00:00:00.000Z".to_string(),
-            description: None,
-        };
-        teams.add(team.clone());
+        teams.add(TeamSnapshot {
+            id: FrontendTeamId::new("team-a"),
+            name: Some("Team A".into()),
+        });
         assert_eq!(
-            teams.team_with_id(&team.id).unwrap().id,
-            "team_id".to_string()
+            teams
+                .team_with_id(&"team-a".into())
+                .unwrap()
+                .name
+                .as_deref(),
+            Some("Team A")
         );
-        assert!(teams.exists_or_requested(&team.id));
-        assert!(!teams.exists_or_requested(&"other_team_id".to_string()));
-        teams.add_requested("other_team_id".to_string());
-        assert!(teams.exists_or_requested(&"other_team_id".to_string()));
+        teams.add_requested("team-b".into());
+        assert!(teams.exists_or_requested(&"team-a".into()));
+        assert!(teams.exists_or_requested(&"team-b".into()));
     }
 }

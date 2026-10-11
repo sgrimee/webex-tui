@@ -10,8 +10,11 @@ const TITLE_INDENT: &str = "";
 pub(crate) const ACTIVE_ROOM_MIN_WIDTH: u16 = 30;
 pub(crate) const ROOM_MIN_HEIGHT: u16 = 8;
 
-use crate::app::state::{ActivePane, AppState};
-use crate::frontend::models::{DisplayBody, MessagePresentation};
+use crate::{
+    app::state::{ActivePane, AppState},
+    bridge::legacy,
+    frontend::models::{DisplayBody, MessagePresentation},
+};
 use base64::Engine;
 use html2text::from_read;
 use ratatui::prelude::Rect;
@@ -94,11 +97,11 @@ fn row_for_message<'a>(
 
     // Prefer the cached display name, then the projected sender email.
     let person_opt = msg.sender_id.and_then(|id| state.cache.persons.get(id));
-    let sender = match (person_opt, msg.sender_email) {
-        (Some(person), _) => person.display_name.clone(),
-        (None, Some(email)) => email.to_owned(),
-        _ => String::from("Unknown"),
-    };
+    let sender = person_opt
+        .and_then(|person| person.display_name.as_deref())
+        .or(msg.sender_email)
+        .unwrap_or("Unknown")
+        .to_owned();
     title_line.spans.push(Span::styled(
         sender,
         style_for_user(msg.sender_id, &state.theme.user_colors()),
@@ -214,11 +217,12 @@ pub(crate) fn draw_msg_table<'a>(state: &AppState, rect: &Rect) -> (Table<'a>, u
         rows = state
             .cache
             .messages_in_room(&room.id)
-            .map(|msg| {
+            .filter_map(|message| {
+                let snapshot = legacy::message(message).ok()?;
                 let (row, height) =
-                    row_for_message(state, MessagePresentation::from(msg), rect.width - 2);
+                    row_for_message(state, MessagePresentation::from(&snapshot), rect.width - 2);
                 nb_lines += height;
-                row
+                Some(row)
             })
             .collect();
     };

@@ -15,6 +15,7 @@ use self::state::AppState;
 use crate::app::actions::Action;
 use crate::app::rooms_list::SearchState;
 use crate::app::state::ActivePane;
+use crate::bridge::legacy;
 use crate::frontend::models::MessagePresentation;
 use crate::inputs::key::Key;
 use crate::teams::app_handler::AppCmdEvent;
@@ -488,7 +489,9 @@ impl App<'_> {
         use std::process::{Command, Stdio};
 
         let message = self.state.selected_message()?;
-        let content = MessagePresentation::from(message).body.copy_text()?;
+        let snapshot = legacy::message(message)
+            .map_err(|_| eyre!("Selected message has invalid presentation metadata"))?;
+        let content = MessagePresentation::from(&snapshot).body.copy_text()?;
 
         // On Wayland, use wl-copy for better compatibility
         if std::env::var("WAYLAND_DISPLAY").is_ok() {

@@ -33,7 +33,7 @@ pub(crate) type MessageId = String;
 ///
 /// Currently there is no garbage collection and the cache only grows.
 /// This is usually acceptable for a daily session.
-#[derive(Default, Debug)]
+#[derive(Default)]
 pub(crate) struct Cache {
     pub(crate) rooms: Rooms,
     rooms_content: HashMap<RoomId, RoomContent>,
@@ -281,11 +281,9 @@ mod tests {
         const TEAM_ID: &str = "some_new_team_id";
         const TEAM_NAME: &str = "Team name";
         let mut store = Cache::default();
-        let team = webex::Team {
-            id: TEAM_ID.into(),
+        let team = crate::frontend::data::TeamSnapshot {
+            id: crate::frontend::data::TeamId::new(TEAM_ID),
             name: Some(TEAM_NAME.into()),
-            created: "2020-01-01T00:00:00.000Z".to_string(),
-            description: None,
         };
         store.teams.add(team);
 

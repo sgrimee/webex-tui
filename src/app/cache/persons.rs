@@ -1,29 +1,32 @@
 use std::collections::{HashMap, HashSet};
-use webex::types::Person as WebexPerson;
 
-pub type PersonId = String;
+use crate::frontend::data::PersonSnapshot;
 
-/// Wrapper around a webex Person
-#[derive(Debug, Default)]
-pub struct Persons {
-    pub by_id: HashMap<PersonId, WebexPerson>,
-    pub requested: HashSet<PersonId>,
+pub(crate) type PersonId = String;
+
+/// Frontend-neutral person cache; legacy transport values are projected in `bridge`.
+#[derive(Default)]
+pub(crate) struct Persons {
+    by_id: HashMap<PersonId, PersonSnapshot>,
+    requested: HashSet<PersonId>,
 }
 
 impl Persons {
-    pub fn get(&self, id: &str) -> Option<&WebexPerson> {
+    pub(crate) fn get(&self, id: &str) -> Option<&PersonSnapshot> {
         self.by_id.get(id)
     }
 
-    pub fn insert(&mut self, person: WebexPerson) {
-        self.by_id.insert(person.id.clone(), person);
+    pub(crate) fn insert(&mut self, person: PersonSnapshot) {
+        let id = person.id.as_str().to_owned();
+        self.requested.remove(&id);
+        self.by_id.insert(id, person);
     }
 
-    pub fn add_requested(&mut self, id: &str) {
-        self.requested.insert(id.to_string());
+    pub(crate) fn add_requested(&mut self, id: &str) {
+        self.requested.insert(id.to_owned());
     }
 
-    pub fn exists_or_requested(&self, id: &str) -> bool {
+    pub(crate) fn exists_or_requested(&self, id: &str) -> bool {
         self.by_id.contains_key(id) || self.requested.contains(id)
     }
 }
@@ -31,20 +34,22 @@ impl Persons {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::frontend::data::PersonId as FrontendPersonId;
 
     #[test]
-    fn test_persons() {
+    fn stores_neutral_person_snapshot_and_requested_marker() {
         let mut persons = Persons::default();
-        let person = WebexPerson {
-            id: "id".to_string(),
-            ..Default::default()
-        };
-        persons.insert(person.clone());
-        assert_eq!(persons.get("id"), Some(&person));
-        assert_eq!(persons.get("id2"), None);
-        assert!(persons.exists_or_requested("id"));
-        assert!(!persons.exists_or_requested("id2"));
-        persons.add_requested("id2");
-        assert!(persons.exists_or_requested("id2"));
+        persons.insert(PersonSnapshot {
+            id: FrontendPersonId::new("person-a"),
+            display_name: Some("Person A".into()),
+            emails: None,
+        });
+        assert_eq!(
+            persons.get("person-a").unwrap().display_name.as_deref(),
+            Some("Person A")
+        );
+        persons.add_requested("person-b");
+        assert!(persons.exists_or_requested("person-a"));
+        assert!(persons.exists_or_requested("person-b"));
     }
 }
