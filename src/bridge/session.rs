@@ -277,6 +277,23 @@ pub(crate) struct SessionLifecycle<B: SessionBackend, C: SessionClock> {
     last_instance: Option<DaemonInstanceId>,
 }
 
+/// Private admission fence, not a client/capability or a reconnect promise.
+/// Snapshot generations are subscription-local and readiness is lease-aware.
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub(super) struct WriteAdmissionStamp {
+    subscription: Option<SubscriptionId>,
+    snapshot_generation: Option<u64>,
+    ready: bool,
+}
+
+impl WriteAdmissionStamp {
+    pub(super) fn ready(self) -> bool {
+        self.ready
+    }
+}
+
+/// Every error here is proven before backend mutation I/O. Once a backend write
+/// is attempted its failure is carried inside FrontendResult, never this enum.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum SessionWriteError {
     NotReady,
@@ -306,6 +323,14 @@ impl<B: SessionBackend, C: SessionClock> SessionLifecycle<B, C> {
             SessionPhase::Expired
         } else {
             self.phase
+        }
+    }
+
+    pub(super) fn write_admission_stamp(&self) -> WriteAdmissionStamp {
+        WriteAdmissionStamp {
+            subscription: self.active.as_ref().map(|a| a.subscription),
+            snapshot_generation: self.active.as_ref().map(|a| a.snapshot_generation),
+            ready: self.phase() == SessionPhase::Active,
         }
     }
 

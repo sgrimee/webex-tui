@@ -8,7 +8,7 @@ use super::{
     events::project_ui_event,
     session::{
         FrameAction, LeaseAction, SessionBackend, SessionClock, SessionFailure, SessionLifecycle,
-        SessionPhase, SessionWriteError, SnapshotTicket, SubscriptionId,
+        SessionPhase, SessionWriteError, SnapshotTicket, SubscriptionId, WriteAdmissionStamp,
     },
 };
 use crate::frontend::{
@@ -55,6 +55,10 @@ impl<B: SessionBackend, C: SessionClock, H: PresentationHost> HostController<B, 
             self.phase_changed();
         }
         result
+    }
+
+    pub(super) fn write_admission_stamp(&self) -> WriteAdmissionStamp {
+        self.session.write_admission_stamp()
     }
 
     pub(crate) fn phase(&self) -> SessionPhase {

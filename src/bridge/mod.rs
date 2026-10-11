@@ -5,6 +5,7 @@
 //! and pairing/Keychain/Teams remain untouched. Only this boundary imports
 //! bridge DTOs and projects the still-live legacy transport into frontend values.
 
+pub(crate) mod commands;
 pub(crate) mod controller;
 pub(crate) mod events;
 pub(crate) mod legacy;
