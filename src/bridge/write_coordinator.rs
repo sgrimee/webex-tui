@@ -112,6 +112,7 @@ impl<G: WriteGate> WriteCoordinator<G> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bridge::write_dispatch::DispatchError;
     use crate::frontend::{
         data::{ComposedBody, MessageSnapshot, MessageStatus},
         editor_write::EditorWriteStatus,
@@ -121,14 +122,17 @@ mod tests {
     struct Gate {
         reply: Option<Result<FrontendResult, SessionWriteError>>,
         calls: usize,
+        // Keep payloads private: neither this fake nor its intents implement Debug.
+        received: Vec<FrontendIntent>,
     }
 
     impl WriteGate for Gate {
         async fn dispatch_write(
             &mut self,
-            _: FrontendIntent,
+            intent: FrontendIntent,
         ) -> Result<FrontendResult, SessionWriteError> {
             self.calls += 1;
+            self.received.push(intent);
             self.reply.take().expect("one gate call")
         }
     }
@@ -157,13 +161,66 @@ mod tests {
     }
 
     fn coordinator(reply: Result<FrontendResult, SessionWriteError>) -> WriteCoordinator<Gate> {
+        coordinator_with_body(ComposedBody::PlainText("private body".into()), reply)
+    }
+
+    fn coordinator_with_body(
+        body: ComposedBody,
+        reply: Result<FrontendResult, SessionWriteError>,
+    ) -> WriteCoordinator<Gate> {
         WriteCoordinator::new(
-            EditorWriteState::new(ComposedBody::PlainText("private body".into())),
+            EditorWriteState::new(body),
             Gate {
                 reply: Some(reply),
                 calls: 0,
+                received: Vec::new(),
             },
         )
+    }
+
+    fn assert_dispatched_once(gate: &Gate, expected: FrontendIntent) {
+        assert_eq!(gate.calls, 1);
+        assert_eq!(gate.received.len(), 1);
+        // Boolean equality checks every field without formatting either payload.
+        assert!(gate.received[0] == expected);
+        assert!(gate.reply.is_none());
+    }
+
+    fn draft_intents(body: &ComposedBody) -> [FrontendIntent; 3] {
+        [
+            FrontendIntent::SendMessage {
+                room_id: RoomId::new("room"),
+                parent_id: None,
+                body: body.clone(),
+            },
+            FrontendIntent::SendMessage {
+                room_id: RoomId::new("room"),
+                parent_id: Some(MessageId::new("parent")),
+                body: body.clone(),
+            },
+            FrontendIntent::EditMessage {
+                room_id: RoomId::new("room"),
+                message_id: MessageId::new("message"),
+                body: body.clone(),
+            },
+        ]
+    }
+
+    async fn submit(
+        coordinator: &mut WriteCoordinator<Gate>,
+        expected: &FrontendIntent,
+    ) -> Result<FrontendResult, CoordinatorError> {
+        match expected {
+            FrontendIntent::SendMessage {
+                room_id, parent_id, ..
+            } => coordinator.send(room_id.clone(), parent_id.clone()).await,
+            FrontendIntent::EditMessage {
+                room_id,
+                message_id,
+                ..
+            } => coordinator.edit(room_id.clone(), message_id.clone()).await,
+            _ => panic!("fixture must be an editor write"),
+        }
     }
 
     #[tokio::test]
@@ -176,11 +233,22 @@ mod tests {
             Ok(FrontendResult::SendMessage(WriteOutcome::Success(_)))
         ));
         assert_eq!(success.state().status(), EditorWriteStatus::Ready);
-        assert_eq!(success.gate.calls, 1);
+        assert_dispatched_once(
+            &success.gate,
+            FrontendIntent::SendMessage {
+                room_id: RoomId::new("room"),
+                parent_id: None,
+                body: ComposedBody::PlainText("private body".into()),
+            },
+        );
 
-        let mut unknown = coordinator(Ok(FrontendResult::SendMessage(
-            WriteOutcome::DeliveryUnknown(error()),
-        )));
+        let body = ComposedBody::Markdown("**private reply**".into());
+        let mut unknown = coordinator_with_body(
+            body.clone(),
+            Ok(FrontendResult::SendMessage(WriteOutcome::DeliveryUnknown(
+                error(),
+            ))),
+        );
         assert!(matches!(
             unknown
                 .send(RoomId::new("room"), Some(MessageId::new("parent")))
@@ -190,22 +258,90 @@ mod tests {
             )))
         ));
         assert_eq!(unknown.state().status(), EditorWriteStatus::DeliveryUnknown);
-        assert_eq!(unknown.gate.calls, 1);
+        assert!(unknown.state().body() == &body);
+        assert_dispatched_once(
+            &unknown.gate,
+            FrontendIntent::SendMessage {
+                room_id: RoomId::new("room"),
+                parent_id: Some(MessageId::new("parent")),
+                body,
+            },
+        );
     }
 
     #[tokio::test]
-    async fn gate_failure_and_mismatched_result_retain_unavailable_draft() {
-        let mut unavailable = coordinator(Err(SessionWriteError::NotReady));
-        assert!(matches!(
-            unavailable.send(RoomId::new("room"), None).await,
-            Err(CoordinatorError::Unavailable)
-        ));
-        assert_eq!(unavailable.state().status(), EditorWriteStatus::Unavailable);
-        assert!(
-            matches!(unavailable.state().body(), ComposedBody::PlainText(value) if value == "private body")
-        );
-        assert_eq!(unavailable.gate.calls, 1);
+    async fn matching_edit_success_forwards_exact_markdown_intent_once() {
+        let body = ComposedBody::Markdown("**private edit**".into());
+        let expected = FrontendIntent::EditMessage {
+            room_id: RoomId::new("edit-room"),
+            message_id: MessageId::new("edit-message"),
+            body: body.clone(),
+        };
+        let result = FrontendResult::EditMessage(WriteOutcome::Success(MessageSnapshot {
+            id: MessageId::new("edit-message"),
+            room_id: RoomId::new("edit-room"),
+            ..message()
+        }));
+        let mut edit = coordinator_with_body(body, Ok(result.clone()));
+        assert!(submit(&mut edit, &expected).await.unwrap() == result);
+        assert_eq!(edit.state().status(), EditorWriteStatus::Ready);
+        assert_dispatched_once(&edit.gate, expected);
+    }
 
+    #[tokio::test]
+    async fn rejected_send_reply_and_edit_retain_exact_draft_without_retry() {
+        for body in [
+            ComposedBody::PlainText("private body".into()),
+            ComposedBody::Markdown("**private body**".into()),
+        ] {
+            for expected in draft_intents(&body) {
+                let result = match &expected {
+                    FrontendIntent::SendMessage { .. } => {
+                        FrontendResult::SendMessage(WriteOutcome::Rejected(error()))
+                    }
+                    FrontendIntent::EditMessage { .. } => {
+                        FrontendResult::EditMessage(WriteOutcome::Rejected(error()))
+                    }
+                    _ => unreachable!(),
+                };
+                let mut rejected = coordinator_with_body(body.clone(), Ok(result.clone()));
+                assert!(submit(&mut rejected, &expected).await.unwrap() == result);
+                assert_eq!(rejected.state().status(), EditorWriteStatus::Rejected);
+                assert!(rejected.state().body() == &body);
+                assert_dispatched_once(&rejected.gate, expected);
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn every_gate_failure_retains_send_reply_and_edit_drafts_without_retry() {
+        let failures = [
+            SessionWriteError::NotReady,
+            SessionWriteError::Expired,
+            SessionWriteError::Failed,
+            SessionWriteError::Dispatch(DispatchError::WrongIntent),
+        ];
+        for failure in failures {
+            for body in [
+                ComposedBody::PlainText("private body".into()),
+                ComposedBody::Markdown("**private body**".into()),
+            ] {
+                for expected in draft_intents(&body) {
+                    let mut unavailable = coordinator_with_body(body.clone(), Err(failure));
+                    assert!(matches!(
+                        submit(&mut unavailable, &expected).await,
+                        Err(CoordinatorError::Unavailable)
+                    ));
+                    assert_eq!(unavailable.state().status(), EditorWriteStatus::Unavailable);
+                    assert!(unavailable.state().body() == &body);
+                    assert_dispatched_once(&unavailable.gate, expected);
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn mismatched_result_retains_unavailable_draft_without_retry() {
         let mut mismatch = coordinator(Ok(FrontendResult::DeleteMessage(WriteOutcome::Success(
             MessageId::new("message"),
         ))));
@@ -216,6 +352,16 @@ mod tests {
             Err(CoordinatorError::ResultMismatch)
         ));
         assert_eq!(mismatch.state().status(), EditorWriteStatus::Unavailable);
-        assert_eq!(mismatch.gate.calls, 1);
+        assert!(
+            matches!(mismatch.state().body(), ComposedBody::PlainText(value) if value == "private body")
+        );
+        assert_dispatched_once(
+            &mismatch.gate,
+            FrontendIntent::EditMessage {
+                room_id: RoomId::new("room"),
+                message_id: MessageId::new("message"),
+                body: ComposedBody::PlainText("private body".into()),
+            },
+        );
     }
 }
