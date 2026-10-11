@@ -1,12 +1,12 @@
 //! State of the application
 
+use crate::frontend::data::MessageSnapshot;
 use color_eyre::{eyre::eyre, Result};
 use enum_iterator::{next_cycle, previous_cycle, Sequence};
 use itertools::concat;
 use log::*;
 use ratatui::layout::Rect;
 use tui_logger::TuiWidgetState;
-use webex::Message;
 
 use super::actions::{Action, Actions};
 use super::cache::room::{Room, RoomId};
@@ -366,7 +366,7 @@ impl AppState<'_> {
     }
 
     /// Returns the selected message, if there is one
-    pub(crate) fn selected_message(&self) -> Result<&Message> {
+    pub(crate) fn selected_message(&self) -> Result<&MessageSnapshot> {
         let room_id = self
             .id_of_selected_room()
             .ok_or(eyre!("No room selected"))?;
@@ -380,7 +380,9 @@ impl AppState<'_> {
     /// Returns true if the selected message is from me.
     pub(crate) fn selected_message_is_from_me(&self) -> Result<bool> {
         let message = self.selected_message()?;
-        Ok(self.cache.is_me(&message.person_id))
+        Ok(self
+            .cache
+            .is_me(&message.sender_id.as_ref().map(|id| id.as_str().to_owned())))
     }
 
     /// Set the theme for the application

@@ -64,7 +64,7 @@ impl App<'_> {
             .state
             .selected_message()
             .ok()
-            .and_then(|msg| msg.id.clone());
+            .map(|message| message.id.as_str().to_owned());
 
         self.add_messages_to_cache(messages, update_unread, room_id);
         self.request_missing_parent_messages(messages, room_id);
@@ -88,8 +88,13 @@ impl App<'_> {
             if update_unread && !self.state.cache.is_me(&msg.person_id) {
                 self.state.cache.rooms.mark_unread(room_id);
             }
-            if let Err(err) = self.state.cache.add_message(msg) {
-                error!("Error adding received message to store: {err}");
+            match legacy::message(msg) {
+                Ok(snapshot) => {
+                    if let Err(error) = self.state.cache.add_message(&snapshot) {
+                        error!("Error adding projected message to store: {error}");
+                    }
+                }
+                Err(_) => error!("Ignoring legacy message with invalid metadata"),
             }
         }
     }

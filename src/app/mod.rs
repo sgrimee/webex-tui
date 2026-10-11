@@ -27,7 +27,6 @@ use log::*;
 use ratatui::crossterm::event::KeyEvent;
 use tui_logger::TuiWidgetEvent;
 use tui_textarea::Input;
-use webex::Message;
 
 /// Return status indicating whether the app should exit or not.
 #[derive(Debug, PartialEq, Eq)]
@@ -466,15 +465,16 @@ impl App<'_> {
         let message = self.state.selected_message()?;
         let room_id = self.state.id_of_selected_room().unwrap();
 
-        // Ensure we attempt to delete only our own messages
-        if !self.state.cache.is_me(&message.person_id) {
+        // Ensure we attempt to delete only our own messages.
+        if !self
+            .state
+            .cache
+            .is_me(&message.sender_id.as_ref().map(|id| id.as_str().to_owned()))
+        {
             return Err(eyre!("Cannot delete message, it was not authored by self"));
         }
 
-        let msg_id = message
-            .id
-            .clone()
-            .ok_or(eyre!("Selected message does not have an id"))?;
+        let msg_id = message.id.as_str().to_owned();
 
         // Dispatch a delete event and remove the message from the store
         self.state.messages_list.select_previous_message();
@@ -489,9 +489,7 @@ impl App<'_> {
         use std::process::{Command, Stdio};
 
         let message = self.state.selected_message()?;
-        let snapshot = legacy::message(message)
-            .map_err(|_| eyre!("Selected message has invalid presentation metadata"))?;
-        let content = MessagePresentation::from(&snapshot).body.copy_text()?;
+        let content = MessagePresentation::from(message).body.copy_text()?;
 
         // On Wayland, use wl-copy for better compatibility
         if std::env::var("WAYLAND_DISPLAY").is_ok() {
@@ -529,25 +527,27 @@ impl App<'_> {
         let message = self.state.selected_message()?;
         self.state
             .message_editor
-            .set_response_to(Some(message.clone()));
+            .set_response_to(Some(legacy::message_for_editor(message)));
         Ok(())
     }
 
     /// Prepeares the message editor with the contents of the selected message
     fn edit_selected_message(&mut self) -> Result<()> {
-        let message = self.state.selected_message()?.clone();
-        // return an error if the message is not from self
-        if !self.state.cache.is_me(&message.person_id) {
+        let message = self.state.selected_message()?;
+        if !self
+            .state
+            .cache
+            .is_me(&message.sender_id.as_ref().map(|id| id.as_str().to_owned()))
+        {
             return Err(eyre!("Cannot edit message, it was not authored by self"));
         }
-
-        // set the message editor text to the message text
-        let text = message.text.clone().unwrap_or_default();
-        self.state.message_editor.reset_with_text(text);
-        // keep a copy of the message we are editing
+        let legacy_message = legacy::message_for_editor(message);
         self.state
             .message_editor
-            .set_editing_of(Some(message.clone()));
+            .reset_with_text(legacy_message.text.clone().unwrap_or_default());
+        self.state
+            .message_editor
+            .set_editing_of(Some(legacy_message));
         Ok(())
     }
 
@@ -567,7 +567,7 @@ impl App<'_> {
             self.dispatch_to_teams(
                 AppCmdEvent::ListMessagesInRoom(
                     id.clone(),
-                    first_message.id.clone(),
+                    Some(first_message.id.as_str().to_owned()),
                     self.state.messages_to_load,
                 ),
                 &Priority::High,
@@ -641,20 +641,11 @@ impl App<'_> {
             .ok_or(eyre!("Cannot dump room content to file, no room selected."))?;
         let filename = format!("room_{}.json", room.id);
         let file = std::fs::File::create(filename)?;
-        // Dump only specific fields of the message
         let messages: Vec<_> = self
             .state
             .cache
             .messages_in_room(&room.id)
-            .map(|msg| Message {
-                person_email: msg.person_email.clone(),
-                text: msg.text.clone(),
-                html: msg.html.clone(),
-                markdown: msg.markdown.clone(),
-                created: msg.created.clone(),
-                id: msg.id.clone(),
-                ..Default::default()
-            })
+            .map(crate::app::legacy_projection::MessageDumpView::from)
             .collect();
         serde_json::to_writer_pretty(file, &messages)?;
         Ok(())

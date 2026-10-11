@@ -12,7 +12,6 @@ pub(crate) const ROOM_MIN_HEIGHT: u16 = 8;
 
 use crate::{
     app::state::{ActivePane, AppState},
-    bridge::legacy,
     frontend::models::{DisplayBody, MessagePresentation},
 };
 use base64::Engine;
@@ -217,12 +216,11 @@ pub(crate) fn draw_msg_table<'a>(state: &AppState, rect: &Rect) -> (Table<'a>, u
         rows = state
             .cache
             .messages_in_room(&room.id)
-            .filter_map(|message| {
-                let snapshot = legacy::message(message).ok()?;
+            .map(|message| {
                 let (row, height) =
-                    row_for_message(state, MessagePresentation::from(&snapshot), rect.width - 2);
+                    row_for_message(state, MessagePresentation::from(message), rect.width - 2);
                 nb_lines += height;
-                Some(row)
+                row
             })
             .collect();
     };
