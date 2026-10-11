@@ -245,6 +245,28 @@ pub(crate) fn project_write_message(
     message(value, expected_room)
 }
 
+pub(crate) fn project_sent_write_message(
+    value: dto::Message,
+    expected_room: &RoomId,
+    expected_parent: Option<&MessageId>,
+) -> Project<MessageSnapshot> {
+    if value.parent_id.as_deref() != expected_parent.map(MessageId::as_str) {
+        return Err(ProjectionError::Identity);
+    }
+    project_write_message(value, expected_room)
+}
+
+pub(crate) fn project_edited_write_message(
+    value: dto::Message,
+    expected_room: &RoomId,
+    expected_message: &MessageId,
+) -> Project<MessageSnapshot> {
+    if value.id != expected_message.as_str() {
+        return Err(ProjectionError::Identity);
+    }
+    project_write_message(value, expected_room)
+}
+
 /// Classify every typed write failure without reflecting backend detail.
 pub(crate) fn write_failure<T>(error: ClientError) -> WriteOutcome<T> {
     let rejected = matches!(&error, ClientError::Api { status, .. } if status.is_client_error())

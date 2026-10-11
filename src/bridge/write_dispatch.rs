@@ -1,5 +1,5 @@
 //! Private, unconnected paired-UI send capability.
-use super::projection::{project_write_message, write_failure};
+use super::projection::{project_edited_write_message, project_sent_write_message, write_failure};
 use crate::frontend::{
     data::{ComposedBody, MessageId, MessageSnapshot, RoomId},
     envelopes::{FrontendError, FrontendIntent, FrontendResult, WriteOutcome},
@@ -78,7 +78,7 @@ impl<B: UiWriteBackend> WriteDispatcher<B> {
                 body,
             } => {
                 let input = input(body);
-                FrontendResult::SendMessage(message_outcome(
+                FrontendResult::SendMessage(sent_outcome(
                     self.backend
                         .send(
                             room_id.as_str(),
@@ -87,6 +87,7 @@ impl<B: UiWriteBackend> WriteDispatcher<B> {
                         )
                         .await,
                     room_id.as_str(),
+                    parent_id.as_ref(),
                 ))
             }
             FrontendIntent::EditMessage {
@@ -95,11 +96,12 @@ impl<B: UiWriteBackend> WriteDispatcher<B> {
                 body,
             } => {
                 let input = input(body);
-                FrontendResult::EditMessage(message_outcome(
+                FrontendResult::EditMessage(edited_outcome(
                     self.backend
                         .edit(message_id.as_str(), room_id.as_str(), &input)
                         .await,
                     room_id.as_str(),
+                    &message_id,
                 ))
             }
             FrontendIntent::DeleteMessage {
@@ -131,12 +133,25 @@ fn input(body: ComposedBody) -> dto::MessageBodyInput {
         },
     }
 }
-fn message_outcome(
+fn sent_outcome(
     reply: Result<dto::Message, ClientError>,
     room: &str,
+    parent: Option<&MessageId>,
 ) -> WriteOutcome<MessageSnapshot> {
     match reply {
-        Ok(message) => project_write_message(message, &RoomId::new(room))
+        Ok(message) => project_sent_write_message(message, &RoomId::new(room), parent)
+            .map(WriteOutcome::Success)
+            .unwrap_or_else(|_| WriteOutcome::DeliveryUnknown(error("invalid_response"))),
+        Err(error_value) => write_failure(error_value),
+    }
+}
+fn edited_outcome(
+    reply: Result<dto::Message, ClientError>,
+    room: &str,
+    message_id: &MessageId,
+) -> WriteOutcome<MessageSnapshot> {
+    match reply {
+        Ok(message) => project_edited_write_message(message, &RoomId::new(room), message_id)
             .map(WriteOutcome::Success)
             .unwrap_or_else(|_| WriteOutcome::DeliveryUnknown(error("invalid_response"))),
         Err(error_value) => write_failure(error_value),
@@ -322,6 +337,30 @@ mod tests {
             FrontendResult::SendMessage(WriteOutcome::DeliveryUnknown(_))
         ));
         assert_eq!(unknown_dispatcher.backend.calls, 1);
+    }
+    #[tokio::test]
+    async fn parent_and_edit_identity_mismatch_are_unknown_once() {
+        let mut parent = msg();
+        parent.parent_id = Some("other".into());
+        let mut send_d = fake(Ok(parent), Ok(msg()), Ok(()), Ok(()));
+        let intent = FrontendIntent::SendMessage {
+            room_id: RoomId::new("r"),
+            parent_id: Some(MessageId::new("parent")),
+            body: ComposedBody::PlainText("body".into()),
+        };
+        assert!(matches!(
+            send_d.dispatch(intent).await.unwrap(),
+            FrontendResult::SendMessage(WriteOutcome::DeliveryUnknown(_))
+        ));
+        assert_eq!(send_d.backend.calls, 1);
+        let mut edit_bad = msg();
+        edit_bad.id = "other".into();
+        let mut edit_d = fake(Ok(msg()), Ok(edit_bad), Ok(()), Ok(()));
+        assert!(matches!(
+            edit_d.dispatch(edit()).await.unwrap(),
+            FrontendResult::EditMessage(WriteOutcome::DeliveryUnknown(_))
+        ));
+        assert_eq!(edit_d.backend.calls, 1);
     }
     #[tokio::test]
     async fn malformed_success_is_unknown_without_second_call() {
