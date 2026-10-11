@@ -8,12 +8,13 @@
 use super::{
     events::project_continuity,
     projection::valid_id,
-    write_dispatch::{BridgeUiWriteBackend, UiWriteBackend, WriteDispatcher},
+    write_dispatch::{BridgeUiWriteBackend, DispatchError, UiWriteBackend, WriteDispatcher},
 };
 use crate::frontend::{
     continuity::{
         ContinuityBoundary, DaemonInstanceId, LifecycleControl, SnapshotRelation, UiLifecycleFrame,
     },
+    envelopes::{FrontendIntent, FrontendResult},
     events::{ChangeScope, LifecycleEvent, ResyncReason},
 };
 use std::{
@@ -276,6 +277,14 @@ pub(crate) struct SessionLifecycle<B: SessionBackend, C: SessionClock> {
     last_instance: Option<DaemonInstanceId>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum SessionWriteError {
+    NotReady,
+    Expired,
+    Failed,
+    Dispatch(DispatchError),
+}
+
 impl<B: SessionBackend, C: SessionClock> SessionLifecycle<B, C> {
     pub(crate) fn new(backend: B, clock: C) -> Self {
         Self {
@@ -298,6 +307,26 @@ impl<B: SessionBackend, C: SessionClock> SessionLifecycle<B, C> {
         } else {
             self.phase
         }
+    }
+
+    pub(crate) async fn dispatch_write(
+        &mut self,
+        intent: FrontendIntent,
+    ) -> Result<FrontendResult, SessionWriteError> {
+        self.check_lease();
+        match self.phase() {
+            SessionPhase::Active => {}
+            SessionPhase::Expired => return Err(SessionWriteError::Expired),
+            SessionPhase::Failed(_) => return Err(SessionWriteError::Failed),
+            _ => return Err(SessionWriteError::NotReady),
+        }
+        self.active
+            .as_mut()
+            .ok_or(SessionWriteError::NotReady)?
+            ._writer
+            .dispatch(intent)
+            .await
+            .map_err(SessionWriteError::Dispatch)
     }
 
     pub(crate) fn subscription(&self) -> Option<SubscriptionId> {
