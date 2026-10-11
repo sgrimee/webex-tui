@@ -11,6 +11,8 @@ pub(crate) mod continuity;
 #[allow(dead_code)]
 pub(crate) mod data;
 #[allow(dead_code)]
+pub(crate) mod editor_write;
+#[allow(dead_code)]
 pub(crate) mod envelopes;
 #[allow(dead_code)]
 pub(crate) mod events;
