@@ -18,6 +18,8 @@ pub(crate) enum EditorWriteStatus {
     Pending,
     Rejected,
     DeliveryUnknown,
+    /// Local lifecycle gate prevented dispatch; it is not a daemon rejection.
+    Unavailable,
     Cancelled,
 }
 
@@ -76,6 +78,13 @@ impl EditorWriteState {
         self.pending = Some(request.context.id);
         self.status = EditorWriteStatus::Pending;
         Ok(request)
+    }
+    /// Clear only the matching pending request when it never reaches the daemon.
+    pub(crate) fn unavailable(&mut self, request: &RequestEnvelope) {
+        if self.pending == Some(request.context.id) {
+            self.pending = None;
+            self.status = EditorWriteStatus::Unavailable;
+        }
     }
     pub(crate) fn cancel(&mut self) {
         self.pending = None;
@@ -215,6 +224,40 @@ mod tests {
             .unwrap();
         state.accept(&result);
         assert_eq!(state.status(), EditorWriteStatus::Ready);
+    }
+    #[test]
+    fn unavailable_matching_request_retains_send_reply_and_edit_drafts() {
+        for request_kind in 0..3 {
+            let mut state = EditorWriteState::new(body());
+            let request = match request_kind {
+                0 => state.send(RoomId::new("room"), None).unwrap(),
+                1 => state
+                    .send(RoomId::new("room"), Some(MessageId::new("parent")))
+                    .unwrap(),
+                _ => state
+                    .edit(RoomId::new("room"), MessageId::new("message"))
+                    .unwrap(),
+            };
+            state.unavailable(&request);
+            assert_eq!(state.status(), EditorWriteStatus::Unavailable);
+            assert!(
+                matches!(state.body(), ComposedBody::PlainText(value) if value == "private body")
+            );
+            state.replace_body(ComposedBody::Markdown("next".into()));
+            assert_eq!(state.status(), EditorWriteStatus::Ready);
+        }
+    }
+    #[test]
+    fn stale_unavailable_request_does_not_clear_current_pending() {
+        let mut state = EditorWriteState::new(body());
+        let stale = state.send(RoomId::new("room"), None).unwrap();
+        let current = state
+            .edit(RoomId::new("room"), MessageId::new("message"))
+            .unwrap();
+        state.unavailable(&stale);
+        assert_eq!(state.status(), EditorWriteStatus::Pending);
+        state.unavailable(&current);
+        assert_eq!(state.status(), EditorWriteStatus::Unavailable);
     }
     #[test]
     fn labels_are_sanitized_and_body_has_no_debug_escape() {
