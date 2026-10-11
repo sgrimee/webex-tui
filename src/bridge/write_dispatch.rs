@@ -189,15 +189,18 @@ mod tests {
         delete: Option<Result<(), ClientError>>,
         leave: Option<Result<(), ClientError>>,
         calls: usize,
+        sent: Vec<(String, Option<String>, String)>,
     }
     impl UiWriteBackend for Fake {
         async fn send(
             &mut self,
-            _: &str,
-            _: Option<&str>,
-            _: &dto::MessageBodyInput,
+            room: &str,
+            parent: Option<&str>,
+            body: &dto::MessageBodyInput,
         ) -> Result<dto::Message, ClientError> {
             self.calls += 1;
+            self.sent
+                .push((room.into(), parent.map(str::to_owned), body.kind.clone()));
             self.send.take().unwrap()
         }
         async fn edit(
@@ -248,6 +251,7 @@ mod tests {
             delete: Some(delete),
             leave: Some(leave),
             calls: 0,
+            sent: Vec::new(),
         })
     }
     fn unknown() -> ClientError {
@@ -337,6 +341,62 @@ mod tests {
             FrontendResult::SendMessage(WriteOutcome::DeliveryUnknown(_))
         ));
         assert_eq!(unknown_dispatcher.backend.calls, 1);
+    }
+    #[tokio::test]
+    async fn send_parent_option_boundaries_are_exact_and_fenced() {
+        let mut with_parent = msg();
+        with_parent.parent_id = Some("parent".into());
+        let mut dispatcher = fake(Ok(with_parent), Ok(msg()), Ok(()), Ok(()));
+        let intent = FrontendIntent::SendMessage {
+            room_id: RoomId::new("r"),
+            parent_id: Some(MessageId::new("parent")),
+            body: ComposedBody::Markdown("body".into()),
+        };
+        assert!(matches!(
+            dispatcher.dispatch(intent).await.unwrap(),
+            FrontendResult::SendMessage(WriteOutcome::Success(_))
+        ));
+        assert_eq!(
+            dispatcher.backend.sent,
+            vec![("r".into(), Some("parent".into()), "markdown".into())]
+        );
+        let mut returned_none = msg();
+        returned_none.parent_id = None;
+        let mut none_dispatcher = fake(Ok(returned_none), Ok(msg()), Ok(()), Ok(()));
+        let intent = FrontendIntent::SendMessage {
+            room_id: RoomId::new("r"),
+            parent_id: Some(MessageId::new("parent")),
+            body: ComposedBody::PlainText("body".into()),
+        };
+        assert!(matches!(
+            none_dispatcher.dispatch(intent).await.unwrap(),
+            FrontendResult::SendMessage(WriteOutcome::DeliveryUnknown(_))
+        ));
+        assert_eq!(none_dispatcher.backend.calls, 1);
+        let mut returned_some = msg();
+        returned_some.parent_id = Some("parent".into());
+        let mut some_dispatcher = fake(Ok(returned_some), Ok(msg()), Ok(()), Ok(()));
+        assert!(matches!(
+            some_dispatcher.dispatch(send()).await.unwrap(),
+            FrontendResult::SendMessage(WriteOutcome::DeliveryUnknown(_))
+        ));
+        assert_eq!(
+            some_dispatcher.backend.sent,
+            vec![("r".into(), None, "plainText".into())]
+        );
+        assert_eq!(some_dispatcher.backend.calls, 1);
+    }
+    #[tokio::test]
+    async fn send_without_parent_passes_none_and_succeeds() {
+        let mut dispatcher = fake(Ok(msg()), Ok(msg()), Ok(()), Ok(()));
+        assert!(matches!(
+            dispatcher.dispatch(send()).await.unwrap(),
+            FrontendResult::SendMessage(WriteOutcome::Success(_))
+        ));
+        assert_eq!(
+            dispatcher.backend.sent,
+            vec![("r".into(), None, "plainText".into())]
+        );
     }
     #[tokio::test]
     async fn parent_and_edit_identity_mismatch_are_unknown_once() {
