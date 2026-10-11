@@ -163,6 +163,10 @@ fn error(code: &str) -> FrontendError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::frontend::{
+        data::{PageCursor, PersonId, TeamId},
+        envelopes::PageRequest,
+    };
     use webex_bridge::client::ClientError;
     struct Fake {
         send: Option<Result<dto::Message, ClientError>>,
@@ -365,6 +369,42 @@ mod tests {
             FrontendResult::LeaveRoom(WriteOutcome::DeliveryUnknown(_))
         ));
         assert_eq!(leave_d.backend.calls, 1);
+    }
+    #[tokio::test]
+    async fn every_non_write_intent_returns_error_without_io() {
+        let page = || PageRequest {
+            before: Some(PageCursor::new("cursor")),
+            max: 10,
+        };
+        let intents = vec![
+            FrontendIntent::Initialize,
+            FrontendIntent::WhoAmI,
+            FrontendIntent::ListAllRooms,
+            FrontendIntent::UpdateRoom(RoomId::new("r")),
+            FrontendIntent::UpdateTeam(TeamId::new("t")),
+            FrontendIntent::UpdatePerson(PersonId::new("p")),
+            FrontendIntent::ListMessagesInRoom {
+                room_id: RoomId::new("r"),
+                page: page(),
+            },
+            FrontendIntent::UpdateMessage {
+                message_id: MessageId::new("m"),
+                room_id: RoomId::new("r"),
+            },
+            FrontendIntent::UpdateChildrenMessages {
+                parent_id: MessageId::new("m"),
+                room_id: RoomId::new("r"),
+                page: page(),
+            },
+        ];
+        let mut dispatcher = fake(Ok(msg()), Ok(msg()), Ok(()), Ok(()));
+        for intent in intents {
+            assert!(matches!(
+                dispatcher.dispatch(intent).await,
+                Err(DispatchError::WrongIntent)
+            ));
+        }
+        assert_eq!(dispatcher.backend.calls, 0);
     }
     #[tokio::test]
     async fn accepted_uncertainty_is_once_for_each_write() {
