@@ -51,8 +51,22 @@ pub(crate) fn valid_editor_write(intent: &FrontendIntent) -> bool {
         && valid_write_body(body)
 }
 
+/// Any single-slot write: an editor write, or a delete/leave with bounded
+/// opaque IDs. Reads are never admitted through the write path.
+pub(crate) fn valid_write(intent: &FrontendIntent) -> bool {
+    match intent {
+        FrontendIntent::DeleteMessage {
+            room_id,
+            message_id,
+        } => valid_opaque_id(room_id.as_str()) && valid_opaque_id(message_id.as_str()),
+        FrontendIntent::LeaveRoom(room_id) => valid_opaque_id(room_id.as_str()),
+        intent => valid_editor_write(intent),
+    }
+}
+
 /// A canonical write success must name the exact requested room and, for a
-/// send, the exact parent (None for a root); for an edit, the exact message.
+/// send, the exact parent (None for a root); for an edit, the exact message;
+/// a delete or leave success must name exactly the deleted message / left room.
 /// Non-success outcomes carry no resource and are accepted here; callers check
 /// the operation pairing separately through `RequestEnvelope::complete`.
 pub(crate) fn write_success_matches(intent: &FrontendIntent, result: &FrontendResult) -> bool {
@@ -71,8 +85,18 @@ pub(crate) fn write_success_matches(intent: &FrontendIntent, result: &FrontendRe
             },
             FrontendResult::EditMessage(WriteOutcome::Success(message)),
         ) => canonical(message) && message.room_id == *room_id && message.id == *message_id,
+        (
+            FrontendIntent::DeleteMessage { message_id, .. },
+            FrontendResult::DeleteMessage(WriteOutcome::Success(deleted)),
+        ) => deleted == message_id,
+        (
+            FrontendIntent::LeaveRoom(room_id),
+            FrontendResult::LeaveRoom(WriteOutcome::Success(left)),
+        ) => left == room_id,
         (_, FrontendResult::SendMessage(WriteOutcome::Success(_)))
-        | (_, FrontendResult::EditMessage(WriteOutcome::Success(_))) => false,
+        | (_, FrontendResult::EditMessage(WriteOutcome::Success(_)))
+        | (_, FrontendResult::DeleteMessage(WriteOutcome::Success(_)))
+        | (_, FrontendResult::LeaveRoom(WriteOutcome::Success(_))) => false,
         _ => true,
     }
 }
@@ -239,5 +263,32 @@ mod tests {
             message: "safe".into(),
         }));
         assert!(write_success_matches(&root, &failed));
+    }
+
+    #[test]
+    fn delete_and_leave_are_bounded_and_identity_checked() {
+        let delete = FrontendIntent::DeleteMessage {
+            room_id: RoomId::new("r"),
+            message_id: MessageId::new("m"),
+        };
+        let leave = FrontendIntent::LeaveRoom(RoomId::new("r"));
+        assert!(valid_write(&delete) && valid_write(&leave));
+        assert!(!valid_write(&FrontendIntent::LeaveRoom(RoomId::new(""))));
+        assert!(!valid_write(&FrontendIntent::DeleteMessage {
+            room_id: RoomId::new("r"),
+            message_id: MessageId::new("bad\nid"),
+        }));
+        assert!(!valid_write(&FrontendIntent::ListAllRooms));
+        let deleted =
+            |id: &str| FrontendResult::DeleteMessage(WriteOutcome::Success(MessageId::new(id)));
+        let left = |id: &str| FrontendResult::LeaveRoom(WriteOutcome::Success(RoomId::new(id)));
+        assert!(write_success_matches(&delete, &deleted("m")));
+        assert!(!write_success_matches(&delete, &deleted("other")));
+        assert!(write_success_matches(&leave, &left("r")));
+        assert!(!write_success_matches(&leave, &left("other")));
+        assert!(
+            !write_success_matches(&leave, &deleted("m")),
+            "cross-operation"
+        );
     }
 }

@@ -32,7 +32,7 @@ use crate::frontend::{
     editor_submission::{NotDispatchedReason, QueueAdmission, SubmissionTerminal, UncertainReason},
     envelopes::{FrontendResult, RequestContext, RequestEnvelope},
     lifecycle::{LifecycleProjection, ProjectionEffects},
-    write_rules::{valid_editor_write, write_success_matches},
+    write_rules::{valid_write, write_success_matches},
 };
 use std::{
     collections::VecDeque,
@@ -690,8 +690,8 @@ fn valid_request(request: &RequestEnvelope) -> bool {
         && request.context.room_view.as_ref().is_none_or(|view| {
             request.intent.room_id().map(|id| id.as_str()) == Some(view.room_id.as_str())
         })
-        // Shared with the ledger: no reads/delete/leave or scope expansion.
-        && valid_editor_write(&request.intent)
+        // Shared rules: editor writes plus delete/leave; never reads.
+        && valid_write(&request.intent)
 }
 
 #[cfg(test)]

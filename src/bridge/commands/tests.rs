@@ -41,6 +41,7 @@ struct Received {
 }
 
 struct Control {
+    unit_calls: Mutex<Vec<String>>,
     /// When set, session issue never completes: models a lifecycle future
     /// dropped after its first phase publication.
     issue_pending: std::sync::atomic::AtomicBool,
@@ -115,11 +116,23 @@ impl UiWriteBackend for Writer {
     ) -> impl Future<Output = Reply> + Send {
         self.write(room, Some(message), body, true)
     }
-    async fn delete(&mut self, _: &str) -> Result<(), ClientError> {
-        panic!("editor-only seam")
+    async fn delete(&mut self, message: &str) -> Result<(), ClientError> {
+        self.0.calls.fetch_add(1, Ordering::SeqCst);
+        self.0
+            .unit_calls
+            .lock()
+            .unwrap()
+            .push(format!("delete:{message}"));
+        Ok(())
     }
-    async fn leave(&mut self, _: &str) -> Result<(), ClientError> {
-        panic!("editor-only seam")
+    async fn leave(&mut self, room: &str) -> Result<(), ClientError> {
+        self.0.calls.fetch_add(1, Ordering::SeqCst);
+        self.0
+            .unit_calls
+            .lock()
+            .unwrap()
+            .push(format!("leave:{room}"));
+        Ok(())
     }
 }
 
@@ -204,6 +217,7 @@ struct Fixture {
 fn fixture() -> Fixture {
     let (tx, rx) = oneshot::channel();
     let control = Arc::new(Control {
+        unit_calls: Mutex::new(Vec::new()),
         issue_pending: std::sync::atomic::AtomicBool::new(false),
         calls: AtomicUsize::new(0),
         polls: AtomicUsize::new(0),
@@ -536,12 +550,22 @@ async fn invalid_bounds_anchors_operations_and_retargeted_context_refuse_zero_io
         *room_id = RoomId::new("room/b");
     }
     invalid.push(r);
+    // Reads are never admitted through the write slot; delete/leave need
+    // valid opaque IDs.
+    let mut r = request();
+    r.intent = FrontendIntent::WhoAmI;
+    r.context.operation = Operation::WhoAmI;
+    invalid.push(r);
     let mut r = request();
     r.intent = FrontendIntent::DeleteMessage {
         room_id: RoomId::new("r"),
-        message_id: MessageId::new("m"),
+        message_id: MessageId::new(""),
     };
     r.context.operation = Operation::DeleteMessage;
+    invalid.push(r);
+    let mut r = request();
+    r.intent = FrontendIntent::LeaveRoom(RoomId::new("bad\nroom"));
+    r.context.operation = Operation::LeaveRoom;
     invalid.push(r);
     for r in invalid {
         assert_eq!(f.endpoint.try_submit(r), CommandAdmission::InvalidRequest);
@@ -1309,5 +1333,44 @@ async fn session_level_write_auth_rejection_fails_session_but_settles_once() {
         // Never replayed, whatever the session outcome.
         assert!(!f.worker.handle_one().await);
         assert_eq!(count(&f.control), 1);
+    }
+}
+
+#[tokio::test]
+async fn delete_and_leave_use_the_single_write_slot_exactly_once() {
+    for intent in [
+        FrontendIntent::DeleteMessage {
+            room_id: RoomId::new("room/a?opaque"),
+            message_id: MessageId::new("message/a?opaque"),
+        },
+        FrontendIntent::LeaveRoom(RoomId::new("room/a?opaque")),
+    ] {
+        let mut f = fixture();
+        active(&mut f).await;
+        let r = RequestSequence::default()
+            .begin(intent.clone(), None)
+            .unwrap();
+        assert_eq!(f.endpoint.try_submit(copy(&r)), CommandAdmission::Accepted);
+        // The slot spans every write kind: a second write waits.
+        assert_eq!(f.endpoint.try_submit(request()), CommandAdmission::Full);
+        assert!(f.worker.handle_one().await);
+        let SubmissionTerminal::Result(envelope) = f.endpoint.drain().unwrap() else {
+            panic!("typed outcome")
+        };
+        assert_eq!(envelope.context, r.context);
+        match (&intent, &envelope.result) {
+            (
+                FrontendIntent::DeleteMessage { message_id, .. },
+                FrontendResult::DeleteMessage(WriteOutcome::Success(deleted)),
+            ) => assert_eq!(deleted, message_id),
+            (
+                FrontendIntent::LeaveRoom(room),
+                FrontendResult::LeaveRoom(WriteOutcome::Success(left)),
+            ) => assert_eq!(left, room),
+            _ => panic!("wrong outcome"),
+        }
+        assert_eq!(count(&f.control), 1);
+        assert_eq!(f.control.unit_calls.lock().unwrap().len(), 1);
+        assert!(!f.worker.handle_one().await, "never replayed");
     }
 }
