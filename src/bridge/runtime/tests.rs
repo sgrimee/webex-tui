@@ -494,8 +494,8 @@ async fn removed_pairing_at_renewal_exits_pairing_required_without_the_secret() 
 }
 
 #[tokio::test]
-async fn other_renewal_failures_take_the_reconnect_path() {
-    for failure in [SessionFailure::Transport, SessionFailure::AuthRequired] {
+async fn session_refusals_at_renewal_take_the_reconnect_path() {
+    for failure in [SessionFailure::Forbidden, SessionFailure::AuthRequired] {
         let (runtime, f) = fixture();
         let driver = async {
             connect_and_install(&f, 1).await;
@@ -517,6 +517,35 @@ async fn other_renewal_failures_take_the_reconnect_path() {
         let (exit, ()) = tokio::join!(runtime.run(), driver);
         assert_eq!(exit, RuntimeExit::Shutdown, "{failure:?}");
     }
+}
+
+/// REVIEW-14 LOW-2: transport/5xx renewal failures keep the valid session
+/// (no secret, no reconnect) and retry with backoff until one succeeds.
+#[tokio::test]
+async fn transient_renewal_failures_keep_the_session_and_back_off() {
+    let (runtime, f) = fixture();
+    let driver = async {
+        connect_and_install(&f, 1).await;
+        {
+            let mut replies = f.shared.renew_replies.lock().unwrap();
+            for _ in 0..3 {
+                replies.push_back(Err(RenewFailure::Transient));
+            }
+        }
+        f.clock.advance(85);
+        let started = tokio::time::Instant::now();
+        until("renewed after retries", || {
+            f.shared.renews.load(Ordering::SeqCst) == 4
+        })
+        .await;
+        // Backoff 10 + 20 + 40 ms, not three 5 ms ticks.
+        assert!(started.elapsed() >= Duration::from_millis(60));
+        f.control.shutdown();
+    };
+    let (exit, ()) = tokio::join!(runtime.run(), driver);
+    assert_eq!(exit, RuntimeExit::Shutdown);
+    assert_eq!(f.secrets.loads.load(Ordering::SeqCst), 1);
+    assert_eq!(f.shared.subscribes.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]

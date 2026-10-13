@@ -17,10 +17,12 @@
 //! Renewal (at 80% of the lease) is in place: `POST /v1/ui/sessions/renew`
 //! keeps the same token, subscription, SSE stream and installed snapshot and
 //! needs no secret. Only when the daemon refuses with the 12 h cap (or a
-//! zero lease) does the loop fall back to a new session: secret re-borrow,
-//! new subscription, Ready, snapshot and install/ack. A removed pairing
-//! exits `PairingRequired`; other renewal failures fail the session and the
-//! reconnect path applies. Re-snapshots still follow reconnects, lag and
+//! zero lease, or an older daemon's 404) does the loop fall back to a new
+//! session: secret re-borrow, new subscription, Ready, snapshot and
+//! install/ack. A removed pairing exits `PairingRequired`; a session-level
+//! refusal (401, 403 `forbidden_*`) fails the session and the reconnect path
+//! applies; transient failures (transport, 5xx) keep the valid lease and
+//! retry with backoff. Re-snapshots still follow reconnects, lag and
 //! long writes/snapshots.
 //!
 //! Writes and snapshot preparation borrow the worker, so SSE is not polled
@@ -405,9 +407,10 @@ where
                 // Session Failed: the reconnect path (with backoff) applies.
                 Ok(RenewStep::Failed(_)) => return None,
                 Ok(RenewStep::NewSession) => self.new_session_for = subscription,
-                // Abandoned mid-call: the old lease is untouched and still
-                // valid; retry with backoff rather than every tick.
-                Err(_) => {
+                // Transient failure or abandoned mid-call: the old lease is
+                // untouched and still valid; retry with backoff rather than
+                // every tick (expiry falls to the reconnect path).
+                Ok(RenewStep::Retry) | Err(_) => {
                     self.renew_attempts = self.renew_attempts.saturating_add(1);
                     self.renew_retry_at = Some(now + backoff(&self.config, self.renew_attempts));
                     return None;

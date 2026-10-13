@@ -82,19 +82,30 @@ pub(crate) enum RenewFailure {
     /// 409 `session_cap_reached`: the 12 h absolute lifetime is reached. The
     /// token stays valid until its current expiry; create a new session.
     CapReached,
-    /// Any other failure (transport, expired/unknown token, bad response).
+    /// 404: an older daemon without the renew route. The token stays valid;
+    /// create a new session (the pre-renew behaviour).
+    Unsupported,
+    /// The session itself was refused (401 `auth_required` or any other 401,
+    /// 403 `forbidden_*`): it is over.
     Session(SessionFailure),
+    /// Transport, 5xx/503 or any other response: nothing proves the session
+    /// is invalid, so the still-valid lease is kept and renewal retried.
+    Transient,
 }
 
-/// Classify a bridge renewal error. Only the two documented refusals are
-/// special; everything else is an ordinary session failure.
+/// Classify a bridge renewal error. Only a session-level refusal ends the
+/// session; a transient failure never kills a still-valid lease.
 pub(super) fn renew_failure(error: ClientError) -> RenewFailure {
     if error.is_pairing_removed() {
         RenewFailure::PairingRemoved
     } else if error.is_session_cap_reached() {
         RenewFailure::CapReached
+    } else if let Some(failure) = session_auth_failure(&error) {
+        RenewFailure::Session(failure)
+    } else if matches!(&error, ClientError::Api { status, .. } if status.as_u16() == 404) {
+        RenewFailure::Unsupported
     } else {
-        RenewFailure::Session(io_failure(error))
+        RenewFailure::Transient
     }
 }
 
@@ -106,8 +117,11 @@ pub(crate) enum RenewStep {
     /// Same token and subscription; the lease deadline was extended.
     Renewed,
     /// The lease is still valid but cannot be extended in place (12 h cap,
-    /// or a zero lease reply): create a new session now.
+    /// an older daemon without renew, or a zero lease reply): create a new
+    /// session now.
     NewSession,
+    /// Transient failure: the still-valid lease is untouched; retry later.
+    Retry,
     /// The daemon removed this client's pairing; the session is Failed.
     PairingRemoved,
     /// The renewal failed; the session is Failed and the caller's reconnect
@@ -696,7 +710,10 @@ impl<B: SessionBackend, C: SessionClock> SessionLifecycle<B, C> {
         let reply = self.backend.renew(&active.client).await;
         let ttl = match reply {
             Ok(ttl) => ttl,
-            Err(RenewFailure::CapReached) => return RenewStep::NewSession,
+            Err(RenewFailure::CapReached | RenewFailure::Unsupported) => {
+                return RenewStep::NewSession
+            }
+            Err(RenewFailure::Transient) => return RenewStep::Retry,
             Err(RenewFailure::PairingRemoved) => {
                 self.fail(SessionFailure::AuthRequired);
                 return RenewStep::PairingRemoved;

@@ -433,16 +433,35 @@ async fn in_place_renewal_refusals_are_classified() {
         SessionPhase::Failed(SessionFailure::AuthRequired)
     );
     assert!(o.subscription().is_none());
-    // Anything else fails the session for the reconnect path.
+    // A session-level refusal fails the session for the reconnect path.
     let mut o = owner();
     active(&mut o).await;
     o.clock.advance(Duration::from_secs(80));
-    o.backend.renew_reply = Err(RenewFailure::Session(SessionFailure::Transport));
+    o.backend.renew_reply = Err(RenewFailure::Session(SessionFailure::AuthRequired));
     assert_eq!(
         o.renew_in_place_if_due().await,
-        RenewStep::Failed(SessionFailure::Transport)
+        RenewStep::Failed(SessionFailure::AuthRequired)
     );
-    assert_eq!(o.phase(), SessionPhase::Failed(SessionFailure::Transport));
+    assert_eq!(
+        o.phase(),
+        SessionPhase::Failed(SessionFailure::AuthRequired)
+    );
+    // REVIEW-14 LOW-2: a transient failure keeps the valid session untouched,
+    // and an older daemon without renew (404) falls back to a new session.
+    for (reply, step) in [
+        (Err(RenewFailure::Transient), RenewStep::Retry),
+        (Err(RenewFailure::Unsupported), RenewStep::NewSession),
+    ] {
+        let mut o = owner();
+        let id = active(&mut o).await;
+        let deadline = o.lease_deadline();
+        o.clock.advance(Duration::from_secs(80));
+        o.backend.renew_reply = reply;
+        assert_eq!(o.renew_in_place_if_due().await, step);
+        assert_eq!(o.phase(), SessionPhase::Active);
+        assert_eq!(o.subscription(), Some(id));
+        assert_eq!(o.lease_deadline(), deadline);
+    }
 }
 
 #[tokio::test]
@@ -490,8 +509,31 @@ fn bridge_renewal_errors_are_classified_by_code() {
         RenewFailure::Session(SessionFailure::AuthRequired)
     );
     assert_eq!(
-        renew_failure(api(409, "other")),
-        RenewFailure::Session(SessionFailure::InvalidResponse)
+        renew_failure(api(403, "forbidden_peer")),
+        RenewFailure::Session(SessionFailure::Forbidden)
+    );
+    assert_eq!(
+        renew_failure(api(404, "not_found")),
+        RenewFailure::Unsupported
+    );
+    for (status, code) in [
+        (503, "bridge_unavailable"),
+        (500, "internal"),
+        (409, "other"),
+        (403, "write_not_allowed"),
+        (400, "invalid_request"),
+    ] {
+        assert_eq!(
+            renew_failure(api(status, code)),
+            RenewFailure::Transient,
+            "{status} {code}"
+        );
+    }
+    assert_eq!(
+        renew_failure(ClientError::Transport(
+            std::io::Error::other("synthetic").into()
+        )),
+        RenewFailure::Transient
     );
 }
 
