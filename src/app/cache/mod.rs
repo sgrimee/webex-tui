@@ -208,6 +208,22 @@ impl Cache {
         }
     }
 
+    /// Whether `root` is known deleted in this room's canonical view (a
+    /// stored tombstone or an ID-only delete fence). Unknown roots and legacy
+    /// rooms are not known deleted.
+    pub(crate) fn thread_root_deleted(
+        &self,
+        room: &RoomId,
+        root: &crate::frontend::data::MessageId,
+    ) -> bool {
+        self.canonical_view(room).is_some_and(|view| {
+            view.is_tombstoned(root)
+                || view.get(root).is_some_and(|message| {
+                    message.status != crate::frontend::data::MessageStatus::Active
+                })
+        })
+    }
+
     /// Rooms whose canonical view has been created (loaded or requested).
     #[allow(dead_code)] // dormant bridge glue
     pub(crate) fn canonical_rooms(&self) -> Vec<RoomId> {

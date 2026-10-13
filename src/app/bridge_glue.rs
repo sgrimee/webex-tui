@@ -52,7 +52,8 @@ use crate::{
     frontend::{
         data::{self, MessageId, MessagePage, PageCursor, PersonId, RoomSnapshot},
         editor_submission::{
-            DraftSnapshot, DraftStamp, EditorSubmission, SubmissionError, SubmissionTerminal,
+            DraftSnapshot, DraftStamp, DraftTarget, EditorSubmission, SubmissionError,
+            SubmissionTerminal,
         },
         envelopes::{
             FrontendIntent, FrontendResult, PageRequest, ReadOutcome, RequestContext, RequestId,
@@ -169,6 +170,8 @@ pub(crate) enum WriteRefusal {
     NotReady,
     Closed,
     Invalid,
+    /// A reply whose thread root is known deleted; nothing was sent.
+    ThreadRootDeleted,
 }
 
 /// The assembled, not-yet-running bridge stack for one connected session.
@@ -239,9 +242,23 @@ impl BridgeGlue {
 
     /// Submit the editor's current composition. On refusal nothing was sent
     /// and the caller keeps its draft; an allocated request ID is not reused.
-    pub(crate) fn submit_draft(&mut self, draft: &DraftSnapshot) -> Result<(), WriteRefusal> {
+    pub(crate) fn submit_draft(
+        &mut self,
+        state: &AppState,
+        draft: &DraftSnapshot,
+    ) -> Result<(), WriteRefusal> {
         if self.action.is_some() {
             return Err(WriteRefusal::Busy);
+        }
+        // A reply bound before its thread root was deleted would target the
+        // deleted root; refuse it rather than send.
+        if let DraftTarget::Reply { room_id, parent_id } = &draft.stamp.target {
+            if state
+                .cache
+                .thread_root_deleted(&room_id.as_str().to_owned(), parent_id)
+            {
+                return Err(WriteRefusal::ThreadRootDeleted);
+            }
         }
         let request = self
             .ledger

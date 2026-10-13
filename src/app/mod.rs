@@ -530,7 +530,7 @@ impl App<'_> {
 
     /// Prepares the message editor to respond to the selected message
     fn respond_to_selected_message(&mut self) -> Result<()> {
-        let message = self.state.selected_actionable_message()?;
+        let message = self.state.selected_reply_target()?;
         self.state
             .message_editor
             .set_response_to(Some(message.clone()));

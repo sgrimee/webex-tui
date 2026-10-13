@@ -195,6 +195,8 @@ impl AppState<'_> {
                     // message action may target it.
                     if self.selected_actionable_message().is_ok() {
                         actions.push(Action::CopyMessage);
+                    }
+                    if self.selected_reply_target().is_ok() {
                         actions.push(Action::RespondMessage);
                     }
                     actions.push(Action::UnselectMessage);
@@ -390,6 +392,23 @@ impl AppState<'_> {
         actionable(self.selected_message()?)
     }
 
+    /// The selected message as a reply target: actionable, and its thread
+    /// root (its parent, or itself for a root) not known deleted. Replying to
+    /// a live reply of a deleted root would target the deleted root.
+    pub(crate) fn selected_reply_target(&self) -> Result<&MessageSnapshot> {
+        let message = self.selected_actionable_message()?;
+        let root = message.parent_id.as_ref().unwrap_or(&message.id);
+        if self
+            .cache
+            .thread_root_deleted(&message.room_id.as_str().to_owned(), root)
+        {
+            return Err(eyre!(
+                "The start of this thread was deleted; it cannot be replied to"
+            ));
+        }
+        Ok(message)
+    }
+
     /// Returns true if the selected message is from me.
     pub(crate) fn selected_message_is_from_me(&self) -> Result<bool> {
         let message = self.selected_message()?;
@@ -515,9 +534,19 @@ mod tests {
             .map(|action| actions.contains(&action))
         };
         assert_eq!(hints(&mut state, 0), [false; 4], "deleted root");
-        assert_eq!(hints(&mut state, 1), [true; 4], "own live reply");
+        // Own live reply under a deleted root: no reply (it would target the
+        // deleted root), everything else allowed.
+        assert_eq!(
+            hints(&mut state, 1),
+            [true, false, true, true],
+            "own live reply"
+        );
+        assert!(state.selected_reply_target().is_err());
         assert_eq!(hints(&mut state, 2), [false; 4], "missing-root placeholder");
         assert!(state.actions.actions().contains(&Action::UnselectMessage));
+        // A reply under an unloaded (not known deleted) root can be replied to.
+        assert_eq!(hints(&mut state, 3), [true; 4], "orphan reply");
+        assert!(state.selected_reply_target().is_ok());
     }
 
     #[test]

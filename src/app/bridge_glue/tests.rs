@@ -687,7 +687,7 @@ fn draft_now(state: &AppState) -> DraftSnapshot {
 async fn submit(glue: &mut BridgeGlue, state: &mut AppState<'_>) {
     for _ in 0..2000 {
         let draft = draft_now(state);
-        match glue.submit_draft(&draft) {
+        match glue.submit_draft(state, &draft) {
             Ok(()) => return,
             Err(WriteRefusal::Submission(SubmissionError::QueueNotReady)) => {
                 glue.drain(state, usize::MAX);
@@ -820,7 +820,7 @@ async fn rejected_and_unknown_sends_keep_a_review_and_are_never_replayed() {
             assert_eq!(state.message_editor.lines(), ["keep me"], "draft kept");
             // A fresh write needs an explicit review dismissal first.
             assert!(matches!(
-                glue.submit_draft(&draft_now(&state)),
+                glue.submit_draft(&state, &draft_now(&state)),
                 Err(WriteRefusal::Submission(SubmissionError::ReviewNeeded))
             ));
             for _ in 0..20 {
@@ -1032,7 +1032,7 @@ async fn writes_stay_closed_until_the_snapshot_is_acknowledged() {
         state.message_editor.reset_with_text("too early".into());
         let draft = draft_now(&state);
         assert_eq!(
-            glue.submit_draft(&draft),
+            glue.submit_draft(&state, &draft),
             Err(WriteRefusal::Submission(SubmissionError::QueueNotReady))
         );
         assert_eq!(state.message_editor.lines(), ["too early"]);
@@ -1197,6 +1197,47 @@ mod manual {
         );
         // The snapshot's refetch and the Stale re-request coalesce into one.
         assert_eq!(pending_pages(&m).len(), 1);
+    }
+
+    /// Re-review LOW-1 (a): a reply bound to a live reply whose thread root
+    /// was deleted is refused before anything is queued.
+    #[tokio::test]
+    async fn a_reply_to_a_deleted_thread_root_is_refused_without_sending() {
+        let mut m = manual();
+        let room = ROOM_A.to_owned();
+        let view = m.state.cache.canonical_view_mut(&room).unwrap();
+        view.tombstone(&data::RoomId::new(ROOM_A), &MessageId::new("root"), None)
+            .unwrap();
+        let reply = data::MessageSnapshot {
+            id: MessageId::new("child"),
+            room_id: data::RoomId::new(ROOM_A),
+            revision: Some(1),
+            parent_id: Some(MessageId::new("root")),
+            sender_id: None,
+            sender_email: None,
+            created_at: None,
+            updated_at: None,
+            status: data::MessageStatus::Active,
+            body: None,
+            attachment_count: None,
+        };
+        m.state.message_editor.reset_with_text("answer".into());
+        m.state.message_editor.set_response_to(Some(reply));
+        let draft = m
+            .state
+            .message_editor
+            .draft(Some(&data::RoomId::new(ROOM_A)))
+            .unwrap();
+        assert_eq!(
+            m.glue.submit_draft(&m.state, &draft),
+            Err(WriteRefusal::ThreadRootDeleted)
+        );
+        assert!(
+            m.glue.editor().pending_context().is_none(),
+            "nothing queued"
+        );
+        assert!(!m.worker.has_queued_write());
+        assert_eq!(m.state.message_editor.lines(), ["answer"], "draft kept");
     }
 
     #[tokio::test]
