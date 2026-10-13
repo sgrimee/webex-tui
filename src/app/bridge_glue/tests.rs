@@ -1355,6 +1355,8 @@ mod app_routing {
                 .is_some()
         })
         .await;
+        // The first rooms focus the room list, as the legacy load did.
+        assert_eq!(h.app.state.active_pane(), &Some(ActivePane::Rooms));
         h.app
             .state
             .rooms_list

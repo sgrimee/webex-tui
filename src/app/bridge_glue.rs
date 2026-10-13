@@ -60,7 +60,7 @@ use crate::{
             FrontendIntent, FrontendResult, PageRequest, ReadOutcome, RequestContext, RequestId,
             RequestSequence, WriteOutcome,
         },
-        events::{ChangeScope, MessageKey},
+        events::{ChangeScope, ConnectionState, MessageKey},
         lifecycle::{LifecycleProjection, ProjectionEffects, RefreshTarget},
         message_view::RoomMessageView,
     },
@@ -141,6 +141,9 @@ pub(crate) struct BridgeGlue {
     writes: RequestSequence,
     action: Option<(RequestContext, Action)>,
     last_action: Option<ActionOutcome>,
+    /// Daemon-to-Webex state read at startup; shown until the event stream
+    /// reports one (the daemon sends connection events only on change).
+    webex_hint: ConnectionState,
 }
 
 /// An explicit non-editor write.
@@ -224,6 +227,21 @@ impl BridgeGlue {
             writes: RequestSequence::default(),
             action: None,
             last_action: None,
+            webex_hint: ConnectionState::Unknown,
+        }
+    }
+
+    /// Seed the Webex connection state from the startup status read.
+    pub(crate) fn set_webex_hint(&mut self, state: ConnectionState) {
+        self.webex_hint = state;
+    }
+
+    /// The daemon-to-Webex state: from the event stream once known, else the
+    /// startup hint.
+    pub(crate) fn upstream_webex(&self) -> ConnectionState {
+        match self.status.projection.upstream_webex {
+            ConnectionState::Unknown => self.webex_hint,
+            known => known,
         }
     }
 

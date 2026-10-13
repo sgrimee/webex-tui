@@ -401,6 +401,32 @@ async fn an_unanswered_pairing_dialog_times_out_as_a_pairing_timeout() {
 }
 
 #[tokio::test]
+async fn the_glue_starts_with_the_daemons_webex_state() {
+    use crate::frontend::events::ConnectionState;
+    for (connection, expected) in [
+        ("connected", ConnectionState::Connected),
+        ("auth_required", ConnectionState::AuthRequired),
+        ("disconnected", ConnectionState::Disconnected),
+    ] {
+        let log: Log = Arc::default();
+        let started = start(deps(
+            Fixture {
+                status: Some(Ok(StatusSummary {
+                    api_version: SUPPORTED_API_VERSION,
+                    connection: connection.into(),
+                })),
+                ..Fixture::default()
+            },
+            &log,
+        ))
+        .await
+        .ok()
+        .unwrap();
+        assert_eq!(started.glue.upstream_webex(), expected, "{connection}");
+    }
+}
+
+#[tokio::test]
 async fn a_hung_session_create_times_out_without_blaming_pairing() {
     let (result, calls) = run(Fixture {
         issue_hangs: true,

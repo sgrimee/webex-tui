@@ -27,6 +27,7 @@ use super::{
     session::{SessionBackend, SessionClock, SessionFailure, SessionLifecycle},
 };
 use crate::app::bridge_glue::{BridgeGlue, BridgeRuntime};
+use crate::frontend::events::ConnectionState;
 use std::{
     future::Future,
     io::Read,
@@ -393,6 +394,7 @@ where
 /// An assembled, not-yet-running stack plus the notices to show.
 pub(crate) struct Started<B: SessionBackend, C: SessionClock, K: UiSecretStore> {
     pub(crate) runtime: BridgeRuntime<B, C, K>,
+    /// Seeded with the daemon's Webex state from the status read.
     pub(crate) glue: BridgeGlue,
     pub(crate) notices: Vec<StartupNotice>,
 }
@@ -451,11 +453,17 @@ where
         });
     }
     let mut notices = Vec::new();
-    match summary.connection.as_str() {
-        "auth_required" => notices.push(StartupNotice::WebexLoginRequired { cli: cli.locate() }),
-        "connected" => {}
-        _ => notices.push(StartupNotice::WebexDisconnected),
-    }
+    let webex = match summary.connection.as_str() {
+        "auth_required" => {
+            notices.push(StartupNotice::WebexLoginRequired { cli: cli.locate() });
+            ConnectionState::AuthRequired
+        }
+        "connected" => ConnectionState::Connected,
+        _ => {
+            notices.push(StartupNotice::WebexDisconnected);
+            ConnectionState::Disconnected
+        }
+    };
     match tokio::time::timeout(config.bootstrap_deadline, bootstrap.connect(&mut session)).await {
         Ok(Ok(_subscription)) => {}
         Ok(Err(failure)) => return Err(StartupError::from_bootstrap(failure)),
@@ -464,7 +472,8 @@ where
         }
         Err(_) => return Err(StartupError::TimedOut),
     }
-    let (runtime, glue) = BridgeGlue::assemble(session, runtime_secrets, runtime, page_size);
+    let (runtime, mut glue) = BridgeGlue::assemble(session, runtime_secrets, runtime, page_size);
+    glue.set_webex_hint(webex);
     Ok(Started {
         runtime,
         glue,

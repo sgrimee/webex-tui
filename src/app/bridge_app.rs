@@ -72,6 +72,12 @@ impl App<'_> {
                 }
             }
         }
+        // Like the legacy room-list load: once rooms exist, focus the list
+        // so navigation keys work.
+        if self.state.active_pane().is_none() && self.state.num_of_visible_rooms() > 0 {
+            self.state
+                .set_active_pane(Some(super::state::ActivePane::Rooms));
+        }
         let rows = self.state.num_messages_active_room();
         self.state.messages_list.set_nb_messages(rows);
         if let Some(id) = anchor {
@@ -270,7 +276,7 @@ pub(crate) fn status_line(glue: &BridgeGlue, queued_leaves: usize, quitting: boo
             }
             .into(),
         );
-        match status.projection.upstream_webex {
+        match glue.upstream_webex() {
             ConnectionState::Connected => parts.push("Webex connected".into()),
             ConnectionState::AuthRequired => {
                 parts.push("Webex login required (mirror only; run webex-bridge login)".into())
