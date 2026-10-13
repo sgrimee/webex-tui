@@ -223,6 +223,37 @@ async fn denied_existing_secret_stops_before_pairing_or_session_use() {
     assert_eq!(session.phase(), SessionPhase::Disconnected);
 }
 
+/// REVIEW-13 LOW-4: a malformed stored secret is permanent, distinct from a
+/// transient store failure, and never leads to generation or overwrite.
+#[tokio::test]
+async fn corrupt_existing_secret_is_permanent_and_never_replaced() {
+    let (mut bootstrap, mut session, calls) = bootstrap(
+        Ok(Some("not-a-canonical-pairing-secret".into())),
+        Ok(()),
+        Ok(SUPPORTED_API_VERSION),
+        Ok(()),
+        Ok([1; 32]),
+    );
+    assert_eq!(
+        bootstrap.connect(&mut session).await,
+        Err(BootstrapFailure::SecretCorrupt)
+    );
+    assert_eq!(*calls.lock().unwrap(), [Call::Status, Call::Load]);
+    assert_eq!(session.phase(), SessionPhase::Disconnected);
+    // Non-canonical encodings and wrong lengths are corrupt, not transient.
+    for value in [
+        "A".repeat(42),
+        "A".repeat(44),
+        format!("{}=", "A".repeat(43)),
+        "!".repeat(43),
+    ] {
+        assert!(matches!(
+            UiSecret::from_persisted(value),
+            Err(SecretStoreFailure::Corrupt)
+        ));
+    }
+}
+
 #[tokio::test]
 async fn missing_secret_persist_failure_never_pairs_or_connects() {
     let (mut bootstrap, mut session, calls) = bootstrap(
@@ -535,13 +566,14 @@ async fn keychain_store_never_overwrites_present_or_malformed_items() {
         let secret = UiSecret::from_random([0xDC; 32]);
 
         let load = store.load().await;
-        match load {
-            Ok(Some(_)) | Err(SecretStoreFailure::Unavailable) => {}
+        let expected = match load {
+            Ok(Some(_)) => SecretStoreFailure::Unavailable,
+            Err(SecretStoreFailure::Corrupt) => SecretStoreFailure::Corrupt,
             _ => panic!("unexpected Keychain load result"),
-        }
+        };
         assert!(matches!(
             store.persist(&secret).await,
-            Err(SecretStoreFailure::Unavailable)
+            Err(failure) if failure == expected
         ));
         assert_eq!(*calls.lock().unwrap(), [KeychainCall::Read]);
     }

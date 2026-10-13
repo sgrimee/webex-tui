@@ -103,8 +103,9 @@ pub(crate) enum RuntimeExit {
     /// The daemon refused the pairing secret itself; explicit re-pairing is
     /// a user decision outside this loop.
     PairingRequired(SessionFailure),
-    /// The TUI secret store denied access or no longer holds the secret.
-    /// Transient store unavailability is retried instead.
+    /// The TUI secret store denied access, no longer holds the secret, or
+    /// holds a malformed (corrupt) one. Transient store unavailability is
+    /// retried with backoff instead.
     SecretUnavailable,
 }
 
@@ -187,6 +188,10 @@ where
     /// after staying Active for `backoff_max`, so a session that fails right
     /// after becoming Active (crash loop, rejected stream) keeps backing off.
     active_since: Option<Instant>,
+    /// Renewal secret-load retries after transient store unavailability are
+    /// paced by the reconnect backoff, not every tick (REVIEW-13 LOW-4).
+    renew_attempts: u32,
+    renew_retry_at: Option<Instant>,
     burst: usize,
 }
 
@@ -228,6 +233,8 @@ where
                 reconnect_at: None,
                 next_tick: Instant::now(),
                 active_since: None,
+                renew_attempts: 0,
+                renew_retry_at: None,
                 burst: 0,
             },
             control,
@@ -354,15 +361,29 @@ where
 
     async fn on_tick(&mut self) -> Option<RuntimeExit> {
         if self.worker.check_lease() != LeaseAction::Renew {
+            self.renew_attempts = 0;
+            self.renew_retry_at = None;
             return None; // expiry is handled by the reconnect path
         }
+        let now = Instant::now();
+        if self.renew_retry_at.is_some_and(|at| now < at) {
+            return None;
+        }
         let secret = match self.secrets.load().await {
-            Ok(Some(secret)) => secret,
-            // A transient store failure (e.g. locked keychain) retries on the
-            // next tick while the lease is still valid; expiry then falls to
-            // the reconnect path, which keeps retrying with backoff.
-            Err(SecretStoreFailure::Unavailable) => return None,
-            Ok(None) | Err(SecretStoreFailure::Denied) => {
+            Ok(Some(secret)) => {
+                self.renew_attempts = 0;
+                self.renew_retry_at = None;
+                secret
+            }
+            // A transient store failure (e.g. locked keychain) retries with
+            // the reconnect backoff while the lease is still valid; expiry
+            // then falls to the reconnect path, which keeps backing off.
+            Err(SecretStoreFailure::Unavailable) => {
+                self.renew_attempts = self.renew_attempts.saturating_add(1);
+                self.renew_retry_at = Some(now + backoff(&self.config, self.renew_attempts));
+                return None;
+            }
+            Ok(None) | Err(SecretStoreFailure::Denied | SecretStoreFailure::Corrupt) => {
                 return Some(RuntimeExit::SecretUnavailable)
             }
         };
@@ -405,7 +426,7 @@ where
             Ok(Some(secret)) => secret,
             // Transient: the next attempt follows the (already advanced) backoff.
             Err(SecretStoreFailure::Unavailable) => return None,
-            Ok(None) | Err(SecretStoreFailure::Denied) => {
+            Ok(None) | Err(SecretStoreFailure::Denied | SecretStoreFailure::Corrupt) => {
                 return Some(RuntimeExit::SecretUnavailable)
             }
         };
@@ -428,14 +449,7 @@ where
     }
 
     fn backoff(&self) -> Duration {
-        if self.attempts == 0 {
-            return Duration::ZERO;
-        }
-        let factor = 1_u32.checked_shl(self.attempts - 1).unwrap_or(u32::MAX);
-        self.config
-            .backoff_min
-            .saturating_mul(factor)
-            .min(self.config.backoff_max)
+        backoff(&self.config, self.attempts)
     }
 
     async fn prepare_snapshot(&mut self) {
@@ -476,6 +490,19 @@ where
             self.worker.stream_failed(subscription, failure);
         }
     }
+}
+
+/// Zero for no attempt yet, then `backoff_min · 2^(attempts-1)`, capped at
+/// `backoff_max`.
+fn backoff(config: &RuntimeConfig, attempts: u32) -> Duration {
+    if attempts == 0 {
+        return Duration::ZERO;
+    }
+    let factor = 1_u32.checked_shl(attempts - 1).unwrap_or(u32::MAX);
+    config
+        .backoff_min
+        .saturating_mul(factor)
+        .min(config.backoff_max)
 }
 
 #[cfg(test)]

@@ -157,6 +157,7 @@ struct Secrets {
     loads: Arc<AtomicUsize>,
     missing: Arc<AtomicBool>,
     denied: Arc<AtomicBool>,
+    corrupt: Arc<AtomicBool>,
     /// Number of upcoming loads that fail as transiently Unavailable.
     unavailable: Arc<AtomicUsize>,
 }
@@ -168,6 +169,9 @@ impl UiSecretStore for Secrets {
         }
         if self.denied.load(Ordering::SeqCst) {
             return Err(SecretStoreFailure::Denied);
+        }
+        if self.corrupt.load(Ordering::SeqCst) {
+            return Err(SecretStoreFailure::Corrupt);
         }
         if self
             .unavailable
@@ -808,6 +812,49 @@ async fn transient_secret_store_failures_are_retried_not_fatal() {
     };
     let (exit, ()) = tokio::join!(runtime.run(), driver);
     assert_eq!(exit, RuntimeExit::Shutdown);
+}
+
+/// REVIEW-13 LOW-4: renewal retries after transient store failures follow
+/// the reconnect backoff (10, 20, 40, 40 ms here), not the 5 ms tick.
+#[tokio::test]
+async fn transient_renewal_secret_failures_are_paced_by_backoff() {
+    let (runtime, f) = fixture();
+    let driver = async {
+        connect_and_install(&f, 1).await;
+        f.secrets.unavailable.store(usize::MAX, Ordering::SeqCst);
+        f.clock.advance(85);
+        tokio::time::sleep(Duration::from_millis(120)).await;
+        let retries = f.secrets.loads.load(Ordering::SeqCst) - 1;
+        // Per tick this would be ~24 loads; backoff allows about 5.
+        assert!((1..=6).contains(&retries), "{retries} renewal secret loads");
+        assert_eq!(f.shared.subscribes.load(Ordering::SeqCst), 1);
+        f.control.shutdown();
+    };
+    let (exit, ()) = tokio::join!(runtime.run(), driver);
+    assert_eq!(exit, RuntimeExit::Shutdown);
+}
+
+#[tokio::test]
+async fn corrupt_secret_at_renewal_or_reconnect_exits() {
+    for reconnect in [false, true] {
+        let (runtime, f) = fixture();
+        let driver = async {
+            connect_and_install(&f, 1).await;
+            f.secrets.corrupt.store(true, Ordering::SeqCst);
+            if reconnect {
+                f.shared.push(None);
+            } else {
+                f.clock.advance(85);
+            }
+        };
+        let (exit, ()) = tokio::join!(runtime.run(), driver);
+        assert_eq!(
+            exit,
+            RuntimeExit::SecretUnavailable,
+            "reconnect={reconnect}"
+        );
+        assert_eq!(f.secrets.loads.load(Ordering::SeqCst), 2, "no retry");
+    }
 }
 
 #[tokio::test]

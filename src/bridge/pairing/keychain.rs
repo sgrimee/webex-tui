@@ -110,9 +110,10 @@ impl NativeMacosKeychainItem {
 fn keyring_failure(error: keyring::Error) -> SecretStoreFailure {
     match error {
         keyring::Error::NoStorageAccess(_) => SecretStoreFailure::Denied,
+        // A stored value that is not UTF-8 cannot become valid by retrying.
         keyring::Error::BadEncoding(mut bytes) => {
             bytes.zeroize();
-            SecretStoreFailure::Unavailable
+            SecretStoreFailure::Corrupt
         }
         // `NoEntry` is handled only by `read`, where it means a confirmed
         // missing item. Every other failure is deliberately opaque.
