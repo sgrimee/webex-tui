@@ -75,6 +75,8 @@ struct Shared {
     rooms: Mutex<Vec<dto::Room>>,
     pages: Mutex<HashMap<String, Vec<dto::Message>>>,
     messages: Mutex<HashMap<String, dto::Message>>,
+    writes: AtomicUsize,
+    write_replies: Mutex<std::collections::VecDeque<WriteReply>>,
 }
 
 impl Shared {
@@ -188,24 +190,78 @@ impl EventSource for FakeStream {
     }
 }
 
-struct NoWrites;
-impl UiWriteBackend for NoWrites {
+/// Scripted daemon write outcomes, consumed in order (default: success).
+#[derive(Clone, Copy)]
+enum WriteReply {
+    Ok,
+    Rejected,
+    Unknown,
+    Pending,
+}
+
+struct Writer(Arc<Shared>);
+impl Writer {
+    async fn outcome(&self) -> Reply<()> {
+        self.0.writes.fetch_add(1, Ordering::SeqCst);
+        let reply = self
+            .0
+            .write_replies
+            .lock()
+            .unwrap()
+            .pop_front()
+            .unwrap_or(WriteReply::Ok);
+        match reply {
+            WriteReply::Ok => Ok(()),
+            WriteReply::Rejected => Err(ClientError::Api {
+                status: 403_u16.try_into().unwrap(),
+                code: "write_not_allowed".into(),
+                message: "synthetic".into(),
+            }),
+            WriteReply::Unknown => Err(ClientError::Api {
+                status: 202_u16.try_into().unwrap(),
+                code: "delivery_unknown".into(),
+                message: "synthetic".into(),
+            }),
+            WriteReply::Pending => std::future::pending().await,
+        }
+    }
+}
+impl UiWriteBackend for Writer {
     async fn send(
         &mut self,
-        _: &str,
-        _: Option<&str>,
-        _: &dto::MessageBodyInput,
+        room: &str,
+        parent: Option<&str>,
+        body: &dto::MessageBodyInput,
     ) -> Reply<dto::Message> {
-        unreachable!("the glue never writes")
+        self.outcome().await?;
+        let index = self.0.writes.load(Ordering::SeqCst);
+        let mut sent = message(&format!("sent-{index}"), room, "me", 30, 1);
+        sent.parent_id = parent.map(str::to_owned);
+        sent.body = Some(dto::MessageBody {
+            kind: body.kind.clone(),
+            content: body.content.clone(),
+        });
+        Ok(sent)
     }
-    async fn edit(&mut self, _: &str, _: &str, _: &dto::MessageBodyInput) -> Reply<dto::Message> {
-        unreachable!("the glue never writes")
+    async fn edit(
+        &mut self,
+        message_id: &str,
+        room: &str,
+        body: &dto::MessageBodyInput,
+    ) -> Reply<dto::Message> {
+        self.outcome().await?;
+        let mut edited = message(message_id, room, "me", 2, 9);
+        edited.body = Some(dto::MessageBody {
+            kind: body.kind.clone(),
+            content: body.content.clone(),
+        });
+        Ok(edited)
     }
     async fn delete(&mut self, _: &str) -> Reply<()> {
-        unreachable!("the glue never writes")
+        self.outcome().await
     }
     async fn leave(&mut self, _: &str) -> Reply<()> {
-        unreachable!("the glue never writes")
+        self.outcome().await
     }
 }
 
@@ -213,7 +269,7 @@ struct Backend(Arc<Shared>);
 impl SessionBackend for Backend {
     type Client = Arc<Shared>;
     type Stream = FakeStream;
-    type Writer = NoWrites;
+    type Writer = Writer;
     type SnapshotReader = Reader;
     async fn issue(&mut self, _: &str) -> Result<Arc<Shared>, SessionFailure> {
         Ok(Arc::clone(&self.0))
@@ -236,8 +292,8 @@ impl SessionBackend for Backend {
     fn lease_ttl(_: &Arc<Shared>) -> u64 {
         600
     }
-    fn writer(_: &Arc<Shared>) -> NoWrites {
-        NoWrites
+    fn writer(client: &Arc<Shared>) -> Writer {
+        Writer(Arc::clone(client))
     }
     fn snapshot_reader(client: &Arc<Shared>) -> Reader {
         Reader(Arc::clone(client))
@@ -593,6 +649,296 @@ async fn runtime_exit_marks_the_glue_closed_and_forgets_outstanding_reads() {
     assert_eq!(glue.outstanding_reads(), 0);
     // Already displayed data stays, as stale.
     assert!(state.cache.rooms.room_with_id(&ROOM_A.to_owned()).is_some());
+}
+
+// ---- Writes (Step 5D) ------------------------------------------------------
+
+use crate::frontend::{
+    editor_submission::{DraftSnapshot, SubmissionError},
+    editor_write::EditorWriteStatus,
+};
+
+async fn active_room_loaded(glue: &mut BridgeGlue, state: &mut AppState<'_>, shared: &Shared) {
+    wait_subscribed(shared, 1).await;
+    ready(glue, state, shared).await;
+    state.rooms_list.set_active_room_id(Some(ROOM_A.into()));
+    glue.open_room(state, &ROOM_A.to_owned());
+    settle("page", glue, state, |_, state| {
+        ids(state, ROOM_A).len() == 2
+    })
+    .await;
+}
+
+fn draft_now(state: &AppState) -> DraftSnapshot {
+    state
+        .message_editor
+        .draft(Some(&data::RoomId::new(ROOM_A)))
+        .unwrap()
+}
+
+/// Admission opens once the runtime has processed the snapshot ack.
+async fn submit(glue: &mut BridgeGlue, state: &mut AppState<'_>) {
+    for _ in 0..2000 {
+        let draft = draft_now(state);
+        match glue.submit_draft(&draft) {
+            Ok(()) => return,
+            Err(WriteRefusal::Submission(SubmissionError::QueueNotReady)) => {
+                glue.drain(state, usize::MAX);
+                tokio::time::sleep(Duration::from_millis(1)).await;
+            }
+            Err(other) => panic!("unexpected refusal {other:?}"),
+        }
+    }
+    panic!("write admission never opened");
+}
+
+#[tokio::test]
+async fn send_success_installs_the_canonical_message_and_clears_that_draft() {
+    let (runtime, mut glue, control, shared) = fixture(None);
+    let mut state = AppState::default();
+    let driver = async {
+        active_room_loaded(&mut glue, &mut state, &shared).await;
+        state.message_editor.reset_with_text("hello".into());
+        submit(&mut glue, &mut state).await;
+        assert_eq!(glue.editor().status(), EditorWriteStatus::Pending);
+        settle("sent", &mut glue, &mut state, |glue, _| {
+            glue.editor().status() == EditorWriteStatus::Ready
+        })
+        .await;
+        assert!(ids(&state, ROOM_A).contains(&"sent-1".to_owned()));
+        assert!(
+            state.message_editor.is_empty(),
+            "the submitted draft is cleared"
+        );
+        // Its SSE echo is idempotent: still one row.
+        shared.push(
+            "message.created",
+            json!({"roomId": ROOM_A, "messageId": "sent-1", "revision": 1}),
+        );
+        shared
+            .messages
+            .lock()
+            .unwrap()
+            .insert("sent-1".into(), message("sent-1", ROOM_A, "me", 30, 1));
+        for _ in 0..20 {
+            glue.drain(&mut state, usize::MAX);
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        }
+        let count = ids(&state, ROOM_A)
+            .iter()
+            .filter(|id| *id == "sent-1")
+            .count();
+        assert_eq!(count, 1);
+        control.shutdown();
+    };
+    let (exit, ()) = tokio::join!(runtime.run(), driver);
+    assert_eq!(exit, RuntimeExit::Shutdown);
+    assert_eq!(shared.writes.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn newer_text_typed_while_pending_survives_the_success() {
+    let (runtime, mut glue, control, shared) = fixture(None);
+    let mut state = AppState::default();
+    let driver = async {
+        active_room_loaded(&mut glue, &mut state, &shared).await;
+        state.message_editor.reset_with_text("first".into());
+        shared
+            .write_replies
+            .lock()
+            .unwrap()
+            .push_back(WriteReply::Ok);
+        submit(&mut glue, &mut state).await;
+        // The user keeps typing before the result is reduced.
+        state.message_editor.reset_with_text("second draft".into());
+        settle("sent", &mut glue, &mut state, |glue, _| {
+            glue.editor().status() == EditorWriteStatus::Ready
+        })
+        .await;
+        assert_eq!(state.message_editor.lines(), ["second draft"]);
+        control.shutdown();
+    };
+    let (exit, ()) = tokio::join!(runtime.run(), driver);
+    assert_eq!(exit, RuntimeExit::Shutdown);
+}
+
+#[tokio::test]
+async fn rejected_and_unknown_sends_keep_a_review_and_are_never_replayed() {
+    for (reply, status) in [
+        (WriteReply::Rejected, EditorWriteStatus::Rejected),
+        (WriteReply::Unknown, EditorWriteStatus::DeliveryUnknown),
+    ] {
+        let (runtime, mut glue, control, shared) = fixture(None);
+        let mut state = AppState::default();
+        let driver = async {
+            active_room_loaded(&mut glue, &mut state, &shared).await;
+            state.message_editor.reset_with_text("keep me".into());
+            shared.write_replies.lock().unwrap().push_back(reply);
+            submit(&mut glue, &mut state).await;
+            settle("outcome", &mut glue, &mut state, |glue, _| {
+                glue.editor().status() == status
+            })
+            .await;
+            assert!(glue.editor().review().is_some());
+            assert_eq!(state.message_editor.lines(), ["keep me"], "draft kept");
+            // A fresh write needs an explicit review dismissal first.
+            assert!(matches!(
+                glue.submit_draft(&draft_now(&state)),
+                Err(WriteRefusal::Submission(SubmissionError::ReviewNeeded))
+            ));
+            for _ in 0..20 {
+                glue.drain(&mut state, usize::MAX);
+                tokio::time::sleep(Duration::from_millis(1)).await;
+            }
+            assert_eq!(shared.writes.load(Ordering::SeqCst), 1, "never replayed");
+            assert!(glue.dismiss_review());
+            control.shutdown();
+        };
+        let (exit, ()) = tokio::join!(runtime.run(), driver);
+        assert_eq!(exit, RuntimeExit::Shutdown);
+    }
+}
+
+#[tokio::test]
+async fn confirmed_delete_and_leave_apply_only_after_success() {
+    let (runtime, mut glue, control, shared) = fixture(None);
+    let mut state = AppState::default();
+    let driver = async {
+        active_room_loaded(&mut glue, &mut state, &shared).await;
+        // Admission opens after the ack is processed.
+        loop {
+            match glue.delete_message(&ROOM_A.to_owned(), &MessageId::new("a1")) {
+                Ok(()) => break,
+                Err(WriteRefusal::NotReady) => {
+                    glue.drain(&mut state, usize::MAX);
+                    tokio::time::sleep(Duration::from_millis(1)).await;
+                }
+                Err(other) => panic!("{other:?}"),
+            }
+        }
+        // Not removed optimistically.
+        assert!(ids(&state, ROOM_A).contains(&"a1".to_owned()));
+        assert_eq!(
+            glue.leave_room(&ROOM_B.to_owned()),
+            Err(WriteRefusal::Busy),
+            "one write at a time"
+        );
+        settle("delete confirmed", &mut glue, &mut state, |glue, _| {
+            glue.last_action().is_some()
+        })
+        .await;
+        assert_eq!(ids(&state, ROOM_A), ["a2"]);
+        assert!(matches!(
+            glue.last_action(),
+            Some(ActionOutcome::Confirmed(_))
+        ));
+        glue.leave_room(&ROOM_B.to_owned()).unwrap();
+        settle("leave confirmed", &mut glue, &mut state, |_, state| {
+            state.cache.rooms.room_with_id(&ROOM_B.to_owned()).is_none()
+        })
+        .await;
+        control.shutdown();
+    };
+    let (exit, ()) = tokio::join!(runtime.run(), driver);
+    assert_eq!(exit, RuntimeExit::Shutdown);
+    assert_eq!(shared.writes.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
+async fn uncertain_delete_reconciles_by_reading_instead_of_replaying() {
+    let (runtime, mut glue, control, shared) = fixture(None);
+    let mut state = AppState::default();
+    let driver = async {
+        active_room_loaded(&mut glue, &mut state, &shared).await;
+        shared
+            .write_replies
+            .lock()
+            .unwrap()
+            .push_back(WriteReply::Unknown);
+        loop {
+            match glue.delete_message(&ROOM_A.to_owned(), &MessageId::new("a1")) {
+                Ok(()) => break,
+                Err(WriteRefusal::NotReady) => {
+                    glue.drain(&mut state, usize::MAX);
+                    tokio::time::sleep(Duration::from_millis(1)).await;
+                }
+                Err(other) => panic!("{other:?}"),
+            }
+        }
+        let reads_before = shared.message_reads.load(Ordering::SeqCst);
+        settle("reconciling read", &mut glue, &mut state, |glue, _| {
+            matches!(glue.last_action(), Some(ActionOutcome::Unknown(_)))
+                && shared.message_reads.load(Ordering::SeqCst) > reads_before
+        })
+        .await;
+        // Still shown: only a confirmed tombstone removes it.
+        assert!(ids(&state, ROOM_A).contains(&"a1".to_owned()));
+        for _ in 0..20 {
+            glue.drain(&mut state, usize::MAX);
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        }
+        assert_eq!(shared.writes.load(Ordering::SeqCst), 1, "never replayed");
+        control.shutdown();
+    };
+    let (exit, ()) = tokio::join!(runtime.run(), driver);
+    assert_eq!(exit, RuntimeExit::Shutdown);
+}
+
+#[tokio::test]
+async fn a_write_lost_with_the_runtime_is_uncertain_not_unsent() {
+    let (runtime, mut glue, _control, shared) = fixture(None);
+    let mut state = AppState::default();
+    let driver = async {
+        active_room_loaded(&mut glue, &mut state, &shared).await;
+        shared
+            .write_replies
+            .lock()
+            .unwrap()
+            .push_back(WriteReply::Pending);
+        state.message_editor.reset_with_text("in flight".into());
+        submit(&mut glue, &mut state).await;
+        for _ in 0..2000 {
+            if shared.writes.load(Ordering::SeqCst) == 1 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        }
+    };
+    // The runtime task is dropped mid-write.
+    tokio::select! {
+        exit = runtime.run() => panic!("runtime exited early: {exit:?}"),
+        () = driver => {}
+    }
+    glue.drain(&mut state, usize::MAX);
+    assert!(glue.status().closed);
+    assert_eq!(glue.editor().status(), EditorWriteStatus::DeliveryUnknown);
+    assert!(glue.editor().review().is_some());
+    assert_eq!(state.message_editor.lines(), ["in flight"]);
+}
+
+#[tokio::test]
+async fn writes_stay_closed_until_the_snapshot_is_acknowledged() {
+    let (runtime, mut glue, control, shared) = fixture(None);
+    let mut state = AppState::default();
+    let driver = async {
+        wait_subscribed(&shared, 1).await;
+        shared.push("continuity.ready", json!({}));
+        // Wait for the install without draining it (so it is not acked).
+        for _ in 0..200 {
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        }
+        state.message_editor.reset_with_text("too early".into());
+        let draft = draft_now(&state);
+        assert_eq!(
+            glue.submit_draft(&draft),
+            Err(WriteRefusal::Submission(SubmissionError::QueueNotReady))
+        );
+        assert_eq!(state.message_editor.lines(), ["too early"]);
+        control.shutdown();
+    };
+    let (exit, ()) = tokio::join!(runtime.run(), driver);
+    assert_eq!(exit, RuntimeExit::Shutdown);
+    assert_eq!(shared.writes.load(Ordering::SeqCst), 0);
 }
 
 // ---- Deterministic unit tests over a manually driven pump -----------------

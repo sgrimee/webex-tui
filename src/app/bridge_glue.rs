@@ -22,7 +22,18 @@
 //! - redactions apply immediately as tombstones to loaded views;
 //! - a closed pump marks the glue closed and forgets outstanding reads.
 //!
-//! No writes (Step 5D), no logging of content, no capability access.
+//! Writes (Step 5D) share the runtime's single write slot:
+//! - compose/send/reply/edit go through the `EditorSubmission` ledger from an
+//!   explicit `DraftSnapshot`; a success installs the canonical message at once
+//!   (its SSE echo is idempotent) and clears the editor only if it still holds
+//!   that exact draft; rejection/uncertainty keep a review snapshot;
+//! - delete/leave are explicit actions: only a confirmed success tombstones the
+//!   message / removes the room; an uncertain outcome triggers a reconciling
+//!   read, never a replay;
+//! - when the pump closes with a write pending, the outcome is uncertain
+//!   (`missing_completion`), never "not sent".
+//!
+//! No logging of content, no capability access.
 
 use super::{
     cache::room::{Room, RoomId},
@@ -40,8 +51,12 @@ use crate::{
     },
     frontend::{
         data::{self, MessageId, MessagePage, PageCursor, PersonId, RoomSnapshot},
+        editor_submission::{
+            DraftSnapshot, DraftStamp, EditorSubmission, SubmissionError, SubmissionTerminal,
+        },
         envelopes::{
-            FrontendIntent, FrontendResult, PageRequest, ReadOutcome, RequestId, RequestSequence,
+            FrontendIntent, FrontendResult, PageRequest, ReadOutcome, RequestContext, RequestId,
+            RequestSequence, WriteOutcome,
         },
         events::{ChangeScope, MessageKey},
         lifecycle::{LifecycleProjection, ProjectionEffects, RefreshTarget},
@@ -120,6 +135,40 @@ pub(crate) struct BridgeGlue {
     cursors: HashMap<RoomId, Option<PageCursor>>,
     page_size: u32,
     status: GlueStatus,
+    ledger: EditorSubmission,
+    writes: RequestSequence,
+    action: Option<(RequestContext, Action)>,
+    last_action: Option<ActionOutcome>,
+}
+
+/// An explicit non-editor write.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum Action {
+    DeleteMessage { room: RoomId, message: MessageId },
+    LeaveRoom(RoomId),
+}
+
+/// Settled outcome of the last delete/leave, for the UI.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum ActionOutcome {
+    Confirmed(Action),
+    Rejected(Action),
+    /// The daemon may or may not have applied it; a reconciling read was
+    /// requested. Never replayed.
+    Unknown(Action),
+    /// Not dispatched (session not ready); nothing was sent.
+    NotSent(Action),
+}
+
+/// Why a write could not be admitted. The caller's draft is untouched.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum WriteRefusal {
+    Submission(SubmissionError),
+    /// Another write is pending or awaiting its outcome.
+    Busy,
+    NotReady,
+    Closed,
+    Invalid,
 }
 
 /// The assembled, not-yet-running bridge stack for one connected session.
@@ -167,6 +216,178 @@ impl BridgeGlue {
             // The UI API accepts 1..=100; clamp rather than refuse.
             page_size: page_size.clamp(1, 100),
             status: GlueStatus::default(),
+            ledger: EditorSubmission::default(),
+            writes: RequestSequence::default(),
+            action: None,
+            last_action: None,
+        }
+    }
+
+    /// The editor write ledger: status and the reviewable failed draft.
+    pub(crate) fn editor(&self) -> &EditorSubmission {
+        &self.ledger
+    }
+
+    /// Explicit acknowledgement of a failed/uncertain draft review.
+    pub(crate) fn dismiss_review(&mut self) -> bool {
+        self.ledger.dismiss_review()
+    }
+
+    pub(crate) fn last_action(&self) -> Option<&ActionOutcome> {
+        self.last_action.as_ref()
+    }
+
+    /// Submit the editor's current composition. On refusal nothing was sent
+    /// and the caller keeps its draft; an allocated request ID is not reused.
+    pub(crate) fn submit_draft(&mut self, draft: &DraftSnapshot) -> Result<(), WriteRefusal> {
+        if self.action.is_some() {
+            return Err(WriteRefusal::Busy);
+        }
+        let request = self
+            .ledger
+            .prepare(draft)
+            .map_err(WriteRefusal::Submission)?;
+        let context = request.context.clone();
+        let admission = self.mailbox.try_submit(request);
+        self.ledger
+            .admit(&context, admission)
+            .map_err(WriteRefusal::Submission)?;
+        self.control.wake();
+        Ok(())
+    }
+
+    /// Explicit delete of one message (caller checks authorship/confirmation).
+    pub(crate) fn delete_message(
+        &mut self,
+        room: &RoomId,
+        message: &MessageId,
+    ) -> Result<(), WriteRefusal> {
+        self.submit_action(Action::DeleteMessage {
+            room: room.clone(),
+            message: message.clone(),
+        })
+    }
+
+    /// Explicit leave of one room (caller confirms with the user).
+    pub(crate) fn leave_room(&mut self, room: &RoomId) -> Result<(), WriteRefusal> {
+        self.submit_action(Action::LeaveRoom(room.clone()))
+    }
+
+    fn submit_action(&mut self, action: Action) -> Result<(), WriteRefusal> {
+        if self.action.is_some() || self.ledger.pending_context().is_some() {
+            return Err(WriteRefusal::Busy);
+        }
+        let intent = match &action {
+            Action::DeleteMessage { room, message } => FrontendIntent::DeleteMessage {
+                room_id: data::RoomId::new(room.as_str()),
+                message_id: message.clone(),
+            },
+            Action::LeaveRoom(room) => FrontendIntent::LeaveRoom(data::RoomId::new(room.as_str())),
+        };
+        let request = self
+            .writes
+            .begin(intent, None)
+            .map_err(|_| WriteRefusal::Invalid)?;
+        let context = request.context.clone();
+        match self.mailbox.try_submit(request) {
+            crate::bridge::commands::CommandAdmission::Accepted => {
+                self.action = Some((context, action));
+                self.control.wake();
+                Ok(())
+            }
+            crate::bridge::commands::CommandAdmission::Full => Err(WriteRefusal::Busy),
+            crate::bridge::commands::CommandAdmission::NotReady => Err(WriteRefusal::NotReady),
+            crate::bridge::commands::CommandAdmission::Closed => Err(WriteRefusal::Closed),
+            crate::bridge::commands::CommandAdmission::InvalidRequest => Err(WriteRefusal::Invalid),
+        }
+    }
+
+    /// Settle the single write slot's terminal, if any, then reduce a closed
+    /// pump's still-pending write as uncertain.
+    fn settle_writes(&mut self, state: &mut AppState) {
+        if let Some(terminal) = self.mailbox.drain() {
+            self.apply_write(state, terminal);
+        }
+        if self.endpoint.is_closed() {
+            if let Some(context) = self.ledger.pending_context().cloned() {
+                let current = current_stamp(state);
+                let effects = self.ledger.missing_completion(&context, current.as_ref());
+                self.apply_write_effects(state, effects);
+            }
+            if let Some((_, action)) = self.action.take() {
+                self.last_action = Some(ActionOutcome::Unknown(action));
+            }
+        }
+    }
+
+    fn apply_write(&mut self, state: &mut AppState, terminal: SubmissionTerminal) {
+        let is_action = match (&self.action, &terminal) {
+            (Some((context, _)), SubmissionTerminal::Result(envelope)) => {
+                envelope.context == *context
+            }
+            (Some((context, _)), SubmissionTerminal::NotDispatched { context: done, .. })
+            | (Some((context, _)), SubmissionTerminal::Uncertain { context: done, .. }) => {
+                done == context
+            }
+            (None, _) => false,
+        };
+        if !is_action {
+            let current = current_stamp(state);
+            let effects = self.ledger.reduce(terminal, current.as_ref());
+            self.apply_write_effects(state, effects);
+            return;
+        }
+        let (_, action) = self.action.take().expect("matched pending action");
+        let outcome = match terminal {
+            SubmissionTerminal::Result(envelope) => match envelope.result {
+                FrontendResult::DeleteMessage(WriteOutcome::Success(_))
+                | FrontendResult::LeaveRoom(WriteOutcome::Success(_)) => {
+                    ActionOutcome::Confirmed(action.clone())
+                }
+                FrontendResult::DeleteMessage(WriteOutcome::Rejected(_))
+                | FrontendResult::LeaveRoom(WriteOutcome::Rejected(_)) => {
+                    ActionOutcome::Rejected(action.clone())
+                }
+                _ => ActionOutcome::Unknown(action.clone()),
+            },
+            SubmissionTerminal::NotDispatched { .. } => ActionOutcome::NotSent(action.clone()),
+            SubmissionTerminal::Uncertain { .. } => ActionOutcome::Unknown(action.clone()),
+        };
+        match (&outcome, &action) {
+            (ActionOutcome::Confirmed(_), Action::DeleteMessage { room, message }) => {
+                if let Some(view) = loaded_view(state, room) {
+                    let _ = view.tombstone(&data::RoomId::new(room.as_str()), message, None);
+                }
+            }
+            (ActionOutcome::Confirmed(_), Action::LeaveRoom(room)) => state.cache.remove_room(room),
+            // Reconcile from the mirror; the user decides on any fresh write.
+            (ActionOutcome::Unknown(_), Action::DeleteMessage { room, message }) => {
+                self.request_message(room, message, false);
+            }
+            (ActionOutcome::Unknown(_), Action::LeaveRoom(_)) => {
+                self.request(FrontendIntent::ListAllRooms, Purpose::Rooms);
+            }
+            _ => {}
+        }
+        self.last_action = Some(outcome);
+    }
+
+    fn apply_write_effects(
+        &mut self,
+        state: &mut AppState,
+        effects: crate::frontend::editor_submission::SubmissionEffects,
+    ) {
+        if let Some(message) = &effects.canonical {
+            let room = message.room_id.as_str().to_owned();
+            if let Some(view) = loaded_view(state, &room) {
+                let _ = view.upsert(message);
+            }
+        }
+        if let Some(stamp) = &effects.clear_current {
+            // Only the exact submitted composition is cleared, never newer text.
+            if current_stamp(state).as_ref() == Some(stamp) {
+                state.message_editor.reset();
+            }
         }
     }
 
@@ -256,6 +477,7 @@ impl BridgeGlue {
                 PumpEvent::Read { terminal, .. } => self.apply_read(state, terminal),
             }
         }
+        self.settle_writes(state);
         if self.endpoint.is_closed() {
             self.status.closed = true;
             self.pending.clear();
@@ -589,6 +811,19 @@ impl BridgeGlue {
             other => other,
         }
     }
+}
+
+/// The editor's current draft stamp: its target is bound to the active room
+/// only for a plain send, exactly as when it was submitted.
+fn current_stamp(state: &AppState) -> Option<DraftStamp> {
+    let active = state
+        .rooms_list
+        .active_room_id()
+        .map(|id| data::RoomId::new(id.as_str()));
+    state
+        .message_editor
+        .draft(active.as_ref())
+        .map(|draft| draft.stamp)
 }
 
 fn loaded_view<'a>(state: &'a mut AppState, room: &RoomId) -> Option<&'a mut RoomMessageView> {

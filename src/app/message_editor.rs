@@ -85,7 +85,6 @@ impl MessageEditor<'_> {
     /// if the original was Markdown; unknown legacy formats become explicit
     /// plain text). A reply is bound to the replied-to message's room and its
     /// thread root. Only a plain send uses `active_room`.
-    #[allow(dead_code)] // dormant bridge write glue
     pub(crate) fn draft(&self, active_room: Option<&RoomId>) -> Option<DraftSnapshot> {
         let text = self.lines().join("\n");
         let (target, markdown) = if let Some(edited) = &self.editing_of {
