@@ -765,4 +765,37 @@ mod reads {
         );
         assert_eq!(f.reader.calls.load(Ordering::SeqCst), 1);
     }
+
+    #[tokio::test]
+    async fn undrained_terminals_count_against_the_read_budget() {
+        let mut f = fixture();
+        active(&mut f).await;
+        for index in 0..READ_CAPACITY {
+            assert_eq!(
+                f.mailbox.try_read(room_read(&format!("room-{index}"))),
+                ReadAdmission::Accepted
+            );
+        }
+        // Dispatch everything: the queue is empty but nothing was drained.
+        while f.worker.handle_read().await {}
+        assert_eq!(f.mailbox.try_read(room_read("more")), ReadAdmission::Full);
+        // Draining part of the pump frees exactly that many credits.
+        let mut freed = 0;
+        while freed < 2 {
+            for event in f.endpoint.drain(1) {
+                if matches!(event, PumpEvent::Read(_)) {
+                    freed += 1;
+                }
+            }
+        }
+        assert_eq!(
+            f.mailbox.try_read(room_read("more-1")),
+            ReadAdmission::Accepted
+        );
+        assert_eq!(
+            f.mailbox.try_read(room_read("more-2")),
+            ReadAdmission::Accepted
+        );
+        assert_eq!(f.mailbox.try_read(room_read("more-3")), ReadAdmission::Full);
+    }
 }

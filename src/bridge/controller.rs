@@ -6,7 +6,7 @@
 
 use super::{
     events::project_ui_event,
-    read_dispatch::ReadTerminal,
+    read_dispatch::{ReadCredits, ReadTerminal},
     session::{
         FrameAction, LeaseAction, SessionBackend, SessionClock, SessionFailure, SessionLifecycle,
         SessionPhase, SessionReadError, SessionWriteError, SnapshotTicket, SubscriptionId,
@@ -38,6 +38,11 @@ pub(crate) trait PresentationHost {
     /// Exactly one terminal per admitted read, in production order with the
     /// other presentation events. Required: a host must never drop reads.
     fn deliver_read(&mut self, terminal: ReadTerminal);
+    /// A host whose consumer drains terminals later returns the shared budget
+    /// it releases on drain. `None` means terminals are consumed on delivery.
+    fn read_credits(&self) -> Option<ReadCredits> {
+        None
+    }
 }
 
 pub(crate) struct HostController<B: SessionBackend, C: SessionClock, H: PresentationHost> {

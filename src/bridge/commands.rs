@@ -19,7 +19,7 @@
 
 use super::{
     controller::{HostController, PresentationHost},
-    read_dispatch::{validate as validate_read, ReadTerminal, ReadUnavailable},
+    read_dispatch::{validate as validate_read, ReadCredits, ReadTerminal, ReadUnavailable},
     session::{
         FrameAction, LeaseAction, SessionBackend, SessionClock, SessionFailure, SessionLifecycle,
         SessionPhase, SessionReadError, SessionWriteError, SnapshotTicket, SubscriptionId,
@@ -42,7 +42,9 @@ use std::{
 /// Hard per-read deadline; reads are idempotent, so a timeout is simply
 /// Unavailable and the App may issue a fresh request.
 pub(crate) const READ_DEADLINE: Duration = Duration::from_secs(15);
-/// Queued (not yet dispatched) read requests.
+/// Outstanding reads: queued + in-flight + delivered but not yet consumed by
+/// the presentation owner (released on pump drain, or on delivery for hosts
+/// that consume synchronously).
 pub(crate) const READ_CAPACITY: usize = 16;
 
 /// Read admission. Only `Accepted` produces a later terminal; `Duplicate`
@@ -89,6 +91,8 @@ struct Mailbox {
     /// Read currently being dispatched; survives a dropped handle_read so its
     /// terminal can still be delivered as Interrupted.
     reading: Option<RequestEnvelope>,
+    /// Outstanding reads: queued + in-flight + delivered but not consumed.
+    credits: ReadCredits,
 }
 
 type Shared = Arc<Mutex<Mailbox>>;
@@ -149,7 +153,7 @@ impl CommandMailbox {
         if mailbox.reads.iter().any(duplicate) || mailbox.reading.as_ref().is_some_and(duplicate) {
             return ReadAdmission::Duplicate;
         }
-        if mailbox.reads.len() >= READ_CAPACITY {
+        if !mailbox.credits.try_acquire(READ_CAPACITY) {
             return ReadAdmission::Full;
         }
         mailbox.reads.push_back(request);
@@ -200,6 +204,9 @@ impl<H: PresentationHost> PresentationHost for AdmissionHost<H> {
     fn deliver_read(&mut self, terminal: ReadTerminal) {
         self.inner.deliver_read(terminal);
     }
+    fn read_credits(&self) -> Option<ReadCredits> {
+        self.inner.read_credits()
+    }
 }
 
 /// Sole owner of HostController. Lifecycle methods are explicit, caller-
@@ -211,17 +218,23 @@ pub(crate) struct CommandWorker<B: SessionBackend, C: SessionClock, H: Presentat
     shared: Shared,
     write_deadline: Duration,
     read_deadline: Duration,
+    release_on_delivery: bool,
 }
 
 impl<B: SessionBackend, C: SessionClock, H: PresentationHost> CommandWorker<B, C, H> {
     pub(crate) fn new(session: SessionLifecycle<B, C>, host: H) -> (CommandMailbox, Self) {
         let published = session.write_admission_stamp();
+        let (credits, release_on_delivery) = match host.read_credits() {
+            Some(credits) => (credits, false),
+            None => (ReadCredits::default(), true),
+        };
         let shared = Arc::new(Mutex::new(Mailbox {
             open: true,
             published,
             slot: Slot::Empty,
             reads: VecDeque::new(),
             reading: None,
+            credits,
         }));
         let host = AdmissionHost {
             inner: host,
@@ -236,6 +249,7 @@ impl<B: SessionBackend, C: SessionClock, H: PresentationHost> CommandWorker<B, C
                 shared,
                 write_deadline: WRITE_DEADLINE,
                 read_deadline: READ_DEADLINE,
+                release_on_delivery,
             },
         )
     }
@@ -451,8 +465,15 @@ impl<B: SessionBackend, C: SessionClock, H: PresentationHost> CommandWorker<B, C
             };
         lock(&self.shared).reading = None;
         self.publish();
-        self.controller.host_mut().deliver_read(terminal);
+        self.deliver_read(terminal);
         true
+    }
+
+    fn deliver_read(&mut self, terminal: ReadTerminal) {
+        self.controller.host_mut().deliver_read(terminal);
+        if self.release_on_delivery {
+            lock(&self.shared).credits.release();
+        }
     }
 
     fn settle_interrupted_read(&mut self) {

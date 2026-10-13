@@ -13,7 +13,13 @@ use crate::frontend::{
     envelopes::{FrontendIntent, PageRequest, RequestContext, RequestEnvelope, ResultEnvelope},
     write_rules::valid_opaque_id,
 };
-use std::future::Future;
+use std::{
+    future::Future,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
+};
 use webex_bridge::{client::ClientError, dto};
 
 type Reply<T> = Result<T, ClientError>;
@@ -156,6 +162,36 @@ impl ReadTerminal {
             Self::Result(envelope) => &envelope.context,
             Self::Unavailable { context, .. } => context,
         }
+    }
+}
+
+/// Outstanding-read budget shared by the App-side mailbox and whichever side
+/// finally consumes a terminal. Counts queued + in-flight + delivered but not
+/// yet drained reads, so undrained terminals cannot grow without bound.
+#[derive(Clone, Default)]
+pub(crate) struct ReadCredits(Arc<AtomicUsize>);
+
+impl ReadCredits {
+    pub(crate) fn outstanding(&self) -> usize {
+        self.0.load(Ordering::SeqCst)
+    }
+
+    /// Reserve one credit unless `cap` are already outstanding.
+    pub(crate) fn try_acquire(&self, cap: usize) -> bool {
+        self.0
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |current| {
+                (current < cap).then_some(current + 1)
+            })
+            .is_ok()
+    }
+
+    /// Return one credit when a terminal has been consumed.
+    pub(crate) fn release(&self) {
+        let _ = self
+            .0
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |current| {
+                current.checked_sub(1)
+            });
     }
 }
 

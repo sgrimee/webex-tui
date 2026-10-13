@@ -15,14 +15,19 @@
 //!   lag resync, and redaction keys are always retained;
 //! - an undrained snapshot superseded by a newer install is dropped; only the
 //!   latest install can be acknowledged;
-//! - read terminals are bounded by the worker's read capacity (one terminal
-//!   per admitted read) and are never coalesced or dropped.
+//! - read terminals are never coalesced or dropped; they are bounded because
+//!   the shared `ReadCredits` budget counts every admitted read until the App
+//!   drains its terminal (`READ_CAPACITY` outstanding in total).
 //!
 //! Barrier: until the App has drained and acknowledged the latest install,
 //! `snapshot_acknowledged()` is false and the worker keeps write admission
 //! revoked, so Active cannot race ahead of App installation.
 
-use super::{controller::PresentationHost, read_dispatch::ReadTerminal, session::SessionPhase};
+use super::{
+    controller::PresentationHost,
+    read_dispatch::{ReadCredits, ReadTerminal},
+    session::SessionPhase,
+};
 use crate::frontend::{
     events::{ChangeScope, MessageKey, ResyncReason},
     lifecycle::{LifecycleProjection, ProjectionEffects, RefreshTarget},
@@ -52,7 +57,7 @@ pub(crate) enum PumpEvent<S> {
         install: InstallId,
         snapshot: S,
     },
-    /// Bounded by the worker's read capacity plus one in-flight read.
+    /// Bounded by the shared outstanding-read budget (`READ_CAPACITY`).
     Read(ReadTerminal),
 }
 
@@ -128,17 +133,20 @@ pub(crate) fn pump<S>() -> (PumpHost<S>, PresentationEndpoint<S>) {
         acked: None,
         closed: false,
     }));
+    let credits = ReadCredits::default();
     (
         PumpHost {
             shared: Arc::clone(&shared),
+            credits: credits.clone(),
         },
-        PresentationEndpoint { shared },
+        PresentationEndpoint { shared, credits },
     )
 }
 
 /// Worker side; owned by the controller. No accessor returns queued data.
 pub(crate) struct PumpHost<S> {
     shared: Shared<S>,
+    credits: ReadCredits,
 }
 
 impl<S> PresentationHost for PumpHost<S> {
@@ -207,6 +215,11 @@ impl<S> PresentationHost for PumpHost<S> {
         lock(&self.shared).queue.push_back(Entry::Read(terminal));
     }
 
+    /// Reads are consumed when the App drains them, not on delivery.
+    fn read_credits(&self) -> Option<ReadCredits> {
+        Some(self.credits.clone())
+    }
+
     fn snapshot_acknowledged(&self) -> bool {
         let pump = lock(&self.shared);
         !pump.closed && pump.latest.is_none_or(|latest| pump.acked == Some(latest))
@@ -222,6 +235,7 @@ impl<S> Drop for PumpHost<S> {
 /// App side. Synchronous drain/ack only; no capability or lifecycle access.
 pub(crate) struct PresentationEndpoint<S> {
     shared: Shared<S>,
+    credits: ReadCredits,
 }
 
 impl<S> PresentationEndpoint<S> {
@@ -235,6 +249,7 @@ impl<S> PresentationEndpoint<S> {
             };
             match &entry {
                 Entry::Lifecycle(_) => pump.lifecycle -= 1,
+                Entry::Read(_) => self.credits.release(),
                 Entry::Snapshot { install, .. } if pump.latest == Some(*install) => {
                     pump.drained_latest = true;
                 }
