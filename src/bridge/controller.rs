@@ -232,7 +232,7 @@ impl<B: SessionBackend, C: SessionClock, H: PresentationHost> HostController<B, 
     pub(crate) fn snapshot_reader(
         &self,
         ticket: &SnapshotTicket,
-    ) -> Result<B::SnapshotReader<'_>, SessionFailure> {
+    ) -> Result<B::SnapshotReader, SessionFailure> {
         self.session.snapshot_reader(ticket)
     }
     pub(crate) fn stream_mut(&mut self) -> Option<&mut B::Stream> {

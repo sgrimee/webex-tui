@@ -153,7 +153,7 @@ impl SessionBackend for Backend {
     type Client = Arc<Control>;
     type Stream = ();
     type Writer = Writer;
-    type SnapshotReader<'a> = ();
+    type SnapshotReader = ();
     async fn issue(&mut self, _: &str) -> Result<Self::Client, SessionFailure> {
         if self.0.issue_pending.load(Ordering::SeqCst) {
             std::future::pending::<()>().await;

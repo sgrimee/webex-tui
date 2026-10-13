@@ -86,7 +86,7 @@ impl SessionBackend for Backend {
     type Client = Client;
     type Stream = ();
     type Writer = Writer;
-    type SnapshotReader<'a> = ();
+    type SnapshotReader = ();
     async fn issue(&mut self, secret: &str) -> Result<Client, SessionFailure> {
         assert_eq!(secret, "synthetic-secret");
         self.calls.lock().unwrap().push("issue");

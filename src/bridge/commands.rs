@@ -303,6 +303,14 @@ impl<B: SessionBackend, C: SessionClock, H: PresentationHost> CommandWorker<B, C
     pub(crate) fn phase(&self) -> SessionPhase {
         self.controller.phase()
     }
+    /// An admitted write is waiting for `handle_one` (scheduling hint only).
+    pub(crate) fn has_queued_write(&self) -> bool {
+        matches!(lock(&self.shared).slot, Slot::Queued(_))
+    }
+    /// At least one admitted read is waiting for `handle_read`.
+    pub(crate) fn has_queued_read(&self) -> bool {
+        !lock(&self.shared).reads.is_empty()
+    }
     pub(crate) fn subscription(&self) -> Option<SubscriptionId> {
         self.controller.subscription()
     }
@@ -383,7 +391,7 @@ impl<B: SessionBackend, C: SessionClock, H: PresentationHost> CommandWorker<B, C
     pub(crate) fn snapshot_reader(
         &self,
         ticket: &SnapshotTicket,
-    ) -> Result<B::SnapshotReader<'_>, SessionFailure> {
+    ) -> Result<B::SnapshotReader, SessionFailure> {
         self.controller.snapshot_reader(ticket)
     }
 

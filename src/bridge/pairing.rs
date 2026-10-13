@@ -79,7 +79,9 @@ impl UiSecret {
         Ok(Self(value))
     }
 
-    fn as_str(&self) -> &str {
+    /// Borrowed only for one explicit session issue/renewal call inside the
+    /// bridge adapter; never stored, cloned or formatted.
+    pub(super) fn as_str(&self) -> &str {
         &self.0
     }
 

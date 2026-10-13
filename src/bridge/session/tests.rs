@@ -124,7 +124,7 @@ impl SessionBackend for Backend {
     type Client = Client;
     type Stream = Stream;
     type Writer = Writer;
-    type SnapshotReader<'a> = ();
+    type SnapshotReader = ();
     async fn issue(&mut self, secret: &str) -> Result<Client, SessionFailure> {
         assert!(!secret.is_empty()); // fixture input is used, never retained in the backend
         self.calls.push("issue");

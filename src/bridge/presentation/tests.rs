@@ -490,7 +490,7 @@ impl SessionBackend for Backend {
     type Client = ();
     type Stream = ();
     type Writer = ();
-    type SnapshotReader<'a> = ();
+    type SnapshotReader = ();
     async fn issue(&mut self, _: &str) -> Result<(), SessionFailure> {
         Ok(())
     }
@@ -713,7 +713,7 @@ mod reads {
         type Client = Reader;
         type Stream = ();
         type Writer = ();
-        type SnapshotReader<'a> = Reader;
+        type SnapshotReader = Reader;
         async fn issue(&mut self, _: &str) -> Result<Reader, SessionFailure> {
             Ok(self.0.clone())
         }

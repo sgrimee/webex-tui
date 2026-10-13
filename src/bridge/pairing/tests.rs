@@ -95,7 +95,7 @@ impl SessionBackend for Session {
     type Client = ();
     type Stream = ();
     type Writer = ();
-    type SnapshotReader<'a> = ();
+    type SnapshotReader = ();
 
     async fn issue(&mut self, secret: &str) -> Result<(), SessionFailure> {
         self.calls.lock().unwrap().push(Call::Issue(secret.into()));
@@ -332,7 +332,7 @@ impl SessionBackend for FailingSession {
     type Client = ();
     type Stream = ();
     type Writer = ();
-    type SnapshotReader<'a> = ();
+    type SnapshotReader = ();
 
     async fn issue(&mut self, _: &str) -> Result<(), SessionFailure> {
         self.events.lock().unwrap().push("issue");

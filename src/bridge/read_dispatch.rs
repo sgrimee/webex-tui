@@ -50,7 +50,7 @@ pub(crate) trait UiReadBackend: Send + Sync {
     ) -> impl Future<Output = Reply<dto::ThreadChildren>> + Send;
 }
 
-impl UiReadBackend for UiSnapshotReader<'_> {
+impl UiReadBackend for UiSnapshotReader {
     fn me(&self) -> impl Future<Output = Reply<dto::Person>> + Send {
         UiSnapshotReader::me(self)
     }

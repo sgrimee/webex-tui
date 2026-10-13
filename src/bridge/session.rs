@@ -61,7 +61,7 @@ pub(super) fn session_auth_failure(error: &ClientError) -> Option<SessionFailure
     }
 }
 
-fn io_failure(error: ClientError) -> SessionFailure {
+pub(super) fn io_failure(error: ClientError) -> SessionFailure {
     match error {
         ClientError::Transport(_) => SessionFailure::Transport,
         ClientError::InvalidResponse(_) => SessionFailure::InvalidResponse,
@@ -77,12 +77,12 @@ pub(crate) trait SessionBackend: Send {
     /// Private mutation capability created from an active client. It is retained
     /// by the lifecycle and is never returned through this trait's public API.
     type Writer: UiWriteBackend;
-    /// Read-only view of a client, borrowed for one snapshot ticket or one
-    /// active read. Implementations must not expose a cloneable write client
-    /// or bearer token.
-    type SnapshotReader<'a>: UiReadBackend
-    where
-        Self: 'a;
+    /// Owned, non-cloneable read-only facade created for one snapshot ticket
+    /// or one active read and dropped right after it. Implementations must
+    /// not expose a cloneable write client, bearer token or event/mutation
+    /// method. (Owned rather than borrowed so generic futures holding it are
+    /// provably Send; see rustc#100013.)
+    type SnapshotReader: UiReadBackend;
     fn issue(
         &mut self,
         secret: &str,
@@ -97,17 +97,17 @@ pub(crate) trait SessionBackend: Send {
     ) -> impl Future<Output = Result<ContinuityBoundary, SessionFailure>> + Send;
     fn lease_ttl(client: &Self::Client) -> u64;
     fn writer(client: &Self::Client) -> Self::Writer;
-    fn snapshot_reader(client: &Self::Client) -> Self::SnapshotReader<'_>;
+    fn snapshot_reader(client: &Self::Client) -> Self::SnapshotReader;
 }
 
 /// Non-cloneable, read-only UI capability held only while preparing a fenced
 /// snapshot. It deliberately exposes neither the bearer nor mutation/event
 /// methods from [`UiClient`].
-pub(crate) struct UiSnapshotReader<'a> {
-    client: &'a UiClient,
+pub(crate) struct UiSnapshotReader {
+    client: UiClient,
 }
 
-impl UiSnapshotReader<'_> {
+impl UiSnapshotReader {
     pub(crate) async fn me(&self) -> Result<dto::Person, ClientError> {
         self.client.me().await
     }
@@ -186,7 +186,7 @@ impl SessionBackend for BridgeSessionBackend {
     type Client = UiClient;
     type Stream = EventStream;
     type Writer = BridgeUiWriteBackend;
-    type SnapshotReader<'a> = UiSnapshotReader<'a>;
+    type SnapshotReader = UiSnapshotReader;
     async fn issue(&mut self, secret: &str) -> Result<UiClient, SessionFailure> {
         self.bridge
             .create_ui_session(secret)
@@ -209,8 +209,10 @@ impl SessionBackend for BridgeSessionBackend {
     fn writer(client: &UiClient) -> BridgeUiWriteBackend {
         BridgeUiWriteBackend::from_client(client)
     }
-    fn snapshot_reader(client: &UiClient) -> UiSnapshotReader<'_> {
-        UiSnapshotReader { client }
+    fn snapshot_reader(client: &UiClient) -> UiSnapshotReader {
+        UiSnapshotReader {
+            client: client.clone(),
+        }
     }
 }
 
@@ -453,7 +455,7 @@ impl<B: SessionBackend, C: SessionClock> SessionLifecycle<B, C> {
     pub(crate) fn snapshot_reader(
         &self,
         ticket: &SnapshotTicket,
-    ) -> Result<B::SnapshotReader<'_>, SessionFailure> {
+    ) -> Result<B::SnapshotReader, SessionFailure> {
         let active = self.active.as_ref().ok_or(SessionFailure::NotReady)?;
         if self.phase() != SessionPhase::SnapshotRequired
             || ticket.subscription != active.subscription

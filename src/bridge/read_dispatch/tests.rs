@@ -381,7 +381,7 @@ impl SessionBackend for Backend {
     type Client = Arc<Fake>;
     type Stream = ();
     type Writer = ();
-    type SnapshotReader<'a> = Arc<Fake>;
+    type SnapshotReader = Arc<Fake>;
     async fn issue(&mut self, _: &str) -> Result<Arc<Fake>, SessionFailure> {
         Ok(Arc::clone(&self.0))
     }
