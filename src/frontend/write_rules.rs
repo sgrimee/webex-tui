@@ -3,27 +3,31 @@
 //! these predicates so their bounds cannot drift apart. The daemon remains
 //! authoritative: these checks only refuse obviously invalid local work early.
 //!
+//! The bounds and primitive predicates are the bridge's client-neutral DTO
+//! exports (also used by the daemon itself), so the two cannot drift.
+//!
 //! Pure predicates; no logging, no payload formatting and no Debug output.
 
 use super::{
     data::{ComposedBody, MessageSnapshot},
     envelopes::{FrontendIntent, FrontendResult, WriteOutcome},
 };
+use webex_bridge::dto;
 
-/// Current UI API body bound (bridge `api/ui.rs`, Webex 7439 UTF-8 bytes).
-pub(crate) const MAX_WRITE_BODY_BYTES: usize = 7439;
-/// Opaque bridge/Webex identifier bound accepted by the adapter.
-pub(crate) const MAX_OPAQUE_ID_BYTES: usize = 1024;
+/// Current UI API body bound, shared with the daemon via the bridge DTOs.
+pub(crate) const MAX_WRITE_BODY_BYTES: usize = dto::MAX_MESSAGE_BODY_BYTES;
+/// Opaque resource-ID bound, shared with the daemon via the bridge DTOs.
+pub(crate) const MAX_OPAQUE_ID_BYTES: usize = dto::MAX_RESOURCE_ID_BYTES;
 
 /// Nonempty, bounded and free of control characters. IDs are never decoded.
 pub(crate) fn valid_opaque_id(value: &str) -> bool {
-    !value.is_empty() && value.len() <= MAX_OPAQUE_ID_BYTES && !value.chars().any(char::is_control)
+    dto::valid_resource_id(value)
 }
 
 /// 1..=7439 UTF-8 bytes with no NUL, for either explicit body format.
 pub(crate) fn valid_write_body(body: &ComposedBody) -> bool {
     let (ComposedBody::PlainText(content) | ComposedBody::Markdown(content)) = body;
-    !content.is_empty() && content.len() <= MAX_WRITE_BODY_BYTES && !content.contains('\0')
+    dto::valid_message_body(content)
 }
 
 /// Editor writes only (send/reply/edit): bounded IDs/anchor and body. Reads,
@@ -114,6 +118,9 @@ mod tests {
 
     #[test]
     fn id_and_body_bounds_are_exact() {
+        // Shared with the daemon; pin the documented UI API values.
+        assert_eq!(MAX_WRITE_BODY_BYTES, 7439);
+        assert_eq!(MAX_OPAQUE_ID_BYTES, 1024);
         assert!(valid_opaque_id(&"x".repeat(MAX_OPAQUE_ID_BYTES)));
         for bad in [
             "".to_owned(),
