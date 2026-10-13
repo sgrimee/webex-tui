@@ -19,7 +19,8 @@
 //! needs no secret. Only when the daemon refuses with the 12 h cap (or a
 //! zero lease, or an older daemon's 404) does the loop fall back to a new
 //! session: secret re-borrow, new subscription, Ready, snapshot and
-//! install/ack. A removed pairing exits `PairingRequired`; a session-level
+//! install/ack. A removed pairing (or session creation's exact `401
+//! auth_required`) exits `PairingRequired`; a session-level
 //! refusal (401, 403 `forbidden_*`) fails the session and the reconnect path
 //! applies; transient failures (transport, 5xx) keep the valid lease and
 //! retry with backoff. Re-snapshots still follow reconnects, lag and
@@ -107,8 +108,9 @@ impl Default for RuntimeConfig {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum RuntimeExit {
     Shutdown,
-    /// The daemon refused the pairing secret itself; explicit re-pairing is
-    /// a user decision outside this loop.
+    /// The daemon refused the pairing secret itself (session creation's
+    /// `401 auth_required`, or renewal's `pairing_removed`); explicit
+    /// re-pairing is a user decision outside this loop.
     PairingRequired(SessionFailure),
     /// The TUI secret store denied access or no longer holds the secret.
     /// Transient store unavailability is retried with backoff instead.
@@ -454,11 +456,14 @@ where
         };
         drop(secret);
         match renewed {
-            Ok(Err(
-                failure @ (SessionFailure::NotPaired
-                | SessionFailure::AuthRequired
-                | SessionFailure::Forbidden),
-            )) => Some(RuntimeExit::PairingRequired(failure)),
+            // Only session creation's exact `401 auth_required` means the
+            // secret is not paired. A 401/403 on the event subscription right
+            // after a successful create (daemon restart, or a revoke racing
+            // it), or any other create refusal, fails this attempt and the
+            // reconnect path retries with backoff.
+            Ok(Err(failure @ SessionFailure::NotPaired)) => {
+                Some(RuntimeExit::PairingRequired(failure))
+            }
             // Other failures leave the session Failed; a timed-out renewal
             // leaves it Connecting. Both are picked up by the reconnect path.
             _ => None,
@@ -500,11 +505,14 @@ where
         };
         drop(secret);
         match connected {
-            Ok(Err(
-                failure @ (SessionFailure::NotPaired
-                | SessionFailure::AuthRequired
-                | SessionFailure::Forbidden),
-            )) => Some(RuntimeExit::PairingRequired(failure)),
+            // Only session creation's exact `401 auth_required` means the
+            // secret is not paired. A 401/403 on the event subscription right
+            // after a successful create (daemon restart, or a revoke racing
+            // it), or any other create refusal, fails this attempt and the
+            // reconnect path retries with backoff.
+            Ok(Err(failure @ SessionFailure::NotPaired)) => {
+                Some(RuntimeExit::PairingRequired(failure))
+            }
             _ => None,
         }
     }

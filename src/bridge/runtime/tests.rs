@@ -41,6 +41,8 @@ struct Shared {
     subscribes: AtomicUsize,
     writes: AtomicUsize,
     issue_failures: Mutex<VecDeque<SessionFailure>>,
+    /// Scripted event-subscription failures after a successful create.
+    subscribe_failures: Mutex<VecDeque<SessionFailure>>,
     stream: Mutex<Option<mpsc::UnboundedSender<Item>>>,
     writer_pending: AtomicBool,
     issue_pending: AtomicBool,
@@ -123,6 +125,9 @@ impl SessionBackend for Backend {
         }
     }
     async fn subscribe(&mut self, _: &Arc<Shared>) -> Result<FakeStream, SessionFailure> {
+        if let Some(failure) = self.0.subscribe_failures.lock().unwrap().pop_front() {
+            return Err(failure);
+        }
         self.0.subscribes.fetch_add(1, Ordering::SeqCst);
         let (sender, receiver) = mpsc::unbounded_channel();
         *self.0.stream.lock().unwrap() = Some(sender);
@@ -630,14 +635,14 @@ async fn refused_secret_exits_pairing_required_and_settles_reads() {
         .issue_failures
         .lock()
         .unwrap()
-        .push_back(SessionFailure::AuthRequired);
+        .push_back(SessionFailure::NotPaired);
     let read = read_request();
     let context = read.context.clone();
     assert_eq!(f.mailbox.try_read(read), ReadAdmission::Accepted);
     let exit = runtime.run().await;
     assert_eq!(
         exit,
-        RuntimeExit::PairingRequired(SessionFailure::AuthRequired)
+        RuntimeExit::PairingRequired(SessionFailure::NotPaired)
     );
     let terminals = read_terminals(&f);
     assert_eq!(terminals.len(), 1);
@@ -667,6 +672,55 @@ async fn unpaired_reconnect_exits_pairing_required() {
         RuntimeExit::PairingRequired(SessionFailure::NotPaired)
     );
     assert_eq!(f.shared.issues.load(Ordering::SeqCst), 1);
+}
+
+/// Re-review LOW-2: only session creation's exact `401 auth_required`
+/// means re-pair. A 401/403 on the event subscription right after a
+/// successful create (daemon restart, revoke racing it) or any other create
+/// refusal fails the attempt and reconnects with backoff; on the initial
+/// connect, on reconnect and on the 12 h new-session fallback alike.
+#[tokio::test]
+async fn subscription_and_other_create_refusals_reconnect_instead_of_re_pairing() {
+    for (on_subscribe, failure) in [
+        (true, SessionFailure::AuthRequired),
+        (true, SessionFailure::Forbidden),
+        (false, SessionFailure::AuthRequired),
+        (false, SessionFailure::Forbidden),
+    ] {
+        let (runtime, f) = fixture();
+        let script = |f: &Fixture| {
+            let queue = if on_subscribe {
+                &f.shared.subscribe_failures
+            } else {
+                &f.shared.issue_failures
+            };
+            queue.lock().unwrap().push_back(failure);
+        };
+        // Initial connect.
+        script(&f);
+        let driver = async {
+            connect_and_install(&f, 1).await;
+            // Reconnect after a stream end.
+            script(&f);
+            f.shared.push(None);
+            connect_and_install(&f, 2).await;
+            // New-session fallback at the cap.
+            script(&f);
+            cap_next_renewal(&f);
+            f.clock.advance(85);
+            until("new session", || {
+                f.shared.subscribes.load(Ordering::SeqCst) == 3
+            })
+            .await;
+            f.control.shutdown();
+        };
+        let (exit, ()) = tokio::join!(runtime.run(), driver);
+        assert_eq!(
+            exit,
+            RuntimeExit::Shutdown,
+            "subscribe={on_subscribe} {failure:?}"
+        );
+    }
 }
 
 #[tokio::test]
