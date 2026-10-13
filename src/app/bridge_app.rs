@@ -15,7 +15,7 @@
 //!   write outcome); `x` dismisses a failed/uncertain write review.
 
 use super::{
-    bridge_glue::{Action as GlueAction, ActionOutcome, BridgeGlue, WriteRefusal},
+    bridge_glue::{Action as GlueAction, ActionOutcome, BridgeGlue, QuitMark, WriteRefusal},
     cache::room::RoomId,
     state::BridgeView,
     App,
@@ -55,7 +55,13 @@ impl App<'_> {
         };
         let anchor = selected_row_id(&self.state);
         glue.drain(&mut self.state, DRAIN_PER_TICK);
-        if let Some(room) = self.pending_leaves.front().cloned() {
+        // While quitting, queued leaves stay queued (reported as not sent).
+        if let Some(room) = self
+            .pending_leaves
+            .front()
+            .cloned()
+            .filter(|_| !self.quitting)
+        {
             match glue.leave_room(&room) {
                 Ok(()) => {
                     self.pending_leaves.pop_front();
@@ -154,6 +160,26 @@ impl App<'_> {
             glue.dismiss_review();
         }
         self.refresh_bridge_view();
+    }
+
+    /// Quit path step 1: note in-flight writes and request runtime shutdown.
+    /// The caller then joins the runtime (≤ 35 s), ticks once more, restores
+    /// the terminal and prints `quit_summary`.
+    pub(crate) fn begin_quit(&mut self) -> Option<QuitMark> {
+        self.quitting = true;
+        self.bridge.as_mut().map(BridgeGlue::begin_quit)
+    }
+
+    /// Metadata-only lines to print after the terminal is restored.
+    pub(crate) fn quit_summary(&self, mark: &QuitMark) -> Vec<String> {
+        let Some(glue) = self.bridge.as_ref() else {
+            return Vec::new();
+        };
+        let queued: Vec<RoomId> = self.pending_leaves.iter().cloned().collect();
+        glue.quit_summary(mark, &self.state, &queued)
+            .iter()
+            .map(ToString::to_string)
+            .collect()
     }
 
     fn refresh_bridge_view(&mut self) {

@@ -55,6 +55,8 @@ pub(crate) struct App<'a> {
     bridge: Option<bridge_glue::BridgeGlue>,
     /// Leaves waiting for the single bridge write slot.
     pending_leaves: std::collections::VecDeque<RoomId>,
+    /// Set by `begin_quit`: no further bridge writes are submitted.
+    quitting: bool,
 }
 
 impl App<'_> {
@@ -81,6 +83,7 @@ impl App<'_> {
             },
             bridge: None,
             pending_leaves: std::collections::VecDeque::new(),
+            quitting: false,
         }
     }
 

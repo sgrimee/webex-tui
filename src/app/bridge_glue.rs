@@ -55,6 +55,7 @@ use crate::{
             DraftSnapshot, DraftStamp, DraftTarget, EditorSubmission, SubmissionError,
             SubmissionTerminal,
         },
+        editor_write::EditorWriteStatus,
         envelopes::{
             FrontendIntent, FrontendResult, PageRequest, ReadOutcome, RequestContext, RequestId,
             RequestSequence, WriteOutcome,
@@ -899,3 +900,188 @@ fn read_value<T>(outcome: ReadOutcome<T>) -> Option<T> {
 
 #[cfg(test)]
 mod tests;
+
+/// Writes in flight when quitting began (`BridgeGlue::begin_quit`).
+pub(crate) struct QuitMark {
+    editor: Option<(RequestContext, DraftStamp)>,
+    action: Option<(RequestContext, Action)>,
+}
+
+/// The settled fate of one write or composition at quit. Printed after the
+/// terminal is restored; metadata only, never a body.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum QuitOutcome {
+    Confirmed,
+    NotSent,
+    Unknown,
+    DraftDiscarded,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct QuitLine {
+    /// "message", "reply", "edit", "delete", "leave" or "draft".
+    pub(crate) kind: &'static str,
+    /// Room title from the presentation cache, if known.
+    pub(crate) room: Option<String>,
+    pub(crate) outcome: QuitOutcome,
+}
+
+impl std::fmt::Display for QuitLine {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let room = match &self.room {
+            Some(title) => format!(" in \"{title}\""),
+            None => " in a room".into(),
+        };
+        let outcome = match self.outcome {
+            QuitOutcome::Confirmed => "confirmed",
+            QuitOutcome::NotSent => "not sent",
+            QuitOutcome::Unknown => "unknown (check the room before resending)",
+            QuitOutcome::DraftDiscarded => "draft discarded",
+        };
+        write!(f, "{}{room}: {outcome}", self.kind)
+    }
+}
+
+fn draft_kind(target: &DraftTarget) -> (&'static str, &data::RoomId) {
+    match target {
+        DraftTarget::Send { room_id } => ("message", room_id),
+        DraftTarget::Reply { room_id, .. } => ("reply", room_id),
+        DraftTarget::Edit { room_id, .. } => ("edit", room_id),
+    }
+}
+
+fn room_title(state: &AppState, room: &str) -> Option<String> {
+    state
+        .cache
+        .room_and_team_title(&room.to_owned())
+        .ok()
+        .map(|title| title.room_title)
+}
+
+fn review_outcome(status: EditorWriteStatus) -> QuitOutcome {
+    match status {
+        EditorWriteStatus::DeliveryUnknown | EditorWriteStatus::Pending => QuitOutcome::Unknown,
+        EditorWriteStatus::Ready => QuitOutcome::Confirmed,
+        EditorWriteStatus::Rejected
+        | EditorWriteStatus::Unavailable
+        | EditorWriteStatus::Cancelled => QuitOutcome::NotSent,
+    }
+}
+
+impl BridgeGlue {
+    /// Start quitting: remember what is in flight, then ask the runtime to
+    /// shut down (an attempted write may still finish, ≤ 30 s).
+    pub(crate) fn begin_quit(&mut self) -> QuitMark {
+        let mark = QuitMark {
+            editor: self
+                .ledger
+                .pending_context()
+                .cloned()
+                .zip(self.ledger.pending_stamp().cloned()),
+            action: self.action.clone(),
+        };
+        self.control.shutdown();
+        mark
+    }
+
+    /// One line per write that was in flight at quit, open review, queued
+    /// leave or unsent composition. Call after the runtime ended and a final
+    /// `drain`. A retained composition already reported by its write's line
+    /// is not repeated as a discarded draft.
+    pub(crate) fn quit_summary(
+        &self,
+        mark: &QuitMark,
+        state: &AppState,
+        queued_leaves: &[RoomId],
+    ) -> Vec<QuitLine> {
+        let mut lines = Vec::new();
+        let mut reported: Vec<&DraftStamp> = Vec::new();
+        let review = self.ledger.review();
+        if let Some((context, stamp)) = &mark.editor {
+            let outcome = if self.ledger.pending_context() == Some(context) {
+                QuitOutcome::Unknown
+            } else if let Some(review) = review.filter(|review| review.context == *context) {
+                review_outcome(review.status)
+            } else {
+                QuitOutcome::Confirmed
+            };
+            let (kind, room) = draft_kind(&stamp.target);
+            lines.push(QuitLine {
+                kind,
+                room: room_title(state, room.as_str()),
+                outcome,
+            });
+            reported.push(stamp);
+        }
+        if let Some(review) = review.filter(|review| {
+            mark.editor
+                .as_ref()
+                .is_none_or(|(context, _)| *context != review.context)
+        }) {
+            let (kind, room) = draft_kind(&review.draft.stamp.target);
+            lines.push(QuitLine {
+                kind,
+                room: room_title(state, room.as_str()),
+                outcome: review_outcome(review.status),
+            });
+            reported.push(&review.draft.stamp);
+        }
+        if let Some((context, action)) = &mark.action {
+            let outcome = match (&self.action, &self.last_action) {
+                (Some((pending, _)), _) if pending == context => QuitOutcome::Unknown,
+                (_, Some(ActionOutcome::Confirmed(done))) if done == action => {
+                    QuitOutcome::Confirmed
+                }
+                (_, Some(ActionOutcome::Rejected(done) | ActionOutcome::NotSent(done)))
+                    if done == action =>
+                {
+                    QuitOutcome::NotSent
+                }
+                _ => QuitOutcome::Unknown,
+            };
+            let (kind, room) = match action {
+                Action::DeleteMessage { room, .. } => ("delete", room),
+                Action::LeaveRoom(room) => ("leave", room),
+            };
+            lines.push(QuitLine {
+                kind,
+                room: room_title(state, room),
+                outcome,
+            });
+        }
+        for room in queued_leaves {
+            lines.push(QuitLine {
+                kind: "leave",
+                room: room_title(state, room),
+                outcome: QuitOutcome::NotSent,
+            });
+        }
+        if !state.message_editor.is_empty() {
+            let active = state
+                .rooms_list
+                .active_room_id()
+                .map(|id| data::RoomId::new(id.as_str()));
+            let current = state.message_editor.draft(active.as_ref());
+            let already = current.as_ref().is_some_and(|draft| {
+                reported
+                    .iter()
+                    .any(|stamp| stamp.same_composition(&draft.stamp))
+            });
+            if !already {
+                let (kind, room) = match &current {
+                    Some(draft) => {
+                        let (_, room) = draft_kind(&draft.stamp.target);
+                        ("draft", room_title(state, room.as_str()))
+                    }
+                    None => ("draft", None),
+                };
+                lines.push(QuitLine {
+                    kind,
+                    room,
+                    outcome: QuitOutcome::DraftDiscarded,
+                });
+            }
+        }
+        lines
+    }
+}

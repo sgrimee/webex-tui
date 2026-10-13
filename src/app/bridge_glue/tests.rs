@@ -1608,4 +1608,187 @@ mod app_routing {
         let (exit, ()) = tokio::join!(runtime.run(), driver);
         assert_eq!(exit, RuntimeExit::Shutdown);
     }
+
+    /// S4 quit path (LOW-5): one metadata-only line per write in flight at
+    /// quit, open review, queued leave or unsent composition.
+    mod quit_summary {
+        use super::*;
+
+        async fn wait_writes(shared: &Shared, count: usize) {
+            for _ in 0..2000 {
+                if shared.writes.load(Ordering::SeqCst) == count {
+                    return;
+                }
+                tokio::time::sleep(Duration::from_millis(1)).await;
+            }
+            panic!("write never attempted");
+        }
+
+        async fn submitted(h: &mut Harness, text: &str) {
+            h.app.state.message_editor.reset_with_text(text.into());
+            loop {
+                if h.app.send_message_buffer().is_ok() {
+                    return;
+                }
+                h.app.update_on_tick().await;
+                tokio::time::sleep(Duration::from_millis(1)).await;
+            }
+        }
+
+        #[tokio::test]
+        async fn a_write_confirmed_during_shutdown_is_reported_confirmed() {
+            let (runtime, glue, _control, shared) = fixture(None);
+            let mut h = harness(glue);
+            let mut mark = None;
+            let driver = async {
+                room_a_open(&mut h, &shared).await;
+                submitted(&mut h, "secret body").await;
+                // Attempted (not merely queued), its result not drained yet.
+                wait_writes(&shared, 1).await;
+                mark = h.app.begin_quit();
+            };
+            let (exit, ()) = tokio::join!(runtime.run(), driver);
+            assert_eq!(exit, RuntimeExit::Shutdown);
+            h.app.update_on_tick().await;
+            let lines = h.app.quit_summary(&mark.unwrap());
+            assert_eq!(lines, [format!("message in \"title {ROOM_A}\": confirmed")]);
+        }
+
+        #[tokio::test]
+        async fn a_write_lost_with_the_runtime_is_unknown_and_its_text_not_repeated() {
+            let (runtime, glue, _control, shared) = fixture(None);
+            let mut h = harness(glue);
+            let mut mark = None;
+            let driver = async {
+                room_a_open(&mut h, &shared).await;
+                shared
+                    .write_replies
+                    .lock()
+                    .unwrap()
+                    .push_back(WriteReply::Pending);
+                submitted(&mut h, "secret body").await;
+                for _ in 0..2000 {
+                    if shared.writes.load(Ordering::SeqCst) == 1 {
+                        break;
+                    }
+                    tokio::time::sleep(Duration::from_millis(1)).await;
+                }
+                mark = h.app.begin_quit();
+            };
+            // The join bound expires: the runtime task is dropped mid-write.
+            tokio::select! {
+                exit = runtime.run() => panic!("runtime exited early: {exit:?}"),
+                () = driver => {}
+            }
+            h.app.update_on_tick().await;
+            let lines = h.app.quit_summary(&mark.unwrap());
+            assert_eq!(
+                lines,
+                [format!(
+                    "message in \"title {ROOM_A}\": unknown (check the room before resending)"
+                )]
+            );
+            assert!(lines.iter().all(|line| !line.contains("secret body")));
+        }
+
+        #[tokio::test]
+        async fn open_reviews_queued_leaves_and_unsent_drafts_are_listed() {
+            let (runtime, glue, _control, shared) = fixture(None);
+            let mut h = harness(glue);
+            let mut mark = None;
+            let driver = async {
+                room_a_open(&mut h, &shared).await;
+                shared
+                    .write_replies
+                    .lock()
+                    .unwrap()
+                    .push_back(WriteReply::Rejected);
+                submitted(&mut h, "rejected body").await;
+                tick_until("rejected", &mut h, |app| {
+                    app.state.bridge.as_ref().is_some_and(|b| b.review_open)
+                })
+                .await;
+                // A newer composition and a queued leave that never ran.
+                h.app
+                    .state
+                    .message_editor
+                    .reset_with_text("newer body".into());
+                h.app.pending_leaves.push_back(ROOM_B.to_owned());
+                mark = h.app.begin_quit();
+            };
+            let (exit, ()) = tokio::join!(runtime.run(), driver);
+            assert_eq!(exit, RuntimeExit::Shutdown);
+            h.app.update_on_tick().await;
+            let lines = h.app.quit_summary(&mark.unwrap());
+            assert_eq!(
+                lines,
+                [
+                    format!("message in \"title {ROOM_A}\": not sent"),
+                    format!("leave in \"title {ROOM_B}\": not sent"),
+                    format!("draft in \"title {ROOM_A}\": draft discarded"),
+                ]
+            );
+            assert!(lines.iter().all(|line| !line.contains("body")));
+        }
+
+        #[tokio::test]
+        async fn a_retained_rejected_draft_is_not_also_reported_as_discarded() {
+            let (runtime, glue, _control, shared) = fixture(None);
+            let mut h = harness(glue);
+            let mut mark = None;
+            let driver = async {
+                room_a_open(&mut h, &shared).await;
+                shared
+                    .write_replies
+                    .lock()
+                    .unwrap()
+                    .push_back(WriteReply::Rejected);
+                submitted(&mut h, "kept").await;
+                tick_until("rejected", &mut h, |app| {
+                    app.state.bridge.as_ref().is_some_and(|b| b.review_open)
+                })
+                .await;
+                mark = h.app.begin_quit();
+            };
+            let (exit, ()) = tokio::join!(runtime.run(), driver);
+            assert_eq!(exit, RuntimeExit::Shutdown);
+            let lines = h.app.quit_summary(&mark.unwrap());
+            assert_eq!(lines, [format!("message in \"title {ROOM_A}\": not sent")]);
+        }
+
+        #[tokio::test]
+        async fn a_delete_confirmed_during_shutdown_is_reported() {
+            let (runtime, glue, _control, shared) = fixture(None);
+            let mut h = harness(glue);
+            let mut mark = None;
+            let driver = async {
+                room_a_open(&mut h, &shared).await;
+                select(&mut h, "a2");
+                loop {
+                    if h.app.delete_selected_message().is_ok() {
+                        break;
+                    }
+                    h.app.update_on_tick().await;
+                    tokio::time::sleep(Duration::from_millis(1)).await;
+                }
+                wait_writes(&shared, 1).await;
+                mark = h.app.begin_quit();
+            };
+            let (exit, ()) = tokio::join!(runtime.run(), driver);
+            assert_eq!(exit, RuntimeExit::Shutdown);
+            h.app.update_on_tick().await;
+            assert_eq!(
+                h.app.quit_summary(&mark.unwrap()),
+                [format!("delete in \"title {ROOM_A}\": confirmed")]
+            );
+        }
+
+        #[test]
+        fn nothing_to_report_without_a_bridge() {
+            let (low, _) = tokio::sync::mpsc::unbounded_channel();
+            let (high, _) = tokio::sync::mpsc::unbounded_channel();
+            let mut app = App::new(low, high, false, 10, crate::theme::Theme::default());
+            assert!(app.begin_quit().is_none());
+        }
+    }
 }

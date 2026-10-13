@@ -217,6 +217,11 @@ impl EditorSubmission {
             .map(|pending| &pending.request.context)
     }
 
+    /// Target and stamp of the in-flight submission (never its body).
+    pub(crate) fn pending_stamp(&self) -> Option<&DraftStamp> {
+        self.pending.as_ref().map(|pending| &pending.draft.stamp)
+    }
+
     pub(crate) fn review(&self) -> Option<&ReviewSnapshot> {
         self.review.as_ref()
     }
