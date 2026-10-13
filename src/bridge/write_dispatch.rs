@@ -1,4 +1,5 @@
-//! Private, unconnected paired-UI send capability.
+//! Private paired-UI write capability (send, edit, delete, leave), used
+//! only by the session owner inside the runtime's command worker.
 use super::{
     projection::{project_edited_write_message, project_sent_write_message, write_failure},
     session::{session_auth_failure, SessionFailure},
@@ -559,7 +560,6 @@ mod tests {
         };
         let intents = vec![
             FrontendIntent::Initialize,
-            FrontendIntent::ListAllRooms,
             FrontendIntent::ListAllRooms,
             FrontendIntent::UpdateRoom(RoomId::new("r")),
             FrontendIntent::UpdateTeam(TeamId::new("t")),

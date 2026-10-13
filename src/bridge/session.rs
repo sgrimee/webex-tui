@@ -1,7 +1,8 @@
-//! Unconnected UI session/lease/SSE-control owner with injectable IO and clock.
+//! UI session/lease/SSE-control owner with injectable IO and clock, driven by
+//! the runtime through the controller and command worker.
 //!
 //! The real backend owns UiClient (and its private bearer token) and EventStream.
-//! Nothing starts automatically. The caller supplies a paired secret for each
+//! Nothing starts on its own. The caller supplies a paired secret for each
 //! explicit connect or new-session renewal; this owner never stores it, pairs
 //! or accesses Keychain. In-place renewal (`renew_in_place_if_due`) needs no
 //! secret: it extends the same token's lease and keeps the stream open.

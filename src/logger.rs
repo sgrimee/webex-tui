@@ -55,6 +55,7 @@ pub(crate) fn crate_modules() -> &'static [&'static str] {
         "webex_tui::app::state",
         "webex_tui::app",
         "webex_tui::bridge::runtime",
+        "webex_tui::bridge::session",
         "webex_tui::config",
         "webex_tui::frontend::models",
         "webex_tui::inputs::handler",
@@ -77,6 +78,50 @@ mod tests {
                 || src.join(format!("{path}.rs")).is_file()
                 || src.join(path).join("mod.rs").is_file();
             assert!(exists, "{module} has no source file");
+        }
+    }
+
+    /// Reverse check: every source file that logs is listed (else its
+    /// level is not set from --debug/--trace and --list-modules omits it).
+    #[test]
+    fn every_logging_module_is_listed() {
+        fn visit(dir: &std::path::Path, src: &std::path::Path, out: &mut Vec<String>) {
+            for entry in std::fs::read_dir(dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    visit(&path, src, out);
+                    continue;
+                }
+                let name = path.file_name().unwrap().to_string_lossy();
+                if !name.ends_with(".rs") || name == "tests.rs" {
+                    continue;
+                }
+                let text = std::fs::read_to_string(&path).unwrap();
+                // Production code only: stop at the test module.
+                let code = text.split("#[cfg(test)]").next().unwrap_or_default();
+                let logs = ["debug!(", "info!(", "warn!(", "error!(", "trace!("]
+                    .iter()
+                    .any(|m| code.contains(m));
+                if !logs {
+                    continue;
+                }
+                let rel = path.strip_prefix(src).unwrap().with_extension("");
+                let rel = rel.to_string_lossy().replace('/', "::");
+                let module = match rel.trim_end_matches("::mod") {
+                    "main" => "webex_tui".to_owned(),
+                    rel => format!("webex_tui::{rel}"),
+                };
+                out.push(module);
+            }
+        }
+        let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut logging = Vec::new();
+        visit(&src, &src, &mut logging);
+        for module in logging {
+            assert!(
+                super::crate_modules().contains(&module.as_str()),
+                "{module} logs but is not in crate_modules()"
+            );
         }
     }
 }

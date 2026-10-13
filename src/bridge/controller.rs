@@ -1,7 +1,8 @@
-//! Unconnected host/controller interface over session and neutral view projection.
+//! Host/controller interface over the session and the neutral view projection,
+//! owned by the runtime's command worker.
 //!
-//! Calls are explicit: no task/poll loop, startup, pairing, terminal, App/Teams
-//! mutation or user-write method is installed. The view host receives neutral
+//! Calls are explicit: no task/poll loop, startup, pairing, terminal or App
+//! mutation lives here. The view host receives neutral
 //! refresh hints, never a client/token/secret, and owns its selected-room/cache UI.
 
 use super::{

@@ -648,7 +648,7 @@ impl Drop for Reservation {
 }
 
 /// Envelope-level dispatch; reducer-free, capability-private, at most one gate
-/// invocation. The existing coordinator/ledger remain untouched. Only this
+/// invocation. The App-side ledger is never touched here. Only this
 /// documented pre-I/O error channel can prove NotDispatched after gate polling.
 async fn dispatch_envelope<B: SessionBackend, C: SessionClock, H: PresentationHost>(
     controller: &mut HostController<B, C, H>,

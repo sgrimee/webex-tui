@@ -1,9 +1,8 @@
 //! Explicit, non-UI bootstrap for the paired local bridge session.
 //!
 //! This module owns no terminal prompt, App state or background work. Its
-//! Keychain adapter remains injectable and unconnected: callers explicitly
-//! construct it and inject it with a random source and local bridge pairing
-//! backend. The secret is kept only in this orchestration call, is never
+//! Keychain adapter is injectable: `startup::macos_deps` constructs it and
+//! injects it with a random source and the local bridge pairing backend. The secret is kept only in this orchestration call, is never
 //! exposed through [`PairingState`], and is borrowed directly by
 //! [`SessionLifecycle`] when opening the session.
 
@@ -151,8 +150,7 @@ pub(crate) trait PairingBackend: Send {
 }
 
 /// Concrete protected-UDS pairing adapter. It creates no sessions and does not
-/// retain a secret; Keychain/random wiring remains intentionally unconnected
-/// from startup and presentation code.
+/// retain a secret; Keychain and random sources are injected separately.
 pub(crate) struct BridgePairingBackend {
     bridge: BridgeClient,
 }
@@ -188,7 +186,7 @@ impl PairingBackend for BridgePairingBackend {
     }
 }
 
-/// Secret-free state observable by a future non-terminal coordinator.
+/// Secret-free bootstrap state (startup reads it to name a pairing timeout).
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum PairingState {
     Idle,

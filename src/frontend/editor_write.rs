@@ -1,6 +1,6 @@
 //! Pure, backend-neutral editor write state.
 //!
-//! This is intentionally unconnected: it allocates/correlates envelopes but
+//! It allocates/correlates envelopes (used by the submission ledger) but
 //! neither dispatches them nor retries a rejected or uncertain write. Body
 //! values never implement `Debug` and this module performs no logging.
 
