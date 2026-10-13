@@ -13,6 +13,13 @@ This project tries to follow semantic versioning.
 - **Batch operations**: Implement batch leave via LeaveRoom command for selected rooms
 - **Native text selection**: Enable native terminal text selection and clipboard copy by disabling mouse capture
 
+### Changes
+
+- **Editing Markdown messages**: editing a message that has a Markdown form now
+  pre-fills the editor with its Markdown source and sends the edit as Markdown
+  (previously the rendered plain text was pre-filled and sent as plain text,
+  dropping formatting). Plain-text messages are still edited as plain text.
+
 ## [0.7.6] - 2025-10-06
 
 ### Features
