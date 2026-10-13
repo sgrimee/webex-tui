@@ -73,6 +73,8 @@ enum Purpose {
     Rooms,
     Room(RoomId),
     Person(String),
+    /// Team-name decoration for rooms in a team.
+    Team(String),
     NewestPage {
         room: RoomId,
         generation: u64,
@@ -577,8 +579,25 @@ impl BridgeGlue {
         for snapshot in rooms {
             if let Ok(room) = Room::from_bridge_snapshot(snapshot) {
                 state.cache.rooms.update_with_room(&room);
+                self.request_team(state, &room);
             }
         }
+    }
+
+    /// Fetch a room's team name once (legacy parity: team-name decoration).
+    /// An inaccessible team stays requested, so the room shows its own title.
+    fn request_team(&mut self, state: &mut AppState, room: &Room) {
+        let Some(team) = room.team_id.clone() else {
+            return;
+        };
+        if state.cache.teams.exists_or_requested(&team) {
+            return;
+        }
+        state.cache.teams.add_requested(team.clone());
+        self.request(
+            FrontendIntent::UpdateTeam(data::TeamId::new(team.as_str())),
+            Purpose::Team(team),
+        );
     }
 
     fn apply_effects(&mut self, state: &mut AppState, effects: ProjectionEffects) {
@@ -744,12 +763,18 @@ impl BridgeGlue {
                 if let Some(snapshot) = read_value(outcome) {
                     if let Ok(room) = Room::from_bridge_snapshot(&snapshot) {
                         state.cache.rooms.update_with_room(&room);
+                        self.request_team(state, &room);
                     }
                 }
             }
             (Purpose::Person(_), FrontendResult::UpdatePerson(outcome)) => {
                 if let Some(person) = read_value(outcome) {
                     state.cache.persons.insert(person);
+                }
+            }
+            (Purpose::Team(_), FrontendResult::UpdateTeam(outcome)) => {
+                if let Some(team) = read_value(outcome) {
+                    state.cache.teams.add(team);
                 }
             }
             (

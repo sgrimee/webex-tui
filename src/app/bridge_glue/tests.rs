@@ -69,6 +69,7 @@ struct Shared {
     page_reads: AtomicUsize,
     message_reads: AtomicUsize,
     person_reads: AtomicUsize,
+    team_reads: AtomicUsize,
     pages_pending: AtomicBool,
     watermark: AtomicU64,
     stream: Mutex<Option<mpsc::UnboundedSender<Item>>>,
@@ -118,8 +119,12 @@ impl UiReadBackend for Reader {
     async fn room(&self, id: &str) -> Reply<dto::Room> {
         Ok(room(id))
     }
-    async fn team(&self, _: &str) -> Reply<dto::Team> {
-        unreachable!("no teams in fixtures")
+    async fn team(&self, id: &str) -> Reply<dto::Team> {
+        self.0.team_reads.fetch_add(1, Ordering::SeqCst);
+        Ok(dto::Team {
+            id: id.into(),
+            name: Some(format!("team {id}")),
+        })
     }
     async fn person_read(&self, id: &str) -> Reply<dto::PersonRead> {
         self.0.person_reads.fetch_add(1, Ordering::SeqCst);
@@ -457,6 +462,50 @@ async fn snapshot_installs_identity_and_rooms_then_open_room_loads_its_page() {
         glue.open_room(&mut state, &ROOM_A.to_owned());
         glue.drain(&mut state, usize::MAX);
         assert_eq!(shared.page_reads.load(Ordering::SeqCst), 1);
+        control.shutdown();
+    };
+    let (exit, ()) = tokio::join!(runtime.run(), driver);
+    assert_eq!(exit, RuntimeExit::Shutdown);
+}
+
+#[tokio::test]
+async fn team_names_are_fetched_once_per_team_and_decorate_room_titles() {
+    let (runtime, mut glue, control, shared) = fixture(None);
+    {
+        let mut rooms = shared.rooms.lock().unwrap();
+        for room in rooms.iter_mut() {
+            room.team_id = Some("team-1".into());
+        }
+        // The team's General room carries the team's own name.
+        let mut general = room("general");
+        general.team_id = Some("team-1".into());
+        general.title = Some("team team-1".into());
+        rooms.push(general);
+    }
+    let mut state = AppState::default();
+    let driver = async {
+        wait_subscribed(&shared, 1).await;
+        ready(&mut glue, &mut state, &shared).await;
+        settle("team", &mut glue, &mut state, |_, state| {
+            state
+                .cache
+                .room_and_team_title(&ROOM_A.to_owned())
+                .is_ok_and(|title| title.team_name.is_some())
+        })
+        .await;
+        let title = state.cache.room_and_team_title(&ROOM_A.to_owned()).unwrap();
+        assert_eq!(title.team_name.as_deref(), Some("team team-1"));
+        assert_eq!(title.room_title, format!("title {ROOM_A}"));
+        let general = state.cache.room_and_team_title(&"general".into()).unwrap();
+        assert_eq!(general.room_title, "General");
+        // Three rooms, one team: one read, and a later room refresh does not
+        // re-request it.
+        glue.request(FrontendIntent::ListAllRooms, Purpose::Rooms);
+        settle("rooms refresh", &mut glue, &mut state, |glue, _| {
+            glue.outstanding_reads() == 0
+        })
+        .await;
+        assert_eq!(shared.team_reads.load(Ordering::SeqCst), 1);
         control.shutdown();
     };
     let (exit, ()) = tokio::join!(runtime.run(), driver);
