@@ -54,6 +54,9 @@
               rust-analyzer
               toolchain
             ]
+            # darwin.apple_sdk.frameworks is deprecated in recent nixpkgs (the
+            # default SDK already provides these); kept until the pinned
+            # nixpkgs drops it, then remove this list.
             ++ lib.optionals pkgs.stdenv.isDarwin [
               pkgs.darwin.apple_sdk.frameworks.CoreServices
               pkgs.darwin.apple_sdk.frameworks.Security
