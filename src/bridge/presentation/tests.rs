@@ -895,4 +895,39 @@ mod reads {
         );
         assert_eq!(f.mailbox.try_read(room_read("more-3")), ReadAdmission::Full);
     }
+
+    #[tokio::test]
+    async fn dropping_the_worker_settles_queued_and_interrupted_reads() {
+        let mut f = fixture();
+        active(&mut f).await;
+        f.reader.pending.store(true, Ordering::SeqCst);
+        let inflight = rooms();
+        let inflight_context = inflight.context.clone();
+        assert_eq!(f.mailbox.try_read(inflight), ReadAdmission::Accepted);
+        {
+            let mut handle = Box::pin(f.worker.handle_read());
+            assert!(poll_once(handle.as_mut()).is_pending());
+        }
+        let queued = room_read("queued");
+        let queued_context = queued.context.clone();
+        assert_eq!(f.mailbox.try_read(queued), ReadAdmission::Accepted);
+        let Fixture {
+            mailbox,
+            worker,
+            endpoint,
+            ..
+        } = f;
+        drop(worker);
+        assert!(endpoint.is_closed());
+        let terminals = reads_of(endpoint.drain(usize::MAX));
+        assert_eq!(terminals.len(), 2);
+        assert_eq!(terminals[0].context(), &inflight_context);
+        assert_eq!(
+            unavailable(&terminals[0]),
+            Some(ReadUnavailable::Interrupted)
+        );
+        assert_eq!(terminals[1].context(), &queued_context);
+        assert_eq!(unavailable(&terminals[1]), Some(ReadUnavailable::Shutdown));
+        assert_eq!(mailbox.try_read(room_read("late")), ReadAdmission::Closed);
+    }
 }

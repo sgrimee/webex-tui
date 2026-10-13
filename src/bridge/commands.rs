@@ -505,7 +505,12 @@ impl<B: SessionBackend, C: SessionClock, H: PresentationHost> CommandWorker<B, C
     /// overwritten, and the frontend may still drain after shutdown/worker drop.
     pub(crate) fn shutdown(&mut self) {
         close(&self.shared);
-        // Reads: settle an interrupted dispatch, then every unstarted read.
+        self.settle_reads();
+    }
+
+    /// Reads: settle an interrupted dispatch, then every unstarted read, so
+    /// each admitted read still gets exactly one terminal. Idempotent.
+    fn settle_reads(&mut self) {
         self.settle_interrupted_read();
         let unstarted: Vec<_> = lock(&self.shared).reads.drain(..).collect();
         for request in unstarted {
@@ -520,8 +525,11 @@ impl<B: SessionBackend, C: SessionClock, H: PresentationHost> CommandWorker<B, C
 }
 
 impl<B: SessionBackend, C: SessionClock, H: PresentationHost> Drop for CommandWorker<B, C, H> {
+    /// Worker loss still settles every admitted read through the host before
+    /// the host (and its pump) closes, so the App never waits for a lost one.
     fn drop(&mut self) {
         close(&self.shared);
+        self.settle_reads();
     }
 }
 
