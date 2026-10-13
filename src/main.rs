@@ -2,56 +2,43 @@
 
 mod app;
 mod banner;
-// Compile-only migration adapter; startup still uses the legacy Teams backend.
+// Parts of the bridge boundary stay unused until the 5E legacy removal.
 #[allow(dead_code)]
 mod bridge;
 mod config;
 mod frontend;
+mod host;
 mod inputs;
 mod logger;
+// Legacy direct-Webex backend: no longer started (S4); removed in 5E.
+#[allow(dead_code)]
 mod teams;
 mod theme;
 mod tui;
 mod ui;
 
-use crate::app::Priority;
 use crate::logger::setup_logger;
 use app::{App, AppReturn};
 use banner::BANNER;
 use clap::{arg, command, value_parser};
 use clap::{Arg, ArgAction};
-use config::{ClientConfig, UserConfig};
-
-const DEFAULT_PORT: u16 = 8080;
+use config::UserConfig;
 use inputs::handler::Event;
 use log::LevelFilter;
 use std::path::PathBuf;
-use teams::app_handler::AppCmdEvent;
-use teams::auth::get_integration_token;
-use teams::token_cache::load_token_cache;
-use teams::ClientCredentials;
-use teams::Teams;
+use std::process::ExitCode;
 use theme::load_theme;
-use tui::Tui;
 
 use color_eyre::eyre::Result;
-use std::sync::Arc;
-
-/// Retrieve config from config file, interactively guiding the user
-/// to create a Webex integration if needed.
-fn get_config() -> Result<ClientConfig> {
-    let mut client_config = ClientConfig::new();
-    client_config.load_config()?;
-    Ok(client_config)
-}
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<ExitCode> {
     // Parse command line arguments
     let matches = command!()
         .before_help(BANNER)
         .after_help(
-            "Your webex Client ID and Client Secret are stored in $HOME/.config/webex-tui/client.yml",
+            "webex-tui is a client of the webex-bridge daemon, which owns the Webex connection.\n\
+             Install it with `webex-bridge install-service`; webex-tui pairs with it once (approve the dialog).",
         )
         .arg(
             arg!(-d --debug ... "Set default log level to debug")
@@ -89,7 +76,7 @@ async fn main() -> Result<()> {
         for module in logger::crate_modules().iter() {
             println!("  {module}");
         }
-        return Ok(());
+        return Ok(ExitCode::SUCCESS);
     }
 
     // Setup logging.
@@ -110,100 +97,117 @@ async fn main() -> Result<()> {
     println!("{BANNER}");
     println!("Starting webex-tui, version {}.", env!("CARGO_PKG_VERSION"));
 
-    // Read configurations
-    let client_config = get_config()?;
     let user_config = UserConfig::load();
-
-    // Get port from client config (for OAuth redirect)
-    let port = client_config.port.unwrap_or(DEFAULT_PORT);
-
-    let credentials = ClientCredentials {
-        client_id: client_config.client_id,
-        client_secret: client_config.client_secret,
-    };
-
-    // Load theme from user config
     let theme = load_theme(&user_config.theme);
-
-    // Start authentication (cached or browser-based)
-    println!("Authenticating to Webex...");
-    let token = match get_integration_token(credentials, port).await {
-        Ok(token) => token,
-        Err(e) => {
-            eprintln!("Authentication failed: {e}");
-            eprintln!("If you see scope errors, your integration may be configured with different scopes.");
-            eprintln!("Trying to continue anyway - some features may not work.");
-            // Try to load cached token as fallback
-            match load_token_cache() {
-                Ok(cache) => {
-                    eprintln!("Using cached token...");
-                    cache.to_access_token()
-                }
-                Err(_) => {
-                    eprintln!("No cached token available. Cannot continue.");
-                    return Err(e);
-                }
-            }
-        }
-    };
-
-    // Initialize the terminal user interface with events thread
-    let mut tui = Tui::default()?;
-    tui.init()?;
-
-    // Setup App and Teams thread
-    let (app_to_teams_tx_lowpri, app_to_teams_rx_lowpri) =
-        tokio::sync::mpsc::unbounded_channel::<AppCmdEvent>();
-    let (app_to_teams_tx_highpri, app_to_teams_rx_highpri) =
-        tokio::sync::mpsc::unbounded_channel::<AppCmdEvent>();
     // CLI args override config values
     let debug = matches.get_flag("debug") || user_config.debug;
     let messages_to_load = *matches
         .get_one("messages")
         .unwrap_or(&user_config.messages_to_load);
 
-    let app = Arc::new(tokio::sync::Mutex::new(App::new(
-        app_to_teams_tx_lowpri.clone(),
-        app_to_teams_tx_highpri.clone(),
-        debug,
-        messages_to_load,
-        theme,
-    )));
-    let app_ui = Arc::clone(&app);
-    tokio::spawn(async move {
-        let mut teams = Teams::new(token, app).await;
-        teams
-            .handle_events(app_to_teams_rx_lowpri, app_to_teams_rx_highpri)
-            .await;
-    });
+    run(debug, messages_to_load, theme).await
+}
 
-    {
-        let app = app_ui.lock().await;
-        app.dispatch_to_teams(AppCmdEvent::Initialize(), &Priority::High);
+#[cfg(not(target_os = "macos"))]
+async fn run(_debug: bool, _messages_to_load: u32, _theme: theme::Theme) -> Result<ExitCode> {
+    eprintln!("webex-tui needs the webex-bridge daemon, which is only supported on macOS.");
+    Ok(ExitCode::FAILURE)
+}
+
+/// Bridge-backed session (§7.3 S4): startup before raw mode, the runtime on
+/// its own task, a drain every tick, a bounded quit join and a metadata-only
+/// summary after the terminal is restored.
+#[cfg(target_os = "macos")]
+async fn run(debug: bool, messages_to_load: u32, theme: theme::Theme) -> Result<ExitCode> {
+    use bridge::startup;
+
+    // Pre-terminal startup: socket, status, session-first pairing.
+    let deps = match startup::macos_deps(messages_to_load) {
+        Ok(deps) => deps,
+        Err(error) => return Ok(startup_failed(&error)),
+    };
+    println!("Connecting to webex-bridge (if a pairing dialog appears, approve it)...");
+    let started = match startup::start(deps).await {
+        Ok(started) => started,
+        Err(error) => return Ok(startup_failed(&error)),
+    };
+    for notice in &started.notices {
+        println!("{}", notice.message());
+        log::info!("{}", notice.message());
     }
 
-    loop {
-        // Render
-        {
-            let mut app = app_ui.lock().await;
-            tui.draw(&mut app)?;
-        }
+    // The legacy Teams channels exist only because App still owns them;
+    // nothing listens, and with a bridge attached nothing sends.
+    let (teams_low, _) = tokio::sync::mpsc::unbounded_channel();
+    let (teams_high, _) = tokio::sync::mpsc::unbounded_channel();
+    let mut app = App::new(teams_low, teams_high, debug, messages_to_load, theme);
+    app.attach_bridge(started.glue);
+    let mut runtime = tokio::spawn(started.runtime.run());
 
-        // Handle terminal inputs
-        let event = tui.events.next().await;
-        {
-            let mut app = app_ui.lock().await;
-            let result = match event {
-                Event::Input(key_event) => app.process_key_event(key_event).await,
-                Event::Tick => app.update_on_tick().await,
-            };
-            if result == AppReturn::Exit {
-                tui.events.close();
-                break;
+    let mut tui = tui::Tui::default()?;
+    tui.init()?;
+
+    // Render loop; ends on a quit key or when the runtime itself exits.
+    let mut ended: Option<host::Joined> = None;
+    let loop_result: Result<()> = async {
+        loop {
+            tui.draw(&mut app)?;
+            tokio::select! {
+                event = tui.events.next() => {
+                    let result = match event {
+                        Event::Input(key_event) => app.process_key_event(key_event).await,
+                        Event::Tick => app.update_on_tick().await,
+                    };
+                    if result == AppReturn::Exit {
+                        return Ok(());
+                    }
+                }
+                joined = &mut runtime => {
+                    ended = Some(host::Joined::from_join(joined));
+                    return Ok(());
+                }
             }
         }
     }
+    .await;
 
+    // Quit (§7.2 f): note in-flight writes, request shutdown, then join
+    // (≤ 35 s) while still draining and redrawing ("finishing write…").
+    let mark = app.begin_quit();
+    let joined = match ended {
+        Some(joined) => joined,
+        None => {
+            host::join_bounded(&mut runtime, host::QUIT_JOIN_BOUND, host::QUIT_TICK, || {
+                app.quit_tick();
+                if let Err(error) = tui.draw(&mut app) {
+                    log::warn!("redraw while quitting failed: {error}");
+                }
+            })
+            .await
+        }
+    };
+    app.quit_tick();
+    tui.events.close();
     tui.exit()?;
-    Ok(())
+    loop_result?;
+
+    if let Some(message) = joined.message() {
+        eprintln!("{message}");
+    }
+    if let Some(mark) = mark {
+        for line in app.quit_summary(&mark) {
+            println!("{line}");
+        }
+    }
+    Ok(if joined.is_clean() {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    })
+}
+
+#[cfg(target_os = "macos")]
+fn startup_failed(error: &bridge::startup::StartupError) -> ExitCode {
+    eprintln!("{}", error.message());
+    ExitCode::FAILURE
 }

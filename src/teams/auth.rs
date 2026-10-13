@@ -5,7 +5,7 @@
 //! Inspired by `https://github.com/Nabushika/webexterm`
 
 use super::token_cache::{clear_token_cache, load_token_cache, save_token_cache, TokenCache};
-use crate::ClientCredentials;
+use crate::teams::ClientCredentials;
 use color_eyre::eyre::{eyre, Result};
 use log::*;
 use oauth2::basic::BasicClient;

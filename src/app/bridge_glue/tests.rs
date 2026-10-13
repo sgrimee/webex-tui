@@ -1646,10 +1646,15 @@ mod app_routing {
                 // Attempted (not merely queued), its result not drained yet.
                 wait_writes(&shared, 1).await;
                 mark = h.app.begin_quit();
+                let line = &h.app.state.bridge.as_ref().unwrap().line;
+                assert!(line.starts_with("quitting: finishing write"), "{line}");
             };
             let (exit, ()) = tokio::join!(runtime.run(), driver);
             assert_eq!(exit, RuntimeExit::Shutdown);
-            h.app.update_on_tick().await;
+            h.app.quit_tick();
+            let line = &h.app.state.bridge.as_ref().unwrap().line;
+            assert!(line.starts_with("quitting…"), "{line}");
+            assert!(!line.contains("finishing write"), "{line}");
             let lines = h.app.quit_summary(&mark.unwrap());
             assert_eq!(lines, [format!("message in \"title {ROOM_A}\": confirmed")]);
         }

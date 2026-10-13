@@ -1,6 +1,6 @@
-//! Dormant pre-terminal startup for the bridge-backed TUI (cutover step S2).
+//! Pre-terminal startup for the bridge-backed TUI (cutover step S2).
 //!
-//! Not called from `main`. Runs before raw terminal mode and either returns an
+//! Called from `main` (S4) before raw terminal mode. It either returns an
 //! assembled, not-yet-running bridge stack or a typed [`StartupError`] whose
 //! [`StartupError::message`] is printed to the user. In order:
 //!
@@ -489,7 +489,7 @@ pub(crate) fn exit_message(exit: super::runtime::RuntimeExit) -> Option<String> 
 
 /// The production dependency set (macOS Keychain, protected UDS, system
 /// clock). Building it opens no Keychain item and contacts no daemon; only
-/// `start` does, and nothing calls it until the consented `main` switch.
+/// `start` does.
 #[cfg(target_os = "macos")]
 pub(crate) type MacosStartupDeps = StartupDeps<
     FsSocketProbe,

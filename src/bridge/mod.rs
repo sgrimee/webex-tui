@@ -1,9 +1,9 @@
-//! Unconnected bridge/client boundary for the staged TUI migration.
+//! Bridge/client boundary of the TUI.
 //!
 //! Projection functions are pure. The session abstraction performs local UI
-//! session IO only when explicitly called; no startup/task is installed here,
-//! and pairing/Keychain/Teams remain untouched. Only this boundary imports
-//! bridge DTOs and projects the still-live legacy transport into frontend values.
+//! session IO only when explicitly called; `main` runs `startup` and spawns
+//! the runtime (S4). Only this boundary imports bridge DTOs; `legacy` still
+//! projects the old Teams transport until the 5E removal.
 
 pub(crate) mod commands;
 pub(crate) mod controller;

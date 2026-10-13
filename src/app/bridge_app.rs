@@ -1,8 +1,7 @@
-//! Dormant App routing to the bridge glue (cutover step S3).
+//! App routing to the bridge glue (cutover step S3).
 //!
-//! `main` never attaches a glue, so the legacy Teams paths stay in use until
-//! the consented startup switch (S4). With a glue attached, every Webex read
-//! and write goes through it instead of `dispatch_to_teams`:
+//! `main` attaches the glue at startup (S4). With a glue attached, every
+//! Webex read and write goes through it instead of `dispatch_to_teams`:
 //! - send/reply/edit submit the editor's explicit `DraftSnapshot`; the editor
 //!   is cleared only by a confirmed success of that exact composition;
 //! - delete and leave are explicit single-slot actions; a multi-room leave is
@@ -167,7 +166,14 @@ impl App<'_> {
     /// the terminal and prints `quit_summary`.
     pub(crate) fn begin_quit(&mut self) -> Option<QuitMark> {
         self.quitting = true;
-        self.bridge.as_mut().map(BridgeGlue::begin_quit)
+        let mark = self.bridge.as_mut().map(BridgeGlue::begin_quit);
+        self.refresh_bridge_view();
+        mark
+    }
+
+    /// Drain and refresh while quitting (no other App tick work).
+    pub(crate) fn quit_tick(&mut self) {
+        self.bridge_tick();
     }
 
     /// Metadata-only lines to print after the terminal is restored.
@@ -187,7 +193,7 @@ impl App<'_> {
             return;
         };
         let view = BridgeView {
-            line: status_line(glue, self.pending_leaves.len()),
+            line: status_line(glue, self.pending_leaves.len(), self.quitting),
             review_open: glue.editor().review().is_some(),
         };
         if self.state.bridge.as_ref() != Some(&view) {
@@ -239,9 +245,16 @@ fn refusal_text(refusal: WriteRefusal) -> &'static str {
 }
 
 /// One line, metadata only: never a body, name or ID.
-pub(crate) fn status_line(glue: &BridgeGlue, queued_leaves: usize) -> String {
+pub(crate) fn status_line(glue: &BridgeGlue, queued_leaves: usize, quitting: bool) -> String {
     let status = glue.status();
     let mut parts: Vec<String> = Vec::new();
+    if quitting {
+        parts.push(if glue.write_in_flight() {
+            "quitting: finishing write… (up to 35 s)".into()
+        } else {
+            "quitting…".into()
+        });
+    }
     if status.closed {
         parts.push("bridge disconnected: showing stale data, writes unavailable".into());
     } else {

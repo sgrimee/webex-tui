@@ -11,7 +11,11 @@ use std::{
     path::{Path, PathBuf},
 };
 
+// Legacy OAuth credential half (`ClientConfig`): no longer read since the
+// bridge cutover (S4); removed in 5E (E3).
+#[allow(dead_code)]
 const DEFAULT_PORT: u16 = 8080;
+#[allow(dead_code)]
 const FILE_NAME: &str = "client.yml";
 const USER_FILE_NAME: &str = "config.yml";
 const CONFIG_DIR: &str = ".config";
@@ -58,11 +62,13 @@ impl Default for UserConfig {
     }
 }
 
+#[allow(dead_code)]
 struct ConfigPaths {
     pub(crate) config_file_path: PathBuf,
     // pub(crate) token_cache_path: PathBuf,
 }
 
+#[allow(dead_code)]
 impl ClientConfig {
     pub(crate) fn new() -> ClientConfig {
         ClientConfig {

@@ -70,7 +70,7 @@ impl Tui {
     /// Draws the terminal interface by [`rendering`] the widgets.
     ///
     /// [`rendering`]: render
-    pub(crate) fn draw(&mut self, app: &mut tokio::sync::MutexGuard<App>) -> Result<()> {
+    pub(crate) fn draw(&mut self, app: &mut App<'_>) -> Result<()> {
         self.terminal.draw(|rect| render(rect, &mut app.state))?;
         Ok(())
     }

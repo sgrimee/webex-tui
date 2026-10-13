@@ -3,10 +3,10 @@
 //! Controller used to handle user input and interaction with the `Teams` thread.
 
 pub(crate) mod actions;
-// Dormant until the consented startup switch (S4); fake-tested.
+// Attached by `main` since the S4 startup switch; some helpers are test-only
+// or unused until the 5E legacy removal.
 #[allow(dead_code)]
 mod bridge_app;
-// Dormant until the approved startup slice; exercised by fake-backed tests.
 #[allow(dead_code)]
 pub(crate) mod bridge_glue;
 pub(crate) mod cache;

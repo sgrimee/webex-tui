@@ -241,6 +241,11 @@ impl BridgeGlue {
         self.last_action.as_ref()
     }
 
+    /// An editor write or delete/leave is admitted and not yet settled.
+    pub(crate) fn write_in_flight(&self) -> bool {
+        self.action.is_some() || self.ledger.pending_context().is_some()
+    }
+
     /// Submit the editor's current composition. On refusal nothing was sent
     /// and the caller keeps its draft; an allocated request ID is not reused.
     pub(crate) fn submit_draft(
