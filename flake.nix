@@ -38,8 +38,8 @@
       in {
         devShell = pkgs.mkShell {
           # build environment
+          # No OpenSSL: webex-tui only talks to the local webex-bridge socket.
           nativeBuildInputs = with pkgs; [
-            openssl.dev
             pkg-config
             toolchain
           ];
@@ -57,7 +57,6 @@
             ++ lib.optionals pkgs.stdenv.isDarwin [
               pkgs.darwin.apple_sdk.frameworks.CoreServices
               pkgs.darwin.apple_sdk.frameworks.Security
-              pkgs.darwin.apple_sdk.frameworks.SystemConfiguration
               pkgs.libiconv
             ];
         };

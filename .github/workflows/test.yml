@@ -5,48 +5,55 @@ on: [push, pull_request]
 env:
   CARGO_TERM_COLOR: always
 
+# webex-tui depends on webex-bridge (client feature). During local development
+# that is a path dependency on the sibling checkout; CI builds once it is
+# switched to the git dependency at push time (see the workspace AGENTS.md).
+# Tests run on macOS: the pairing secret store is the macOS Keychain.
+
 jobs:
   check:
     name: cargo check
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: "1.84"
+          toolchain: "1.88"
       - uses: Swatinem/rust-cache@v2
       - run: cargo check
 
   test:
     name: cargo test
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: "1.84"
+          toolchain: "1.88"
       - uses: Swatinem/rust-cache@v2
-      - run: cargo test --all-features
+      - run: cargo test
   
   lints:
     name: cargo clippy
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: "1.84"
+          toolchain: "1.88"
           components: clippy
       - uses: Swatinem/rust-cache@v2
-      - run: cargo clippy -- -D warnings
+      - run: cargo clippy --all-targets -- -D warnings
+      - name: client-only dependency graph
+        run: ./scripts/check-client-graph
 
   fmt:
     name: cargo fmt
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: "1.84"
+          toolchain: "1.88"
           components: rustfmt
       - run: cargo fmt --all -- --check

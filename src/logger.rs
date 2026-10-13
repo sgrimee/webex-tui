@@ -45,34 +45,38 @@ pub(crate) fn setup_logger(
     }
 }
 
-/// Returns a list of the modules in this crate
-/// in a format usable by set_level_for_target
+/// Modules of this crate that log, in a format usable by
+/// `set_level_for_target` (and listed by `--list-modules`).
 pub(crate) fn crate_modules() -> &'static [&'static str] {
     &[
-        "webex_tui::app::actions",
-        "webex_tui::app::cache::msg_thread",
-        "webex_tui::app::cache::room_and_team_title",
-        "webex_tui::app::cache::room_content",
-        "webex_tui::app::cache::room_list_filter",
-        "webex_tui::app::cache::room",
+        "webex_tui::app::bridge_glue",
         "webex_tui::app::cache::rooms",
-        "webex_tui::app::cache::teams",
-        "webex_tui::app::cache",
-        "webex_tui::app::callbacks",
-        "webex_tui::app::mesage_editor",
-        "webex_tui::app::messages_list",
         "webex_tui::app::rooms_list",
         "webex_tui::app::state",
         "webex_tui::app",
+        "webex_tui::bridge::runtime",
         "webex_tui::config",
-        "webex_tui::teams::app_handler",
-        "webex_tui::teams::webex_handler",
-        "webex_tui::teams:auth",
-        "webex_tui::teams:client",
-        "webex_tui::teams",
+        "webex_tui::frontend::models",
+        "webex_tui::inputs::handler",
+        "webex_tui::theme::loader",
         "webex_tui::tui",
+        "webex_tui::ui",
         "webex_tui",
-        "webex::types",
-        "webex",
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn every_listed_module_exists() {
+        let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        for module in super::crate_modules() {
+            let path = module.trim_start_matches("webex_tui").replace("::", "/");
+            let path = path.trim_start_matches('/');
+            let exists = path.is_empty()
+                || src.join(format!("{path}.rs")).is_file()
+                || src.join(path).join("mod.rs").is_file();
+            assert!(exists, "{module} has no source file");
+        }
+    }
 }

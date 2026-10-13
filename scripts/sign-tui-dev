@@ -9,7 +9,7 @@
 # requirement, and therefore the ACL, stable across rebuilds. A distinct
 # identifier from the bridge's binaries means no ACL is shared with them.
 #
-# Run the signed binary directly (`just run-signed`), never `cargo run`,
+# Run the signed binary directly (`just run`), never `cargo run`,
 # which relinks and re-applies an ad-hoc signature.
 set -euo pipefail
 
