@@ -70,6 +70,10 @@ struct Shared {
     message_reads: AtomicUsize,
     person_reads: AtomicUsize,
     team_reads: AtomicUsize,
+    /// Team reads answering 503 before succeeding.
+    team_failures: AtomicUsize,
+    /// Person reads never answer (they time out with a read deadline).
+    persons_pending: AtomicBool,
     pages_pending: AtomicBool,
     watermark: AtomicU64,
     stream: Mutex<Option<mpsc::UnboundedSender<Item>>>,
@@ -121,6 +125,18 @@ impl UiReadBackend for Reader {
     }
     async fn team(&self, id: &str) -> Reply<dto::Team> {
         self.0.team_reads.fetch_add(1, Ordering::SeqCst);
+        if self
+            .0
+            .team_failures
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))
+            .is_ok()
+        {
+            return Err(ClientError::Api {
+                status: 503_u16.try_into().unwrap(),
+                code: "bridge_unavailable".into(),
+                message: "synthetic".into(),
+            });
+        }
         Ok(dto::Team {
             id: id.into(),
             name: Some(format!("team {id}")),
@@ -128,6 +144,9 @@ impl UiReadBackend for Reader {
     }
     async fn person_read(&self, id: &str) -> Reply<dto::PersonRead> {
         self.0.person_reads.fetch_add(1, Ordering::SeqCst);
+        if self.0.persons_pending.load(Ordering::SeqCst) {
+            std::future::pending::<()>().await;
+        }
         Ok(dto::PersonRead {
             id: id.into(),
             state: "mirrored".into(),
@@ -506,6 +525,54 @@ async fn team_names_are_fetched_once_per_team_and_decorate_room_titles() {
         })
         .await;
         assert_eq!(shared.team_reads.load(Ordering::SeqCst), 1);
+        control.shutdown();
+    };
+    let (exit, ()) = tokio::join!(runtime.run(), driver);
+    assert_eq!(exit, RuntimeExit::Shutdown);
+}
+
+#[tokio::test]
+async fn a_team_lookup_failed_transiently_is_retried_after_the_next_snapshot() {
+    let (runtime, mut glue, control, shared) = fixture(None);
+    shared.rooms.lock().unwrap()[0].team_id = Some("team-1".into());
+    shared.team_failures.store(1, Ordering::SeqCst);
+    let mut state = AppState::default();
+    let driver = async {
+        wait_subscribed(&shared, 1).await;
+        ready(&mut glue, &mut state, &shared).await;
+        settle("failed team read", &mut glue, &mut state, |glue, _| {
+            shared.team_reads.load(Ordering::SeqCst) == 1 && glue.outstanding_reads() == 0
+        })
+        .await;
+        assert!(state.cache.teams.team_with_id(&"team-1".into()).is_none());
+        // A new snapshot (here after event lag) asks again.
+        shared.push("resync.required", json!({"reason": "event_lag"}));
+        settle("team after snapshot", &mut glue, &mut state, |_, state| {
+            state.cache.teams.team_with_id(&"team-1".into()).is_some()
+        })
+        .await;
+        assert_eq!(shared.team_reads.load(Ordering::SeqCst), 2);
+        control.shutdown();
+    };
+    let (exit, ()) = tokio::join!(runtime.run(), driver);
+    assert_eq!(exit, RuntimeExit::Shutdown);
+}
+
+#[tokio::test]
+async fn a_timed_out_person_lookup_can_be_requested_again() {
+    let (runtime, mut glue, control, shared) = fixture(Some(Duration::from_millis(20)));
+    shared.persons_pending.store(true, Ordering::SeqCst);
+    let mut state = AppState::default();
+    let driver = async {
+        wait_subscribed(&shared, 1).await;
+        ready(&mut glue, &mut state, &shared).await;
+        glue.open_room(&mut state, &ROOM_A.to_owned());
+        settle("person timeouts", &mut glue, &mut state, |glue, state| {
+            ids(state, ROOM_A).len() == 2 && glue.outstanding_reads() == 0
+        })
+        .await;
+        // Not stuck as "requested": the next page with that sender asks again.
+        assert!(!state.cache.persons.exists_or_requested("alice"));
         control.shutdown();
     };
     let (exit, ()) = tokio::join!(runtime.run(), driver);

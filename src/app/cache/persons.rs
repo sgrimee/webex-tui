@@ -29,6 +29,16 @@ impl Persons {
     pub(crate) fn exists_or_requested(&self, id: &str) -> bool {
         self.by_id.contains_key(id) || self.requested.contains(id)
     }
+
+    /// Allow a fresh request after a transient failure.
+    pub(crate) fn forget_requested(&mut self, id: &str) {
+        self.requested.remove(id);
+    }
+
+    /// Forget every outstanding-or-failed request (new session/snapshot).
+    pub(crate) fn clear_requested(&mut self) {
+        self.requested.clear();
+    }
 }
 
 #[cfg(test)]

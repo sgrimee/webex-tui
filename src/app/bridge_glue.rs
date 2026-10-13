@@ -551,6 +551,10 @@ impl BridgeGlue {
 
     fn install_snapshot(&mut self, state: &mut AppState, snapshot: BridgeSnapshot) {
         log::info!("bridge snapshot installed ({} rooms)", snapshot.rooms.len());
+        // Lookups that failed or were lost with the old session (e.g. a 503)
+        // are asked again by this snapshot's rooms and the refetched pages.
+        state.cache.persons.clear_requested();
+        state.cache.teams.clear_requested();
         for room in state.cache.canonical_rooms() {
             state
                 .cache
@@ -740,11 +744,17 @@ impl BridgeGlue {
                     ReadUnavailable::Stale if self.relevant(state, &purpose) => {
                         self.request(intent, self.refreshed(purpose));
                     }
-                    _ => {
-                        if let Some(room) = page_room(&purpose) {
-                            self.status.failed_rooms.insert(room.clone());
+                    _ => match &purpose {
+                        // Transient (timeout, session loss, …): a later
+                        // page or snapshot may ask again.
+                        Purpose::Person(id) => state.cache.persons.forget_requested(id),
+                        Purpose::Team(id) => state.cache.teams.forget_requested(id),
+                        _ => {
+                            if let Some(room) = page_room(&purpose) {
+                                self.status.failed_rooms.insert(room.clone());
+                            }
                         }
-                    }
+                    },
                 }
                 return;
             }
