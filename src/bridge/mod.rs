@@ -15,6 +15,7 @@ pub(crate) mod projection;
 pub(crate) mod read_dispatch;
 pub(crate) mod runtime;
 pub(crate) mod session;
+pub(crate) mod snapshot;
 mod text;
 pub(crate) mod write_coordinator;
 pub(crate) mod write_dispatch;

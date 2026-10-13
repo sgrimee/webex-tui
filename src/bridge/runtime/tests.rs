@@ -576,35 +576,21 @@ fn backoff_is_immediate_then_exponential_and_capped() {
     assert_eq!(runtime.backoff(), Duration::from_millis(40));
 }
 
-/// Compile-time: the loop over the real bridge backend is spawnable later.
+/// Compile-time: the loop over the real bridge backend and real snapshot
+/// source is spawnable later.
 #[allow(dead_code)]
 fn real_bridge_runtime_future_is_send(
     runtime: Runtime<
         crate::bridge::session::BridgeSessionBackend,
         crate::bridge::session::SystemClock,
-        PumpHost<()>,
+        PumpHost<crate::bridge::snapshot::BridgeSnapshot>,
         Secrets,
-        RealSnapshots,
+        crate::bridge::snapshot::BridgeSnapshotSource,
     >,
 ) {
     fn assert_send<T: Send>(_: &T) {}
     let run = runtime.run();
     assert_send(&run);
-}
-
-struct RealSnapshots;
-impl SnapshotSource<crate::bridge::session::BridgeSessionBackend> for RealSnapshots {
-    type Snapshot = ();
-    async fn build(
-        &mut self,
-        reader: &crate::bridge::session::UiSnapshotReader,
-    ) -> Result<(), SessionFailure> {
-        reader
-            .rooms()
-            .await
-            .map(|_| ())
-            .map_err(crate::bridge::session::io_failure)
-    }
 }
 
 #[test]
