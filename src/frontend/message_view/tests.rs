@@ -647,3 +647,46 @@ fn id_only_tombstone_for_another_room_is_refused_without_mutation() {
     assert!(!v.is_tombstoned(&MessageId::new("a")));
     assert_eq!(text(&v, "a").as_deref(), Some("a r0"));
 }
+
+#[test]
+fn pre_clear_in_flight_older_page_loses_but_new_instance_starts_fresh() {
+    let mut v = view();
+    v.upsert(&msg("a", None, at(1), 5)).unwrap();
+    v.clear_messages(); // room resync within the same mirror instance
+                        // An older page issued before the clear arrives afterwards: refused.
+    let outcome = v.apply_page(&page(vec![msg("a", None, at(1), 3)])).unwrap();
+    assert_eq!(outcome.ignored, 1);
+    assert!(v.is_empty());
+    assert_eq!(
+        v.upsert(&msg("a", None, at(1), 4)),
+        Ok(UpsertOutcome::Stale)
+    );
+    // The current revision restores; a newer one revises and raises the bar.
+    assert_eq!(
+        v.upsert(&msg("a", None, at(1), 5)),
+        Ok(UpsertOutcome::Restored)
+    );
+    assert_eq!(
+        v.upsert(&msg("a", None, at(1), 7)),
+        Ok(UpsertOutcome::Revised)
+    );
+    v.clear_messages();
+    assert_eq!(
+        v.upsert(&msg("a", None, at(1), 6)),
+        Ok(UpsertOutcome::Stale)
+    );
+    // A new mirror instance restarts revisions: nothing old fences it.
+    v.tombstone(&RoomId::new(ROOM), &MessageId::new("gone"), None)
+        .unwrap();
+    assert_eq!(v.reset_for_new_instance(), 0);
+    assert!(!v.is_tombstoned(&MessageId::new("gone")));
+    assert_eq!(
+        v.upsert(&msg("a", None, at(1), 0)),
+        Ok(UpsertOutcome::Inserted)
+    );
+    assert_eq!(
+        v.upsert(&msg("gone", None, at(2), 0)),
+        Ok(UpsertOutcome::Inserted)
+    );
+    assert_eq!(ids(&v), ["a", "gone"]);
+}

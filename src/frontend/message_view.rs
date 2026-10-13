@@ -113,9 +113,10 @@ pub(crate) struct RoomMessageView {
     /// Deleted IDs, including ones never loaded, so no late active snapshot
     /// can resurrect them. Survives `clear_messages` for room resync.
     tombstones: HashSet<MessageId>,
-    /// Every ID ever held active; also survives `clear_messages`, so a
-    /// re-fetch after resync is `Restored`, not `Inserted`.
-    seen: HashSet<MessageId>,
+    /// Highest revision ever held active per ID; survives `clear_messages`,
+    /// so a re-fetch after resync is `Restored`, not `Inserted`, and a
+    /// pre-clear in-flight page with an older revision is `Stale`.
+    seen: HashMap<MessageId, Option<u64>>,
     rows: Vec<RowKey>,
 }
 
@@ -125,7 +126,7 @@ impl RoomMessageView {
             room_id,
             messages: HashMap::new(),
             tombstones: HashSet::new(),
-            seen: HashSet::new(),
+            seen: HashMap::new(),
             rows: Vec::new(),
         }
     }
@@ -278,16 +279,25 @@ impl RoomMessageView {
         Ok(outcome)
     }
 
-    /// Drop loaded messages for a room resync; tombstone fences and the seen
-    /// set are retained. Revisions are only comparable within one daemon
-    /// mirror instance: on ANY continuity instance change the App must use a
-    /// fresh view (or clear and drop pre-clear in-flight pages) before
-    /// applying new data.
+    /// Drop loaded messages for a room resync within the same mirror
+    /// instance; tombstone fences and seen revisions are retained, so a
+    /// pre-clear in-flight older page is refused as Stale. Revisions are only
+    /// comparable within one daemon mirror instance: on ANY continuity
+    /// instance change use `reset_for_new_instance` (or a fresh view).
     pub(crate) fn clear_messages(&mut self) -> usize {
         let count = self.messages.len();
         self.messages.clear();
         self.rows.clear();
         count
+    }
+
+    /// A different daemon mirror instance restarts its revision counter, so
+    /// nothing learned from the old instance may fence the new one: drop
+    /// messages, tombstone fences and the seen-revision map.
+    pub(crate) fn reset_for_new_instance(&mut self) -> usize {
+        self.tombstones.clear();
+        self.seen.clear();
+        self.clear_messages()
     }
 
     fn validate(&self, snapshot: &MessageSnapshot) -> Result<(), ViewError> {
@@ -318,17 +328,22 @@ impl RoomMessageView {
         }
         match self.messages.get(&snapshot.id) {
             None => {
+                let outcome = match self.seen.get(&snapshot.id) {
+                    None => UpsertOutcome::Inserted,
+                    // Same mirror instance: revisions stay comparable across
+                    // a clear, so an older in-flight page cannot regress.
+                    Some(max) if snapshot.revision < *max => return UpsertOutcome::Stale,
+                    Some(_) => UpsertOutcome::Restored,
+                };
+                self.seen.insert(snapshot.id.clone(), snapshot.revision);
                 self.messages.insert(snapshot.id.clone(), snapshot.clone());
-                if self.seen.insert(snapshot.id.clone()) {
-                    UpsertOutcome::Inserted
-                } else {
-                    UpsertOutcome::Restored
-                }
+                outcome
             }
             Some(stored) => match snapshot.revision.cmp(&stored.revision) {
                 std::cmp::Ordering::Less => UpsertOutcome::Stale,
                 std::cmp::Ordering::Equal => UpsertOutcome::Unchanged,
                 std::cmp::Ordering::Greater => {
+                    self.seen.insert(snapshot.id.clone(), snapshot.revision);
                     self.messages.insert(snapshot.id.clone(), snapshot.clone());
                     UpsertOutcome::Revised
                 }
