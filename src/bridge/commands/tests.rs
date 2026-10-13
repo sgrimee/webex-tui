@@ -1134,3 +1134,31 @@ async fn host_phase_hook_revokes_without_worker_publication_and_never_restores()
     assert!(published_ready(&f.worker));
     assert_eq!(f.worker.host().snapshots, 2);
 }
+
+#[tokio::test]
+async fn published_hint_expires_with_its_lease_without_a_worker_call() {
+    let mut f = fixture();
+    active(&mut f).await;
+    let now = SessionClock::now(&f.clock);
+    assert!(published_ready(&f.worker));
+    // Silent expiry: no worker/controller call observes the clock.
+    f.clock.advance(100);
+    let later = SessionClock::now(&f.clock);
+    assert!(published_ready(&f.worker), "hint itself is unchanged");
+    assert_eq!(
+        f.endpoint.try_submit_at(request(), later),
+        CommandAdmission::NotReady
+    );
+    // Same hint is still admissible at an earlier clock reading.
+    assert_eq!(
+        f.endpoint.try_submit_at(request(), now),
+        CommandAdmission::Accepted
+    );
+    // Accepted only transfers ownership: dequeue proves zero I/O on expiry.
+    assert!(f.worker.handle_one().await);
+    assert!(matches!(
+        f.endpoint.drain(),
+        Some(SubmissionTerminal::NotDispatched { .. })
+    ));
+    assert_eq!(count(&f.control), 0);
+}

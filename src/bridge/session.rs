@@ -285,12 +285,21 @@ pub(crate) struct SessionLifecycle<B: SessionBackend, C: SessionClock> {
 pub(super) struct WriteAdmissionStamp {
     subscription: Option<SubscriptionId>,
     snapshot_generation: Option<u64>,
+    /// Lets a published hint expire on its own after a silent lease expiry,
+    /// without the worker having to observe the clock first.
+    lease_deadline: Option<Instant>,
     ready: bool,
 }
 
 impl WriteAdmissionStamp {
     pub(super) fn ready(self) -> bool {
         self.ready
+    }
+
+    /// Ready and not past its lease deadline at `now` (same clock domain as
+    /// the session clock; production uses `Instant::now()` for both).
+    pub(super) fn admissible_at(self, now: Instant) -> bool {
+        self.ready && self.lease_deadline.is_some_and(|deadline| now < deadline)
     }
 
     /// Same identity, never admissible. Used for synchronous revocation when a
@@ -351,6 +360,7 @@ impl<B: SessionBackend, C: SessionClock> SessionLifecycle<B, C> {
         WriteAdmissionStamp {
             subscription: self.active.as_ref().map(|a| a.subscription),
             snapshot_generation: self.active.as_ref().map(|a| a.snapshot_generation),
+            lease_deadline: self.active.as_ref().map(|a| a.lease_deadline),
             ready: self.phase() == SessionPhase::Active,
         }
     }

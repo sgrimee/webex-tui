@@ -28,7 +28,10 @@ use crate::frontend::{
     lifecycle::{LifecycleProjection, ProjectionEffects},
     write_rules::{valid_editor_write, write_success_matches},
 };
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::{
+    sync::{Arc, Mutex, MutexGuard},
+    time::Instant,
+};
 use webex_bridge::client::events::BridgeEvent;
 
 /// Conclusive pre-ownership decisions only. This is the ledger's own report
@@ -68,7 +71,16 @@ pub(crate) struct CommandMailbox {
 }
 
 impl CommandMailbox {
+    /// `Accepted` only means this mailbox now owns the copy. It is not a
+    /// readiness promise: a lease that expires silently before dequeue still
+    /// yields `NotDispatched { NotReady | Expired }` with zero write I/O.
     pub(crate) fn try_submit(&self, request: RequestEnvelope) -> CommandAdmission {
+        self.try_submit_at(request, Instant::now())
+    }
+
+    /// Same as `try_submit` with an explicit clock reading, for fake clocks.
+    /// A published stamp past its lease deadline is refused as NotReady.
+    pub(crate) fn try_submit_at(&self, request: RequestEnvelope, now: Instant) -> CommandAdmission {
         // Validate before ownership and before any gate call. The caller retains
         // its original envelope/draft; this method consumes only its owned copy.
         if !valid_request(&request) {
@@ -81,7 +93,7 @@ impl CommandMailbox {
         if !matches!(mailbox.slot, Slot::Empty) {
             return CommandAdmission::Full;
         }
-        if !mailbox.published.ready() {
+        if !mailbox.published.admissible_at(now) {
             return CommandAdmission::NotReady;
         }
         let stamp = mailbox.published;
