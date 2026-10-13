@@ -48,7 +48,7 @@ fn kinds<S>(events: &[PumpEvent<S>]) -> Vec<&'static str> {
             PumpEvent::Phase(_) => "phase",
             PumpEvent::Lifecycle { .. } => "lifecycle",
             PumpEvent::Snapshot { .. } => "snapshot",
-            PumpEvent::Read(_) => "read",
+            PumpEvent::Read { .. } => "read",
         })
         .collect()
 }
@@ -328,6 +328,93 @@ fn whole_mirror_reconcile_subsumes_scoped_targets() {
             RefreshTarget::Rooms,
         ]
     );
+}
+
+#[test]
+fn superseded_snapshot_drops_its_post_boundary_lifecycle_hints() {
+    let (mut host, endpoint) = pump::<u32>();
+    let projection = LifecycleProjection::default();
+    host.lifecycle(&projection, effects(vec![RefreshTarget::Status]));
+    host.install_snapshot(1);
+    host.lifecycle(&projection, effects(vec![RefreshTarget::Room(room("old"))]));
+    host.install_snapshot(2);
+    host.lifecycle(&projection, effects(vec![RefreshTarget::Room(room("new"))]));
+    let events = endpoint.drain(usize::MAX);
+    assert_eq!(kinds(&events), ["lifecycle", "snapshot", "lifecycle"]);
+    let PumpEvent::Lifecycle { install, .. } = &events[0] else {
+        panic!("pre-snapshot lifecycle")
+    };
+    assert_eq!(*install, None);
+    let PumpEvent::Snapshot {
+        install: latest,
+        snapshot,
+    } = &events[1]
+    else {
+        panic!("snapshot")
+    };
+    assert_eq!(*snapshot, 2);
+    let PumpEvent::Lifecycle {
+        install, effects, ..
+    } = &events[2]
+    else {
+        panic!("post-boundary lifecycle")
+    };
+    assert_eq!(*install, Some(*latest));
+    assert_eq!(effects.refresh, [RefreshTarget::Room(room("new"))]);
+}
+
+#[test]
+fn lifecycle_hints_never_merge_across_a_snapshot_install() {
+    let (mut host, endpoint) = pump::<u32>();
+    let projection = LifecycleProjection::default();
+    host.lifecycle(&projection, effects(vec![RefreshTarget::Status]));
+    let _ = endpoint.drain(usize::MAX);
+    host.install_snapshot(1);
+    let _ = endpoint.drain(usize::MAX);
+    host.lifecycle(&projection, effects(vec![RefreshTarget::Rooms]));
+    let events = endpoint.drain(usize::MAX);
+    let PumpEvent::Lifecycle {
+        install, effects, ..
+    } = &events[0]
+    else {
+        panic!("lifecycle")
+    };
+    assert!(install.is_some());
+    assert_eq!(effects.refresh, [RefreshTarget::Rooms]);
+}
+
+#[test]
+fn read_from_an_older_install_is_settled_stale_never_applied() {
+    use crate::{
+        bridge::read_dispatch::{ReadTerminal, ReadUnavailable},
+        frontend::envelopes::{FrontendIntent, FrontendResult, ReadOutcome, RequestSequence},
+    };
+    let (mut host, endpoint) = pump::<u32>();
+    host.install_snapshot(1);
+    let request = RequestSequence::default()
+        .begin(FrontendIntent::ListAllRooms, None)
+        .unwrap();
+    let context = request.context.clone();
+    let result = request
+        .complete(FrontendResult::ListAllRooms(ReadOutcome::Success(
+            Vec::new(),
+        )))
+        .unwrap();
+    host.deliver_read(ReadTerminal::Result(Box::new(result)));
+    host.install_snapshot(2); // newer snapshot before the App drained the read
+    let events = endpoint.drain(usize::MAX);
+    assert_eq!(kinds(&events), ["read", "snapshot"]);
+    let PumpEvent::Read { terminal, .. } = &events[0] else {
+        panic!("read")
+    };
+    assert_eq!(terminal.context(), &context);
+    assert!(matches!(
+        terminal,
+        ReadTerminal::Unavailable {
+            reason: ReadUnavailable::Stale,
+            ..
+        }
+    ));
 }
 
 // ---- Integration with the worker's write admission ------------------------
@@ -629,7 +716,7 @@ mod reads {
         events
             .into_iter()
             .filter_map(|event| match event {
-                PumpEvent::Read(terminal) => Some(terminal),
+                PumpEvent::Read { terminal, .. } => Some(terminal),
                 _ => None,
             })
             .collect()
@@ -783,7 +870,7 @@ mod reads {
         let mut freed = 0;
         while freed < 2 {
             for event in f.endpoint.drain(1) {
-                if matches!(event, PumpEvent::Read(_)) {
+                if matches!(event, PumpEvent::Read { .. }) {
                     freed += 1;
                 }
             }

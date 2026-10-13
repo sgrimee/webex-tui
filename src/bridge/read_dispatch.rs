@@ -145,6 +145,8 @@ pub(crate) enum ReadUnavailable {
     TimedOut,
     Interrupted,
     Shutdown,
+    /// Dispatched before a newer snapshot install; never applied.
+    Stale,
 }
 
 /// Exactly one terminal per admitted read. No Debug: results carry content.

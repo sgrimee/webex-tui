@@ -25,7 +25,7 @@
 
 use super::{
     controller::PresentationHost,
-    read_dispatch::{ReadCredits, ReadTerminal},
+    read_dispatch::{ReadCredits, ReadTerminal, ReadUnavailable},
     session::SessionPhase,
 };
 use crate::frontend::{
@@ -45,10 +45,13 @@ pub(crate) const REFRESH_CAP: usize = 64;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct InstallId(u64);
 
-/// No Debug: snapshots carry presentation data.
+/// No Debug: snapshots carry presentation data. `install` on lifecycle and
+/// read events is the latest snapshot install at production/dispatch time
+/// (`None` before the first snapshot).
 pub(crate) enum PumpEvent<S> {
     Phase(SessionPhase),
     Lifecycle {
+        install: Option<InstallId>,
         projection: LifecycleProjection,
         effects: ProjectionEffects,
     },
@@ -57,21 +60,32 @@ pub(crate) enum PumpEvent<S> {
         install: InstallId,
         snapshot: S,
     },
-    /// Bounded by the shared outstanding-read budget (`READ_CAPACITY`).
-    Read(ReadTerminal),
+    /// Bounded by the shared outstanding-read budget (`READ_CAPACITY`). A read
+    /// dispatched before a newer snapshot install is delivered as
+    /// `Unavailable { Stale }`: settled once, never applied over newer data.
+    Read {
+        install: Option<InstallId>,
+        terminal: ReadTerminal,
+    },
 }
 
 /// Queued lifecycle hints plus an O(1) redaction index, so merging a burst of
 /// SSE metadata stays linear and bounded.
 struct LifecycleEntry {
+    install: Option<InstallId>,
     projection: LifecycleProjection,
     effects: ProjectionEffects,
     redacted: HashSet<MessageKey>,
 }
 
 impl LifecycleEntry {
-    fn new(projection: LifecycleProjection, effects: ProjectionEffects) -> Self {
+    fn new(
+        install: Option<InstallId>,
+        projection: LifecycleProjection,
+        effects: ProjectionEffects,
+    ) -> Self {
         let mut entry = Self {
+            install,
             projection,
             effects: ProjectionEffects {
                 membership: effects.membership.clone(),
@@ -87,8 +101,14 @@ impl LifecycleEntry {
 enum Entry<S> {
     Phase(SessionPhase),
     Lifecycle(LifecycleEntry),
-    Snapshot { install: InstallId, snapshot: S },
-    Read(ReadTerminal),
+    Snapshot {
+        install: InstallId,
+        snapshot: S,
+    },
+    Read {
+        install: Option<InstallId>,
+        terminal: ReadTerminal,
+    },
 }
 
 impl<S> Entry<S> {
@@ -96,11 +116,12 @@ impl<S> Entry<S> {
         match self {
             Self::Phase(phase) => PumpEvent::Phase(phase),
             Self::Lifecycle(entry) => PumpEvent::Lifecycle {
+                install: entry.install,
                 projection: entry.projection,
                 effects: entry.effects,
             },
             Self::Snapshot { install, snapshot } => PumpEvent::Snapshot { install, snapshot },
-            Self::Read(terminal) => PumpEvent::Read(terminal),
+            Self::Read { install, terminal } => PumpEvent::Read { install, terminal },
         }
     }
 }
@@ -163,8 +184,9 @@ impl<S> PresentationHost for PumpHost<S> {
 
     fn lifecycle(&mut self, projection: &LifecycleProjection, effects: ProjectionEffects) {
         let mut pump = lock(&self.shared);
+        let install = pump.latest;
         if let Some(Entry::Lifecycle(last)) = pump.queue.back_mut() {
-            if mergeable(&last.effects, &effects) {
+            if last.install == install && mergeable(&last.effects, &effects) {
                 last.projection = projection.clone();
                 merge(last, effects);
                 return;
@@ -173,6 +195,7 @@ impl<S> PresentationHost for PumpHost<S> {
         if pump.lifecycle < LIFECYCLE_CAP {
             pump.lifecycle += 1;
             pump.queue.push_back(Entry::Lifecycle(LifecycleEntry::new(
+                install,
                 projection.clone(),
                 effects,
             )));
@@ -203,8 +226,28 @@ impl<S> PresentationHost for PumpHost<S> {
         };
         pump.last_install = next;
         // An undrained older snapshot is superseded; only the latest matters.
-        pump.queue
-            .retain(|entry| !matches!(entry, Entry::Snapshot { .. }));
+        // Lifecycle hints queued after it belong to the superseded epoch and
+        // are covered by the new snapshot (newer post-boundary metadata is
+        // replayed after this install). Phases and reads stay: reads are
+        // settled as Stale on drain, never silently dropped.
+        if let Some(start) = pump
+            .queue
+            .iter()
+            .position(|entry| matches!(entry, Entry::Snapshot { .. }))
+        {
+            let mut index = 0;
+            let mut removed_lifecycle = 0;
+            pump.queue.retain(|entry| {
+                let drop =
+                    index >= start && matches!(entry, Entry::Snapshot { .. } | Entry::Lifecycle(_));
+                if drop && matches!(entry, Entry::Lifecycle(_)) {
+                    removed_lifecycle += 1;
+                }
+                index += 1;
+                !drop
+            });
+            pump.lifecycle -= removed_lifecycle;
+        }
         let install = InstallId(next);
         pump.latest = Some(install);
         pump.drained_latest = false;
@@ -212,7 +255,9 @@ impl<S> PresentationHost for PumpHost<S> {
     }
 
     fn deliver_read(&mut self, terminal: ReadTerminal) {
-        lock(&self.shared).queue.push_back(Entry::Read(terminal));
+        let mut pump = lock(&self.shared);
+        let install = pump.latest;
+        pump.queue.push_back(Entry::Read { install, terminal });
     }
 
     /// Reads are consumed when the App drains them, not on delivery.
@@ -247,14 +292,30 @@ impl<S> PresentationEndpoint<S> {
             let Some(entry) = pump.queue.pop_front() else {
                 break;
             };
-            match &entry {
-                Entry::Lifecycle(_) => pump.lifecycle -= 1,
-                Entry::Read(_) => self.credits.release(),
-                Entry::Snapshot { install, .. } if pump.latest == Some(*install) => {
-                    pump.drained_latest = true;
+            let entry = match entry {
+                Entry::Lifecycle(_) => {
+                    pump.lifecycle -= 1;
+                    entry
                 }
-                _ => {}
-            }
+                Entry::Read { install, terminal } => {
+                    self.credits.release();
+                    // Dispatched before a newer snapshot: never apply it.
+                    let terminal = if install == pump.latest {
+                        terminal
+                    } else {
+                        ReadTerminal::Unavailable {
+                            context: terminal.context().clone(),
+                            reason: ReadUnavailable::Stale,
+                        }
+                    };
+                    Entry::Read { install, terminal }
+                }
+                Entry::Snapshot { install, .. } if pump.latest == Some(install) => {
+                    pump.drained_latest = true;
+                    entry
+                }
+                entry => entry,
+            };
             events.push(entry.into_event());
         }
         events
