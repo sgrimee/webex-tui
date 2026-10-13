@@ -37,8 +37,9 @@ test:
 # item, so it is always run as a binary signed with a persistent identity
 # (com.sgrimee.webex-tui): `cargo run` relinks with an ad-hoc signature,
 # which the Keychain treats as a new application. Needs a Code Signing
-# certificate; set WEBEX_TUI_CODESIGN_IDENTITY to pick one. Without a Team
-# ID, each rebuild still asks once for Keychain access (Always Allow).
+# certificate; set WEBEX_TUI_CODESIGN_IDENTITY to pick one. With the chosen
+# self-signed certificate (no Team ID), the first start of each rebuild asks
+# once for Keychain access: choose Always Allow.
 
 # Build and sign with the persistent identity
 build-signed:

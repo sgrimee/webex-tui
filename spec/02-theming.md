@@ -116,7 +116,7 @@ user_colors:
 Add optional theme configuration to the existing config system:
 
 ```yaml
-# In client.yml
+# In config.yml (originally client.yml; preferences moved to config.yml)
 theme: "dracula"  # Optional, defaults to "default"
 ```
 
@@ -299,7 +299,7 @@ user_colors:
 For users:
 1. No action required - existing installations use default theme
 2. To customize: Create `~/.config/webex-tui/themes/<name>.yml`
-3. Add `theme: "<name>"` to `client.yml`
+3. Add `theme: "<name>"` to `~/.config/webex-tui/config.yml`
 
 For developers:
 1. Replace hardcoded `Color::*` with `state.theme.roles.*`
@@ -316,7 +316,7 @@ For developers:
 - ✅ **YAML Configuration**: Support for theme files in `~/.config/webex-tui/themes/`
 - ✅ **Color Parsing**: Hex codes (`#ff5555`), short hex (`#f55`), and named colors (`red`, `light_blue`)
 - ✅ **Semantic Roles**: 19 UI element roles for consistent theming
-- ✅ **Config Integration**: Added `theme` field to `client.yml` with "default" fallback
+- ✅ **Config Integration**: Added `theme` field to the config (now `config.yml`) with "default" fallback
 - ✅ **UI Refactoring**: All modules use theme roles instead of hardcoded colors
 - ✅ **Graceful Fallbacks**: Invalid themes fall back to built-in defaults with logging
 - ✅ **Dracula Theme**: Complete example theme with authentic Dracula colors

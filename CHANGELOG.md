@@ -16,7 +16,10 @@ This project tries to follow semantic versioning.
   pairing secret is kept in the login Keychain.
 - **No OAuth integration**: `client.yml` (client ID/secret, OAuth port), the
   browser login and the token cache are gone. Old files are ignored, never
-  read or deleted; see the Readme for optional cleanup.
+  read or deleted. Once you no longer need the old version you may delete
+  `~/.config/webex-tui/client.yml` and the token cache, and revoke the old
+  webex-tui integration on developer.webex.com (see the Readme).
+- **macOS only**: release binaries are built for macOS only, like the daemon.
 - **`--messages`** is limited to 1-100 and now really overrides
   `messages_to_load` in `config.yml` (before, the CLI default always won).
 

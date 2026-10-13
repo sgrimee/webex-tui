@@ -162,10 +162,13 @@ webex-tui keeps one secret, its pairing secret for the daemon, in the login
 Keychain (service `com.cisco.webex-tui.ui-pairing`, account `ui-secret-v1`).
 macOS lets the binary that created the item read it without asking. Run a
 binary signed with a persistent identity (`just build-signed`, `just run`),
-never `cargo run`, whose ad-hoc signature changes on every build. Without a
-signing certificate that has a Team ID, each rebuilt binary still asks once
-("webex-tui wants to use your confidential information…"): choose
-**Always Allow**.
+never `cargo run`, whose ad-hoc signature changes on every build.
+
+Chosen approach: a self-signed code-signing certificate (no Apple Team ID).
+macOS then ties Keychain access to each build's hash, so the first start of
+every rebuilt binary asks once ("webex-tui wants to use your confidential
+information stored in com.cisco.webex-tui.ui-pairing…"): choose **Always
+Allow**. Later starts of that build do not ask again.
 
 If the item is damaged, webex-tui says so and never replaces it. Remove it and
 start again to pair once more:

@@ -4,7 +4,7 @@ webex-tui supports customizable themes through YAML configuration files.
 
 ## Using Themes
 
-1. **Set theme in config**: Add `theme: "theme_name"` to your `~/.config/webex-tui/client.yml`
+1. **Set theme in config**: Add `theme: "theme_name"` to your `~/.config/webex-tui/config.yml` (see [CONFIGURATION.md](CONFIGURATION.md))
 
 2. **Create theme file**: Place your theme YAML file at `~/.config/webex-tui/themes/theme_name.yml`
 
