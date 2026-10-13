@@ -82,14 +82,15 @@ jobs:
       - "get-tag"
       - "create-release"
     # macOS only: webex-tui needs the webex-bridge daemon, which supports
-    # macOS only (no Linux build until the bridge supports Linux).
+    # macOS only (no Linux build until the bridge supports Linux). macos-14
+    # (Apple silicon) builds both targets; macos-13 runners are retired.
     strategy:
       matrix:
         include:
           - target: "aarch64-apple-darwin"
-            os: "macos-13"
+            os: "macos-14"
           - target: "x86_64-apple-darwin"
-            os: "macos-13"
+            os: "macos-14"
           # - target: "x86_64-pc-windows-msvc"
           #   os: "windows-latest"
     runs-on: ${{ matrix.os }}
