@@ -45,6 +45,19 @@ pub(crate) struct AppState<'a> {
     pub(crate) show_help: bool,
     pub(crate) show_logs: bool,
     pub(crate) show_rooms: bool,
+
+    /// Presentation of the bridge backend, set only when App has a bridge
+    /// glue attached (dormant until the consented startup switch).
+    pub(crate) bridge: Option<BridgeView>,
+}
+
+/// What the UI shows about the bridge session and pending writes.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct BridgeView {
+    /// One-line status: session, daemon/Webex state, stale data, writes.
+    pub(crate) line: String,
+    /// A rejected/uncertain write awaits an explicit dismiss.
+    pub(crate) review_open: bool,
 }
 
 /// The active pane is used by the UI to draw attention to what
@@ -206,6 +219,13 @@ impl AppState<'_> {
                         actions.push(Action::EditSelectedMessage);
                         actions.push(Action::DeleteMessage);
                     }
+                }
+                if self
+                    .bridge
+                    .as_ref()
+                    .is_some_and(|bridge| bridge.review_open)
+                {
+                    actions.push(Action::DismissWriteReview);
                 }
                 actions.extend(vec![
                     Action::DumpRoomContentToFile,
@@ -450,6 +470,7 @@ impl Default for AppState<'_> {
             show_help: true,
             show_logs: false,
             show_rooms: true,
+            bridge: None,
         }
     }
 }

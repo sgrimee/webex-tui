@@ -54,6 +54,7 @@ pub(crate) enum Action {
     DeleteSelectedRooms,
     UnselectMessage,
     JumpToLastMessage,
+    DismissWriteReview,
 }
 
 impl Action {
@@ -104,6 +105,7 @@ impl Action {
             Action::DeleteSelectedRooms => &[Key::Char('X')],
             Action::UnselectMessage => &[Key::Esc],
             Action::JumpToLastMessage => &[Key::Char('G')],
+            Action::DismissWriteReview => &[Key::Char('x')],
         }
     }
 }
@@ -156,6 +158,7 @@ impl Display for Action {
             Action::DeleteSelectedRooms => "Delete selected rooms",
             Action::UnselectMessage => "Unselect message",
             Action::JumpToLastMessage => "Jump to last message",
+            Action::DismissWriteReview => "Dismiss failed/uncertain write",
         };
         write!(f, "{str}")
     }

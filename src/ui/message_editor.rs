@@ -13,6 +13,25 @@ fn label(message: &crate::frontend::data::MessageSnapshot) -> String {
         .clone()
         .unwrap_or_else(|| "unknown sender".into())
 }
+/// With the bridge, a reply/edit is sent to its message's own room even after
+/// a room switch, so name that room when it is not the active one.
+fn target_room_note(state: &AppState, message: &crate::frontend::data::MessageSnapshot) -> String {
+    if state.bridge.is_none() {
+        return String::new();
+    }
+    let room = message.room_id.as_str();
+    if state.rooms_list.active_room_id().map(String::as_str) == Some(room) {
+        return String::new();
+    }
+    let title = state
+        .cache
+        .room_and_team_title(&room.to_owned())
+        .map(|title| title.room_title)
+        .unwrap_or_else(|_| "another room".into());
+    // Bridge room titles are sanitized when projected into the cache.
+    format!(" (in {title})")
+}
+
 pub(crate) fn draw_message_editor<'a>(state: &'a AppState<'a>) -> TextArea<'a> {
     let hint = Span::styled(
         " Enter: send, Alt-Enter: new line, Esc: cancel.",
@@ -22,7 +41,11 @@ pub(crate) fn draw_message_editor<'a>(state: &'a AppState<'a>) -> TextArea<'a> {
         if let Some(message) = state.message_editor.response_to() {
             vec![
                 Span::styled(
-                    format!("Responding to {}'s message.", label(message)),
+                    format!(
+                        "Responding to {}'s message{}.",
+                        label(message),
+                        target_room_note(state, message)
+                    ),
                     Style::default().fg(state.theme.roles.compose_status()),
                 ),
                 hint,
@@ -30,7 +53,11 @@ pub(crate) fn draw_message_editor<'a>(state: &'a AppState<'a>) -> TextArea<'a> {
         } else if let Some(message) = state.message_editor.editing_of() {
             vec![
                 Span::styled(
-                    format!("Editing {}'s message.", label(message)),
+                    format!(
+                        "Editing {}'s message{}.",
+                        label(message),
+                        target_room_note(state, message)
+                    ),
                     Style::default().fg(state.theme.roles.compose_status()),
                 ),
                 hint,
@@ -85,5 +112,29 @@ mod tests {
             attachment_count: None,
         };
         assert_eq!(label(&m), "unknown sender");
+    }
+
+    #[test]
+    fn a_reply_target_in_another_room_is_named_only_with_the_bridge() {
+        let mut state = AppState::default();
+        let mut m = crate::frontend::data::MessageSnapshot {
+            id: MessageId::new("m"),
+            room_id: RoomId::new("other"),
+            revision: Some(1),
+            parent_id: None,
+            sender_id: None,
+            sender_email: None,
+            created_at: None,
+            updated_at: None,
+            status: MessageStatus::Active,
+            body: None,
+            attachment_count: None,
+        };
+        state.rooms_list.set_active_room_id(Some("active".into()));
+        assert_eq!(target_room_note(&state, &m), "", "legacy: no note");
+        state.bridge = Some(crate::app::state::BridgeView::default());
+        assert_eq!(target_room_note(&state, &m), " (in another room)");
+        m.room_id = RoomId::new("active");
+        assert_eq!(target_room_note(&state, &m), "");
     }
 }

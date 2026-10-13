@@ -77,6 +77,9 @@ struct Shared {
     messages: Mutex<HashMap<String, dto::Message>>,
     writes: AtomicUsize,
     write_replies: Mutex<std::collections::VecDeque<WriteReply>>,
+    thread_reads: AtomicUsize,
+    /// Thread roots served by `thread_children` (with their replies).
+    threads: Mutex<HashMap<String, (dto::Message, Vec<dto::Message>)>>,
 }
 
 impl Shared {
@@ -172,11 +175,30 @@ impl UiReadBackend for Reader {
     }
     async fn thread_children(
         &self,
-        _: &str,
+        parent: &str,
         _: Option<&str>,
         _: Option<u32>,
     ) -> Reply<dto::ThreadChildren> {
-        unreachable!("threads are not exercised here")
+        self.0.thread_reads.fetch_add(1, Ordering::SeqCst);
+        let (root, children) = self
+            .0
+            .threads
+            .lock()
+            .unwrap()
+            .get(parent)
+            .cloned()
+            .expect("scripted thread");
+        Ok(dto::ThreadChildren {
+            parent: dto::ThreadParent {
+                id: parent.into(),
+                state: "active".into(),
+                message: Some(root),
+            },
+            children,
+            next_before: None,
+            complete: true,
+            partial_reason: None,
+        })
     }
 }
 
@@ -1268,5 +1290,322 @@ mod manual {
             .is_none());
         // A redaction for an unloaded room never creates a view.
         assert!(m.state.cache.canonical_view(&ROOM_B.to_owned()).is_none());
+    }
+}
+
+/// Step S3: App routing with an attached glue. The legacy Teams channels
+/// must stay silent: every read and write goes through the bridge.
+mod app_routing {
+    use super::*;
+    use crate::app::{state::ActivePane, App};
+    use crate::inputs::key::Key;
+
+    struct Harness {
+        app: App<'static>,
+        teams_low: tokio::sync::mpsc::UnboundedReceiver<crate::teams::app_handler::AppCmdEvent>,
+        teams_high: tokio::sync::mpsc::UnboundedReceiver<crate::teams::app_handler::AppCmdEvent>,
+    }
+
+    impl Harness {
+        fn assert_no_teams_traffic(&mut self) {
+            assert!(
+                self.teams_low.try_recv().is_err(),
+                "legacy low channel used"
+            );
+            assert!(
+                self.teams_high.try_recv().is_err(),
+                "legacy high channel used"
+            );
+        }
+    }
+
+    fn harness(glue: BridgeGlue) -> Harness {
+        let (low, teams_low) = tokio::sync::mpsc::unbounded_channel();
+        let (high, teams_high) = tokio::sync::mpsc::unbounded_channel();
+        let mut app = App::new(low, high, false, 10, crate::theme::Theme::default());
+        app.attach_bridge(glue);
+        Harness {
+            app,
+            teams_low,
+            teams_high,
+        }
+    }
+
+    /// Tick the App (which drains the glue) until `condition` holds.
+    async fn tick_until(what: &str, h: &mut Harness, mut condition: impl FnMut(&App) -> bool) {
+        for _ in 0..2000 {
+            h.app.update_on_tick().await;
+            if condition(&h.app) {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        }
+        panic!("timed out waiting for {what}");
+    }
+
+    /// Snapshot installed, room A active, selected in the list and loaded.
+    async fn room_a_open(h: &mut Harness, shared: &Shared) {
+        wait_subscribed(shared, 1).await;
+        shared.push("continuity.ready", json!({}));
+        tick_until("snapshot", h, |app| {
+            app.state
+                .cache
+                .rooms
+                .room_with_id(&ROOM_A.to_owned())
+                .is_some()
+        })
+        .await;
+        h.app
+            .state
+            .rooms_list
+            .set_active_room_id(Some(ROOM_A.into()));
+        h.app.state.update_room_selection_with_active_room();
+        h.app.get_messages_if_room_empty(&ROOM_A.to_owned());
+        tick_until("page", h, |app| ids(&app.state, ROOM_A).len() == 2).await;
+        h.app.state.set_active_pane(Some(ActivePane::Messages));
+    }
+
+    fn select(h: &mut Harness, id: &str) {
+        let index = h
+            .app
+            .state
+            .cache
+            .rows_in_room(&ROOM_A.to_owned())
+            .position(|row| row.id().as_str() == id)
+            .unwrap();
+        let rows = h.app.state.num_messages_active_room();
+        h.app.state.messages_list.set_nb_messages(rows);
+        h.app.state.messages_list.select_index(index);
+        h.app.bridge_selection_changed();
+    }
+
+    #[tokio::test]
+    async fn send_edit_and_delete_go_through_the_bridge_only() {
+        let (runtime, glue, control, shared) = fixture(None);
+        let mut h = harness(glue);
+        let driver = async {
+            room_a_open(&mut h, &shared).await;
+            assert!(h
+                .app
+                .state
+                .bridge
+                .as_ref()
+                .unwrap()
+                .line
+                .contains("bridge online"));
+            // Send: retried while admission opens after the snapshot ack.
+            h.app.state.message_editor.reset_with_text("hello".into());
+            loop {
+                match h.app.send_message_buffer() {
+                    Ok(()) => break,
+                    Err(_) => {
+                        h.app.update_on_tick().await;
+                    }
+                }
+                tokio::time::sleep(Duration::from_millis(1)).await;
+            }
+            assert_eq!(
+                h.app.state.message_editor.lines(),
+                ["hello"],
+                "kept until confirmed"
+            );
+            tick_until("sent", &mut h, |app| {
+                ids(&app.state, ROOM_A).contains(&"sent-1".to_owned())
+                    && app.state.message_editor.is_empty()
+            })
+            .await;
+            // Edit own message a2 (pre-filled from its source).
+            select(&mut h, "a2");
+            h.app.edit_selected_message().unwrap();
+            h.app
+                .state
+                .message_editor
+                .reset_with_text("a2 fixed".into());
+            h.app.state.message_editor.set_editing_of(Some(
+                h.app
+                    .state
+                    .cache
+                    .canonical_view(&ROOM_A.to_owned())
+                    .unwrap()
+                    .get(&MessageId::new("a2"))
+                    .unwrap()
+                    .clone(),
+            ));
+            h.app.send_message_buffer().unwrap();
+            tick_until("edited", &mut h, |app| {
+                app.bridge().unwrap().editor().status() == EditorWriteStatus::Ready
+                    && app.state.message_editor.is_empty()
+            })
+            .await;
+            // Delete own message a2: removed only on confirmation.
+            select(&mut h, "a2");
+            h.app.delete_selected_message().unwrap();
+            assert!(ids(&h.app.state, ROOM_A).contains(&"a2".to_owned()));
+            tick_until("deleted", &mut h, |app| {
+                !ids(&app.state, ROOM_A).contains(&"a2".to_owned())
+            })
+            .await;
+            assert!(h
+                .app
+                .state
+                .bridge
+                .as_ref()
+                .unwrap()
+                .line
+                .contains("delete done"));
+            // Someone else's message cannot be deleted.
+            select(&mut h, "a1");
+            assert!(h.app.delete_selected_message().is_err());
+            h.assert_no_teams_traffic();
+            control.shutdown();
+        };
+        let (exit, ()) = tokio::join!(runtime.run(), driver);
+        assert_eq!(exit, RuntimeExit::Shutdown);
+        assert_eq!(shared.writes.load(Ordering::SeqCst), 3);
+    }
+
+    #[tokio::test]
+    async fn a_rejected_send_keeps_the_draft_and_x_dismisses_the_review() {
+        let (runtime, glue, control, shared) = fixture(None);
+        let mut h = harness(glue);
+        let driver = async {
+            room_a_open(&mut h, &shared).await;
+            shared
+                .write_replies
+                .lock()
+                .unwrap()
+                .push_back(WriteReply::Rejected);
+            h.app.state.message_editor.reset_with_text("keep me".into());
+            loop {
+                if h.app.send_message_buffer().is_ok() {
+                    break;
+                }
+                h.app.update_on_tick().await;
+                tokio::time::sleep(Duration::from_millis(1)).await;
+            }
+            tick_until("rejected", &mut h, |app| {
+                app.state.bridge.as_ref().is_some_and(|b| b.review_open)
+            })
+            .await;
+            let bridge = h.app.state.bridge.clone().unwrap();
+            assert!(bridge.line.contains("not sent: rejected (x to dismiss)"));
+            assert!(!bridge.line.contains("keep me"), "no body in the status");
+            assert_eq!(h.app.state.message_editor.lines(), ["keep me"]);
+            assert!(h
+                .app
+                .state
+                .actions
+                .actions()
+                .contains(&crate::app::actions::Action::DismissWriteReview));
+            // A fresh send is refused until the review is dismissed.
+            assert!(h.app.send_message_buffer().is_err());
+            h.app.do_action(Key::Char('x'));
+            assert!(!h.app.state.bridge.as_ref().unwrap().review_open);
+            assert!(!h
+                .app
+                .state
+                .actions
+                .actions()
+                .contains(&crate::app::actions::Action::DismissWriteReview));
+            h.assert_no_teams_traffic();
+            control.shutdown();
+        };
+        let (exit, ()) = tokio::join!(runtime.run(), driver);
+        assert_eq!(exit, RuntimeExit::Shutdown);
+        assert_eq!(shared.writes.load(Ordering::SeqCst), 1, "never replayed");
+    }
+
+    #[tokio::test]
+    async fn multi_room_leave_is_queued_one_at_a_time() {
+        let (runtime, glue, control, shared) = fixture(None);
+        let mut h = harness(glue);
+        let driver = async {
+            room_a_open(&mut h, &shared).await;
+            // Admission opens once the ack is processed.
+            tick_until("writable", &mut h, |app| {
+                app.bridge().unwrap().status().phase == Some(SessionPhase::Active)
+            })
+            .await;
+            h.app
+                .bridge_leave_rooms(vec![ROOM_B.to_owned(), ROOM_A.to_owned()]);
+            tick_until("both left", &mut h, |app| {
+                app.state
+                    .cache
+                    .rooms
+                    .room_with_id(&ROOM_A.to_owned())
+                    .is_none()
+                    && app
+                        .state
+                        .cache
+                        .rooms
+                        .room_with_id(&ROOM_B.to_owned())
+                        .is_none()
+            })
+            .await;
+            assert!(h.app.pending_leaves.is_empty());
+            h.assert_no_teams_traffic();
+            control.shutdown();
+        };
+        let (exit, ()) = tokio::join!(runtime.run(), driver);
+        assert_eq!(exit, RuntimeExit::Shutdown);
+        assert_eq!(shared.writes.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn selecting_a_missing_root_placeholder_loads_its_thread() {
+        let (runtime, glue, control, shared) = fixture(None);
+        // Room A's page has a reply whose root is not on the page.
+        let mut orphan = message("reply", ROOM_A, "alice", 3, 3);
+        orphan.parent_id = Some("root".into());
+        shared
+            .pages
+            .lock()
+            .unwrap()
+            .get_mut(ROOM_A)
+            .unwrap()
+            .push(orphan.clone());
+        shared.threads.lock().unwrap().insert(
+            "root".into(),
+            (message("root", ROOM_A, "alice", 0, 4), vec![orphan]),
+        );
+        let mut h = harness(glue);
+        let driver = async {
+            wait_subscribed(&shared, 1).await;
+            shared.push("continuity.ready", json!({}));
+            tick_until("snapshot", &mut h, |app| {
+                app.state
+                    .cache
+                    .rooms
+                    .room_with_id(&ROOM_A.to_owned())
+                    .is_some()
+            })
+            .await;
+            h.app
+                .state
+                .rooms_list
+                .set_active_room_id(Some(ROOM_A.into()));
+            h.app.state.update_room_selection_with_active_room();
+            h.app.get_messages_if_room_empty(&ROOM_A.to_owned());
+            tick_until("page", &mut h, |app| ids(&app.state, ROOM_A).len() == 3).await;
+            select(&mut h, "root"); // the placeholder row carries the root ID
+            tick_until("thread loaded", &mut h, |app| {
+                matches!(
+                    app.state
+                        .cache
+                        .rows_in_room(&ROOM_A.to_owned())
+                        .find(|row| row.id().as_str() == "root"),
+                    Some(crate::frontend::message_view::ViewRow::Message(_))
+                )
+            })
+            .await;
+            assert_eq!(shared.thread_reads.load(Ordering::SeqCst), 1);
+            // The selection stayed on the (now real) root row.
+            let selected = h.app.state.selected_message().unwrap();
+            assert_eq!(selected.id.as_str(), "root");
+            h.assert_no_teams_traffic();
+            control.shutdown();
+        };
+        let (exit, ()) = tokio::join!(runtime.run(), driver);
+        assert_eq!(exit, RuntimeExit::Shutdown);
     }
 }

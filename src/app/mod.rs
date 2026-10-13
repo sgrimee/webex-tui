@@ -3,6 +3,9 @@
 //! Controller used to handle user input and interaction with the `Teams` thread.
 
 pub(crate) mod actions;
+// Dormant until the consented startup switch (S4); fake-tested.
+#[allow(dead_code)]
+mod bridge_app;
 // Dormant until the approved startup slice; exercised by fake-backed tests.
 #[allow(dead_code)]
 pub(crate) mod bridge_glue;
@@ -48,6 +51,10 @@ pub(crate) struct App<'a> {
     app_to_teams_tx_low: tokio::sync::mpsc::UnboundedSender<AppCmdEvent>,
     app_to_teams_tx_high: tokio::sync::mpsc::UnboundedSender<AppCmdEvent>,
     pub(crate) state: AppState<'a>,
+    /// Bridge backend; `None` keeps the legacy Teams paths (see bridge_app).
+    bridge: Option<bridge_glue::BridgeGlue>,
+    /// Leaves waiting for the single bridge write slot.
+    pending_leaves: std::collections::VecDeque<RoomId>,
 }
 
 impl App<'_> {
@@ -72,6 +79,8 @@ impl App<'_> {
                 theme,
                 ..Default::default()
             },
+            bridge: None,
+            pending_leaves: std::collections::VecDeque::new(),
         }
     }
 
@@ -205,6 +214,7 @@ impl App<'_> {
                 }
                 Action::NextMessage => {
                     self.state.messages_list.select_next_message();
+                    self.bridge_selection_changed();
                 }
                 Action::NextRoom => {
                     self.next_room();
@@ -215,6 +225,7 @@ impl App<'_> {
                         let room_id = self.state.id_of_selected_room().unwrap();
                         self.get_messages_before_first(&room_id);
                     }
+                    self.bridge_selection_changed();
                 }
                 Action::PreviousRoom => {
                     self.previous_room();
@@ -224,6 +235,10 @@ impl App<'_> {
                 }
                 Action::JumpToLastMessage => {
                     self.state.messages_list.select_last_message();
+                    self.bridge_selection_changed();
+                }
+                Action::DismissWriteReview => {
+                    self.bridge_dismiss_review();
                 }
                 Action::StartRoomSearch => {
                     // If already in filtering mode, keep the existing query but switch to entering mode
@@ -411,6 +426,7 @@ impl App<'_> {
 
     /// We could update the app or dispatch event on tick
     pub(crate) async fn update_on_tick(&mut self) -> AppReturn {
+        self.bridge_tick();
         self.state.update_on_tick();
         AppReturn::Continue
     }
@@ -418,6 +434,9 @@ impl App<'_> {
     /// Send a message with the text contained in the editor
     /// to the active person or room.
     fn send_message_buffer(&mut self) -> Result<()> {
+        if self.has_bridge() {
+            return self.bridge_send();
+        }
         if self.state.message_editor.is_empty() {
             return Err(eyre!("An empty message cannot be sent."));
         };
@@ -474,6 +493,11 @@ impl App<'_> {
             return Err(eyre!("Cannot delete message, it was not authored by self"));
         }
 
+        if self.has_bridge() {
+            // Only a confirmed delete tombstones it; selection stays put.
+            let id = message.id.clone();
+            return self.bridge_delete(&room_id, &id);
+        }
         let msg_id = message.id.as_str().to_owned();
 
         // Dispatch a delete event and remove the message from the store
@@ -552,6 +576,9 @@ impl App<'_> {
 
     /// Retrieves the latest messages in the room, only if it is empty
     fn get_messages_if_room_empty(&mut self, id: &RoomId) {
+        if self.has_bridge() {
+            return self.bridge_open_room(id);
+        }
         if self.state.cache.room_is_empty(id) {
             self.dispatch_to_teams(
                 AppCmdEvent::ListMessagesInRoom(id.clone(), None, self.state.messages_to_load),
@@ -562,6 +589,9 @@ impl App<'_> {
 
     /// Retrieves messages before the first message in the room
     fn get_messages_before_first(&mut self, id: &RoomId) {
+        if self.has_bridge() {
+            return self.bridge_load_older(id);
+        }
         if let Some(first_message) = self.state.cache.messages_in_room(id).next() {
             self.dispatch_to_teams(
                 AppCmdEvent::ListMessagesInRoom(
@@ -660,6 +690,13 @@ impl App<'_> {
             return Err(eyre!("No rooms selected for deletion"));
         }
 
+        if self.has_bridge() {
+            let count = selected_room_ids.len();
+            self.bridge_leave_rooms(selected_room_ids);
+            self.state.rooms_list.clear_room_selections();
+            debug!("Queued {count} bridge leave(s)");
+            return Ok(());
+        }
         // Send leave room commands for all selected rooms
         for room_id in selected_room_ids.clone() {
             debug!("Sending leave room command for room: {room_id}");
