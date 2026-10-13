@@ -58,7 +58,7 @@ Optional cleanup, once you no longer need the old version:
 
 ```shell
 rm -f ~/.config/webex-tui/client.yml          # old integration client ID/secret
-rm -f ~/Library/Caches/webex-tui/tokens*.json # old OAuth token cache
+rm -rf ~/Library/Caches/webex-tui           # old OAuth token cache (tokens*.json)
 ```
 
 You may also delete the old webex-tui integration on
