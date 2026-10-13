@@ -41,6 +41,9 @@ struct Received {
 }
 
 struct Control {
+    /// When set, session issue never completes: models a lifecycle future
+    /// dropped after its first phase publication.
+    issue_pending: std::sync::atomic::AtomicBool,
     calls: AtomicUsize,
     polls: AtomicUsize,
     future_drops: AtomicUsize,
@@ -152,6 +155,9 @@ impl SessionBackend for Backend {
     type Writer = Writer;
     type SnapshotReader<'a> = ();
     async fn issue(&mut self, _: &str) -> Result<Self::Client, SessionFailure> {
+        if self.0.issue_pending.load(Ordering::SeqCst) {
+            std::future::pending::<()>().await;
+        }
         Ok(Arc::clone(&self.0))
     }
     async fn subscribe(&mut self, _: &Self::Client) -> Result<(), SessionFailure> {
@@ -192,6 +198,7 @@ struct Fixture {
 fn fixture() -> Fixture {
     let (tx, rx) = oneshot::channel();
     let control = Arc::new(Control {
+        issue_pending: std::sync::atomic::AtomicBool::new(false),
         calls: AtomicUsize::new(0),
         polls: AtomicUsize::new(0),
         future_drops: AtomicUsize::new(0),
@@ -346,7 +353,7 @@ fn snapshot() -> MessageSnapshot {
         attachment_count: None,
     }
 }
-fn poll_once<F: Future>(future: Pin<&mut F>) -> Poll<F::Output> {
+fn poll_once<F: Future + ?Sized>(future: Pin<&mut F>) -> Poll<F::Output> {
     future.poll(&mut Context::from_waker(Waker::noop()))
 }
 fn count(control: &Control) -> usize {
@@ -1161,4 +1168,48 @@ async fn published_hint_expires_with_its_lease_without_a_worker_call() {
         Some(SubmissionTerminal::NotDispatched { .. })
     ));
     assert_eq!(count(&f.control), 0);
+}
+
+#[tokio::test]
+async fn dropped_pending_connect_and_due_renewal_leave_admission_revoked() {
+    for renewal in [false, true] {
+        let mut f = fixture();
+        active(&mut f).await;
+        assert!(published_ready(&f.worker));
+        if renewal {
+            f.clock.advance(85); // past the 80% renewal point, before expiry
+        }
+        f.control.issue_pending.store(true, Ordering::SeqCst);
+        {
+            let mut lifecycle: Pin<Box<dyn Future<Output = bool> + '_>> = if renewal {
+                Box::pin(async { f.worker.renew_if_due("fake-paired-secret").await.is_ok() })
+            } else {
+                Box::pin(async { f.worker.connect("fake-paired-secret").await.is_ok() })
+            };
+            assert!(poll_once(lifecycle.as_mut()).is_pending());
+        } // dropped mid-await: the worker's post-call publication never runs
+        assert_eq!(
+            f.worker.phase(),
+            SessionPhase::Connecting,
+            "renewal={renewal}"
+        );
+        assert!(!published_ready(&f.worker), "renewal={renewal}");
+        assert_eq!(
+            f.endpoint
+                .try_submit_at(request(), SessionClock::now(&f.clock)),
+            CommandAdmission::NotReady
+        );
+        assert!(!f.worker.handle_one().await);
+        // A later explicit connect + snapshot install restores admission.
+        f.control.issue_pending.store(false, Ordering::SeqCst);
+        active(&mut f).await;
+        assert!(published_ready(&f.worker));
+        assert_eq!(
+            f.endpoint
+                .try_submit_at(request(), SessionClock::now(&f.clock)),
+            CommandAdmission::Accepted
+        );
+        f.worker.shutdown();
+        assert_eq!(count(&f.control), 0);
+    }
 }
