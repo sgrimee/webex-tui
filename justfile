@@ -32,6 +32,19 @@ run *args:
     mkdir -p logs
     cargo run -- --log logs/$(date +%Y%m%d-%H:%M:%S).log {{args}}
 
+# Signing (com.sgrimee.webex-tui) keeps the bridge pairing secret's Keychain
+# ACL stable across rebuilds. Needs a Code Signing certificate; set
+# WEBEX_TUI_CODESIGN_IDENTITY to pick one. See scripts/sign-tui-dev.
+
+# Build and sign with a persistent identity (stable Keychain ACL)
+build-signed:
+    ./scripts/sign-tui-dev
+
+# Run the signed binary directly (never `cargo run`, which re-signs ad hoc)
+run-signed *args: build-signed
+    mkdir -p logs
+    "${CARGO_TARGET_DIR:-target}/debug/webex-tui" --log logs/$(date +%Y%m%d-%H:%M:%S).log {{args}}
+
 # Run with debug logging
 run-debug *args:
     mkdir -p logs

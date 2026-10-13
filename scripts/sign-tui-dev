@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# Build webex-tui and sign it with a persistent code-signing identity.
+#
+# The bridge pairing secret lives in a Keychain item whose ACL trusts the
+# creating application by its designated requirement. A cargo build carries
+# only an ad-hoc linker signature (designated requirement = cdhash), so every
+# rebuild would be a new application and prompt for Keychain access. Signing
+# with a persistent identity and the stable identifier below keeps the
+# requirement, and therefore the ACL, stable across rebuilds. A distinct
+# identifier from the bridge's binaries means no ACL is shared with them.
+#
+# Run the signed binary directly (`just run-signed`), never `cargo run`,
+# which relinks and re-applies an ad-hoc signature.
+set -euo pipefail
+
+repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+cd "$repo_root"
+
+identifier="com.sgrimee.webex-tui"
+
+identity=${WEBEX_TUI_CODESIGN_IDENTITY:-}
+if [[ -z "$identity" ]]; then
+    identity=$(security find-identity -v -p codesigning 2>/dev/null \
+        | awk -F '"' 'NF >= 2 { print $2; exit }')
+fi
+
+if [[ -z "$identity" || "$identity" == "-" ]]; then
+    cat >&2 <<'MSG'
+webex-tui signing requires a persistent Code Signing identity (no ad-hoc
+fallback: an ad-hoc signature changes on every build and re-prompts for
+Keychain access).
+
+Create an "Apple Development" (or local Code Signing) certificate in Keychain
+Access/Xcode (the one used for webex-bridge works), or select one explicitly:
+
+  WEBEX_TUI_CODESIGN_IDENTITY='Apple Development: Your Name (TEAMID)' \
+    ./scripts/sign-tui-dev
+MSG
+    exit 1
+fi
+
+target_dir=${CARGO_TARGET_DIR:-target}
+binary="${target_dir}/debug/webex-tui"
+
+cargo build --bin webex-tui
+codesign --force --sign "$identity" \
+    --identifier "$identifier" \
+    --timestamp=none \
+    "$binary"
+
+# Verify: intact, persistent (not ad-hoc) and carrying the expected identifier.
+codesign --verify --strict "$binary"
+details=$(codesign -d --verbose=2 "$binary" 2>&1)
+if ! grep -qx "Identifier=${identifier}" <<<"$details" \
+    || grep -q "Signature=adhoc" <<<"$details"; then
+    echo "Refusing ${binary}: not persistently signed as ${identifier}" >&2
+    exit 1
+fi
+echo "Signed ${binary} as ${identifier}"
