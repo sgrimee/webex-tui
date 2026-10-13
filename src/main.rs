@@ -73,9 +73,15 @@ async fn main() -> Result<ExitCode> {
         return Ok(ExitCode::SUCCESS);
     }
 
+    // The config is read before logging starts, so `debug: true` in it
+    // raises the log level too; its notes are logged once the logger exists.
+    let (user_config, config_notes) = UserConfig::load();
+    // CLI args override config values
+    let debug = matches.get_flag("debug") || user_config.debug;
+
     // Setup logging.
     color_eyre::install()?;
-    let default_log_level = if matches.get_flag("debug") {
+    let default_log_level = if debug {
         LevelFilter::Debug
     } else {
         LevelFilter::Info
@@ -86,15 +92,22 @@ async fn main() -> Result<ExitCode> {
         .collect::<Vec<_>>();
     let log_file_opt = matches.get_one::<PathBuf>("log");
     setup_logger(default_log_level, trace_modules, log_file_opt); // only for tui mode
+    for note in &config_notes {
+        if note.warning {
+            log::warn!("{}", note.text);
+        } else {
+            log::info!("{}", note.text);
+        }
+    }
 
     // Welcome message
     println!("{BANNER}");
     println!("Starting webex-tui, version {}.", env!("CARGO_PKG_VERSION"));
 
-    let user_config = UserConfig::load();
+    for note in config_notes.iter().filter(|note| note.warning) {
+        eprintln!("{}", note.text);
+    }
     let theme = load_theme(&user_config.theme);
-    // CLI args override config values
-    let debug = matches.get_flag("debug") || user_config.debug;
     let (messages_to_load, warning) = config::resolve_messages_to_load(
         matches.get_one::<u32>("messages").copied(),
         user_config.messages_to_load,

@@ -5,9 +5,8 @@
 //! `client.yml` / token cache is ignored, never read or deleted.
 
 use color_eyre::eyre::eyre;
-use log::{info, warn};
 use serde::{Deserialize, Serialize};
-use std::{env, fs, path::Path};
+use std::{env, fs};
 
 const USER_FILE_NAME: &str = "config.yml";
 const CONFIG_DIR: &str = ".config";
@@ -68,16 +67,46 @@ impl Default for UserConfig {
     }
 }
 
+/// A note from loading the config, shown once logging is set up; warnings
+/// are also printed before the terminal UI starts.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ConfigNote {
+    pub(crate) warning: bool,
+    pub(crate) text: String,
+}
+
+impl ConfigNote {
+    fn info(text: String) -> Self {
+        Self {
+            warning: false,
+            text,
+        }
+    }
+    fn warn(text: String) -> Self {
+        Self {
+            warning: true,
+            text,
+        }
+    }
+}
+
 impl UserConfig {
-    /// Load user configuration with fallback methods
-    pub(crate) fn load() -> Self {
+    /// Load user configuration: `WEBEX_TUI_CONFIG`, else
+    /// `~/.config/webex-tui/config.yml` (created with defaults if missing).
+    /// Runs before logging is set up, so it returns its notes.
+    pub(crate) fn load() -> (Self, Vec<ConfigNote>) {
+        let mut notes = Vec::new();
         // Try environment variable first (nix can set this)
         if let Ok(config_path) = env::var("WEBEX_TUI_CONFIG") {
-            info!("Loading user config from WEBEX_TUI_CONFIG: {config_path}");
-            if let Ok(config) = Self::load_from_file(std::path::Path::new(&config_path)) {
-                return config;
+            notes.push(ConfigNote::info(format!(
+                "Loading user config from WEBEX_TUI_CONFIG: {config_path}"
+            )));
+            match fs::read_to_string(&config_path) {
+                Ok(content) => return (Self::parse(&content, &config_path, &mut notes), notes),
+                Err(e) => notes.push(ConfigNote::warn(format!(
+                    "Cannot read WEBEX_TUI_CONFIG {config_path} ({e}); trying the default location"
+                ))),
             }
-            warn!("Failed to load config from WEBEX_TUI_CONFIG, trying default location");
         }
 
         // Try standard location
@@ -86,48 +115,97 @@ impl UserConfig {
                 .join(CONFIG_DIR)
                 .join(APP_CONFIG_DIR)
                 .join(USER_FILE_NAME);
-            info!("Loading user config from: {}", config_path.display());
+            let shown = config_path.display().to_string();
+            notes.push(ConfigNote::info(format!(
+                "Loading user config from: {shown}"
+            )));
 
             // If config file doesn't exist, create it with defaults
             if !config_path.exists() {
-                info!(
-                    "No user config found, creating default configuration at: {}",
-                    config_path.display()
-                );
                 let default_config = Self::default();
-
-                // Save default config
-                if let Err(e) = default_config.save() {
-                    warn!("Failed to create default config file: {e}");
-                } else {
-                    info!("Created default config file: {}", config_path.display());
+                match default_config.save() {
+                    Ok(()) => notes.push(ConfigNote::info(format!(
+                        "Created default config file: {shown}"
+                    ))),
+                    Err(e) => notes.push(ConfigNote::warn(format!(
+                        "Failed to create default config file: {e}"
+                    ))),
                 }
-
                 // Copy bundled theme files to user's config directory
-                if let Err(e) = crate::theme::copy_bundled_themes() {
-                    warn!("Failed to copy theme files: {e}");
-                } else {
-                    info!("Copied theme files to user config directory");
+                match crate::theme::copy_bundled_themes() {
+                    Ok(()) => notes.push(ConfigNote::info(
+                        "Copied theme files to user config directory".into(),
+                    )),
+                    Err(e) => {
+                        notes.push(ConfigNote::warn(format!("Failed to copy theme files: {e}")))
+                    }
                 }
-
-                return default_config;
+                return (default_config, notes);
             }
 
-            if let Ok(config) = Self::load_from_file(&config_path) {
-                return config;
+            match fs::read_to_string(&config_path) {
+                Ok(content) => return (Self::parse(&content, &shown, &mut notes), notes),
+                Err(e) => notes.push(ConfigNote::warn(format!(
+                    "Cannot read {shown} ({e}); using defaults"
+                ))),
             }
         }
 
-        // Use defaults if no config found (shouldn't reach here normally)
-        info!("No user config found, using defaults");
-        Self::default()
+        notes.push(ConfigNote::info(
+            "No user config found, using defaults".into(),
+        ));
+        (Self::default(), notes)
     }
 
-    /// Load configuration from a specific file
-    fn load_from_file(path: &Path) -> color_eyre::Result<Self> {
-        let content = fs::read_to_string(path)?;
-        let config: UserConfig = serde_yaml::from_str(&content)?;
-        Ok(config)
+    /// Field-tolerant parse: a bad or unknown entry is reported and skipped,
+    /// the others still apply (an invalid value never resets the theme).
+    fn parse(content: &str, source: &str, notes: &mut Vec<ConfigNote>) -> Self {
+        let mut config = Self::default();
+        let value: serde_yaml::Value = match serde_yaml::from_str(content) {
+            Ok(value) => value,
+            Err(e) => {
+                notes.push(ConfigNote::warn(format!(
+                    "{source} is not valid YAML ({e}); using defaults"
+                )));
+                return config;
+            }
+        };
+        let map = match value {
+            serde_yaml::Value::Mapping(map) => map,
+            serde_yaml::Value::Null => return config, // empty file
+            _ => {
+                notes.push(ConfigNote::warn(format!(
+                    "{source} is not a mapping of settings; using defaults"
+                )));
+                return config;
+            }
+        };
+        for (key, value) in &map {
+            let key = key.as_str().unwrap_or("?");
+            let bad = |expected: &str| {
+                ConfigNote::warn(format!(
+                    "{source}: ignoring {key} (expected {expected}); using the default"
+                ))
+            };
+            match key {
+                "theme" => match value.as_str() {
+                    Some(theme) => config.theme = theme.to_owned(),
+                    None => notes.push(bad("a theme name")),
+                },
+                "messages_to_load" => match value.as_u64().and_then(|n| u32::try_from(n).ok()) {
+                    Some(n) => config.messages_to_load = n,
+                    None => notes.push(bad("a number")),
+                },
+                "debug" => match value.as_bool() {
+                    Some(debug) => config.debug = debug,
+                    None => notes.push(bad("true or false")),
+                },
+                _ => notes.push(ConfigNote::warn(format!(
+                    "{source}: ignoring unknown setting {key}"
+                ))),
+            }
+        }
+        config
     }
 
     /// Save user configuration to the standard location
@@ -152,6 +230,38 @@ impl UserConfig {
 
 #[cfg(test)]
 mod tests {
+    use super::{ConfigNote, UserConfig};
+
+    fn parse(content: &str) -> (UserConfig, Vec<ConfigNote>) {
+        let mut notes = Vec::new();
+        (UserConfig::parse(content, "config.yml", &mut notes), notes)
+    }
+
+    #[test]
+    fn one_invalid_value_keeps_the_other_settings_and_warns() {
+        let (config, notes) = parse("theme: dracula\nmessages_to_load: lots\ndebug: true\n");
+        assert_eq!(config.theme, "dracula");
+        assert_eq!(config.messages_to_load, 10);
+        assert!(config.debug);
+        assert_eq!(notes.len(), 1);
+        assert!(notes[0].warning && notes[0].text.contains("messages_to_load"));
+    }
+
+    #[test]
+    fn unknown_keys_and_broken_yaml_are_reported_not_silent() {
+        let (config, notes) = parse("theme: dracula\nclient_id: abc\n");
+        assert_eq!(config.theme, "dracula");
+        assert!(notes
+            .iter()
+            .any(|n| n.warning && n.text.contains("client_id")));
+        let (config, notes) = parse("theme: [unclosed\n");
+        assert_eq!(config, UserConfig::default());
+        assert!(notes[0].warning && notes[0].text.contains("not valid YAML"));
+        let (config, notes) = parse("");
+        assert_eq!(config, UserConfig::default());
+        assert!(notes.is_empty());
+    }
+
     #[test]
     fn the_cli_page_size_overrides_the_config_and_config_values_are_clamped() {
         use super::resolve_messages_to_load as resolve;
@@ -162,8 +272,6 @@ mod tests {
         assert!(warning.unwrap().contains("1..=100"));
         assert_eq!(resolve(None, 500).0, 100);
     }
-
-    use super::*;
 
     #[test]
     fn test_user_config_default() {

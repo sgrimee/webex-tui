@@ -26,7 +26,7 @@ in {
     };
 
     messages_to_load = mkOption {
-      type = types.int;
+      type = types.ints.between 1 100;
       default = 10;
       description = "Messages per room page (1-100); --messages overrides it";
     };
