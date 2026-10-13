@@ -664,3 +664,48 @@ async fn sustained_sse_traffic_cannot_starve_lease_renewal() {
     let (exit, ()) = tokio::join!(runtime.run(), driver);
     assert_eq!(exit, RuntimeExit::Shutdown);
 }
+
+#[tokio::test]
+async fn failures_right_after_active_keep_backing_off() {
+    let (runtime, f) = fixture();
+    let driver = async {
+        let mut connected_at = Vec::new();
+        for subscription in 1..=4 {
+            connect_and_install(&f, subscription).await;
+            connected_at.push(tokio::time::Instant::now());
+            // The stream ends immediately after becoming Active (crash loop).
+            f.shared.push(None);
+        }
+        // Immediate first reconnect, then 10 ms and 20 ms backoff: a hot
+        // loop would reconnect without any delay every time.
+        let gaps: Vec<_> = connected_at.windows(2).map(|w| w[1] - w[0]).collect();
+        assert!(gaps[1] >= Duration::from_millis(10), "{gaps:?}");
+        assert!(gaps[2] >= Duration::from_millis(20), "{gaps:?}");
+        f.control.shutdown();
+    };
+    let (exit, ()) = tokio::join!(runtime.run(), driver);
+    assert_eq!(exit, RuntimeExit::Shutdown);
+}
+
+#[tokio::test]
+async fn backoff_resets_after_staying_active_for_backoff_max() {
+    let (runtime, f) = fixture();
+    let driver = async {
+        connect_and_install(&f, 1).await;
+        f.shared.push(None);
+        connect_and_install(&f, 2).await;
+        // Stay Active longer than backoff_max (40 ms), then fail again: the
+        // reconnect is immediate once more.
+        tokio::time::sleep(Duration::from_millis(60)).await;
+        let failed = tokio::time::Instant::now();
+        f.shared.push(None);
+        until("immediate reconnect", || {
+            f.shared.subscribes.load(Ordering::SeqCst) == 3
+        })
+        .await;
+        assert!(failed.elapsed() < Duration::from_millis(10));
+        f.control.shutdown();
+    };
+    let (exit, ()) = tokio::join!(runtime.run(), driver);
+    assert_eq!(exit, RuntimeExit::Shutdown);
+}

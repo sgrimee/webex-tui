@@ -153,6 +153,10 @@ where
     /// Persistent lease-tick schedule. Checked at the top of every loop
     /// iteration, so steady SSE traffic or queued work cannot starve renewal.
     next_tick: Instant,
+    /// When the session last became Active. Reconnect backoff resets only
+    /// after staying Active for `backoff_max`, so a session that fails right
+    /// after becoming Active (crash loop, rejected stream) keeps backing off.
+    active_since: Option<Instant>,
 }
 
 impl<B, C, H, K, P> Runtime<B, C, H, K, P>
@@ -189,6 +193,7 @@ where
                 attempts: 0,
                 reconnect_at: None,
                 next_tick: Instant::now(),
+                active_since: None,
             },
             control,
         )
@@ -222,14 +227,18 @@ where
                     continue;
                 }
                 SessionPhase::Active => {
-                    self.attempts = 0;
                     self.reconnect_at = None;
+                    let since = *self.active_since.get_or_insert(now);
+                    if now.saturating_duration_since(since) >= self.config.backoff_max {
+                        self.attempts = 0;
+                    }
                 }
                 SessionPhase::AwaitingReady => {}
                 SessionPhase::Connecting
                 | SessionPhase::Disconnected
                 | SessionPhase::Expired
                 | SessionPhase::Failed(_) => {
+                    self.active_since = None;
                     if let Some(exit) = self.reconnect_if_due().await {
                         return exit;
                     }
