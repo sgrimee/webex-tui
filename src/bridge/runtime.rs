@@ -1,0 +1,391 @@
+//! Dormant single-task bridge runtime loop. Not started from `main` or App.
+//!
+//! The runtime solely owns the `CommandWorker` (and therefore the session
+//! controller, SSE stream and capabilities). It drives, in one task:
+//! - snapshot preparation whenever the session needs one (bounded by
+//!   `snapshot_deadline`), through an injected `SnapshotSource` that only sees
+//!   the ticket-fenced read facade;
+//! - queued writes (`handle_one`, `WRITE_DEADLINE`) and reads (`handle_read`,
+//!   `READ_DEADLINE`), one at a time, never retried;
+//! - SSE frames from the current subscription;
+//! - lease ticks: due renewal and reconnection with bounded exponential
+//!   backoff, each re-borrowing the TUI-owned pairing secret from its store
+//!   for exactly one call (`connect_deadline`) and dropping it immediately;
+//! - App wakeups (submission, snapshot ack, shutdown) via `RuntimeControl`.
+//!
+//! Writes and snapshot preparation borrow the worker, so SSE is not polled
+//! meanwhile; the session buffers or signals lag and the loop resyncs. Exit,
+//! shutdown and drop settle every admitted read and write exactly once through
+//! the existing worker/mailbox guarantees. No logging; no secret is retained.
+
+use super::{
+    commands::CommandWorker,
+    controller::PresentationHost,
+    pairing::{SecretStoreFailure, UiSecretStore},
+    session::{
+        io_failure, LeaseAction, SessionBackend, SessionClock, SessionFailure, SessionPhase,
+        SubscriptionId,
+    },
+};
+use std::{
+    future::Future,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
+use tokio::{sync::Notify, time::Instant};
+use webex_bridge::client::events::{BridgeEvent, EventStream};
+
+/// Cancel-safe source of SSE events for the current subscription: dropping a
+/// pending `next_event` future must not lose parser state or a parsed event.
+/// `None` is a clean end of stream.
+pub(crate) trait EventSource: Send {
+    fn next_event(
+        &mut self,
+    ) -> impl Future<Output = Option<Result<BridgeEvent, SessionFailure>>> + Send;
+}
+
+/// Real bridge SSE: `next_event` is a cancel-safe poll over the parser, whose
+/// state lives in the stream (bridge `0693534`).
+impl EventSource for EventStream {
+    async fn next_event(&mut self) -> Option<Result<BridgeEvent, SessionFailure>> {
+        EventStream::next_event(self)
+            .await
+            .map(|event| event.map_err(io_failure))
+    }
+}
+
+/// Builds a presentation snapshot from the ticket-fenced read facade only.
+pub(crate) trait SnapshotSource<B: SessionBackend>: Send {
+    type Snapshot;
+    fn build(
+        &mut self,
+        reader: &B::SnapshotReader,
+    ) -> impl Future<Output = Result<Self::Snapshot, SessionFailure>> + Send;
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct RuntimeConfig {
+    /// Lease check / renewal tick.
+    pub(crate) tick: Duration,
+    /// Bound for one connect or renewal (issue + subscribe).
+    pub(crate) connect_deadline: Duration,
+    /// Bound for one snapshot preparation (boundary + reads + commit).
+    pub(crate) snapshot_deadline: Duration,
+    /// First reconnect is immediate; then min · 2^(n-1), capped at max.
+    pub(crate) backoff_min: Duration,
+    pub(crate) backoff_max: Duration,
+}
+
+impl Default for RuntimeConfig {
+    fn default() -> Self {
+        Self {
+            tick: Duration::from_secs(1),
+            connect_deadline: Duration::from_secs(15),
+            snapshot_deadline: Duration::from_secs(30),
+            backoff_min: Duration::from_secs(1),
+            backoff_max: Duration::from_secs(30),
+        }
+    }
+}
+
+/// Why the loop ended. In every case admitted work has been settled.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum RuntimeExit {
+    Shutdown,
+    /// The daemon refused the pairing secret itself; explicit re-pairing is
+    /// a user decision outside this loop.
+    PairingRequired(SessionFailure),
+    /// The TUI secret store denied, lost or could not provide the secret.
+    SecretUnavailable,
+}
+
+/// App-side control: wake after submit/ack, or request shutdown. Cloneable,
+/// capability-free and synchronous.
+#[derive(Clone)]
+pub(crate) struct RuntimeControl {
+    wake: Arc<Notify>,
+    stop: Arc<AtomicBool>,
+}
+
+impl RuntimeControl {
+    pub(crate) fn wake(&self) {
+        self.wake.notify_one();
+    }
+    pub(crate) fn shutdown(&self) {
+        self.stop.store(true, Ordering::SeqCst);
+        self.wake.notify_one();
+    }
+}
+
+enum Woke {
+    App,
+    Event(SubscriptionId, Option<Result<BridgeEvent, SessionFailure>>),
+    Tick,
+}
+
+pub(crate) struct Runtime<B, C, H, K, P>
+where
+    B: SessionBackend,
+    C: SessionClock,
+    H: PresentationHost,
+{
+    worker: CommandWorker<B, C, H>,
+    secrets: K,
+    snapshots: P,
+    config: RuntimeConfig,
+    wake: Arc<Notify>,
+    stop: Arc<AtomicBool>,
+    attempts: u32,
+    reconnect_at: Option<Instant>,
+}
+
+impl<B, C, H, K, P> Runtime<B, C, H, K, P>
+where
+    B: SessionBackend,
+    B::Stream: EventSource,
+    C: SessionClock,
+    H: PresentationHost,
+    K: UiSecretStore,
+    P: SnapshotSource<B, Snapshot = H::Snapshot>,
+{
+    /// `worker` is typically already connected by the pairing bootstrap; a
+    /// disconnected worker is connected on the first loop iteration.
+    pub(crate) fn new(
+        worker: CommandWorker<B, C, H>,
+        secrets: K,
+        snapshots: P,
+        config: RuntimeConfig,
+    ) -> (Self, RuntimeControl) {
+        let wake = Arc::new(Notify::new());
+        let stop = Arc::new(AtomicBool::new(false));
+        let control = RuntimeControl {
+            wake: Arc::clone(&wake),
+            stop: Arc::clone(&stop),
+        };
+        (
+            Self {
+                worker,
+                secrets,
+                snapshots,
+                config,
+                wake,
+                stop,
+                attempts: 0,
+                reconnect_at: None,
+            },
+            control,
+        )
+    }
+
+    /// Run until shutdown or a terminal pairing/secret failure, then settle
+    /// all admitted work and disconnect. Dropping this future instead is also
+    /// safe: the worker's guards settle in-flight and queued work.
+    pub(crate) async fn run(mut self) -> RuntimeExit {
+        let exit = self.run_inner().await;
+        self.worker.shutdown();
+        self.worker.disconnect();
+        exit
+    }
+
+    async fn run_inner(&mut self) -> RuntimeExit {
+        loop {
+            if self.stop.load(Ordering::SeqCst) {
+                return RuntimeExit::Shutdown;
+            }
+            match self.worker.phase() {
+                SessionPhase::SnapshotRequired => {
+                    self.prepare_snapshot().await;
+                    continue;
+                }
+                SessionPhase::Active => {
+                    self.attempts = 0;
+                    self.reconnect_at = None;
+                }
+                SessionPhase::AwaitingReady => {}
+                SessionPhase::Connecting
+                | SessionPhase::Disconnected
+                | SessionPhase::Expired
+                | SessionPhase::Failed(_) => {
+                    if let Some(exit) = self.reconnect_if_due().await {
+                        return exit;
+                    }
+                }
+            }
+            // Admitted work is never held for a later session: the worker
+            // settles it immediately if the session is not ready.
+            if self.worker.has_queued_write() {
+                self.worker.handle_one().await;
+                continue;
+            }
+            if self.worker.has_queued_read() {
+                self.worker.handle_read().await;
+                continue;
+            }
+            let woke = self.wait().await;
+            match woke {
+                Woke::App => self.worker.refresh_admission(),
+                Woke::Event(subscription, event) => self.on_event(subscription, event),
+                Woke::Tick => {
+                    if let Some(exit) = self.on_tick().await {
+                        return exit;
+                    }
+                }
+            }
+        }
+    }
+
+    async fn wait(&mut self) -> Woke {
+        let wake = Arc::clone(&self.wake);
+        let sleep_for = match self.reconnect_at {
+            Some(at) => at
+                .saturating_duration_since(Instant::now())
+                .min(self.config.tick),
+            None => self.config.tick,
+        };
+        let subscription = self.worker.subscription();
+        let worker = &mut self.worker;
+        tokio::select! {
+            biased;
+            () = wake.notified() => Woke::App,
+            event = async {
+                match (subscription, worker.stream_mut()) {
+                    (Some(subscription), Some(stream)) => (subscription, stream.next_event().await),
+                    _ => std::future::pending().await,
+                }
+            } => Woke::Event(event.0, event.1),
+            () = tokio::time::sleep(sleep_for) => Woke::Tick,
+        }
+    }
+
+    fn on_event(
+        &mut self,
+        subscription: SubscriptionId,
+        event: Option<Result<BridgeEvent, SessionFailure>>,
+    ) {
+        match event {
+            // Projection/continuity failures are handled by the controller.
+            Some(Ok(event)) => {
+                let _ = self.worker.bridge_event(subscription, &event);
+            }
+            Some(Err(failure)) => {
+                self.worker.stream_failed(subscription, failure);
+            }
+            None => {
+                self.worker
+                    .stream_failed(subscription, SessionFailure::StreamEnded);
+            }
+        }
+    }
+
+    async fn on_tick(&mut self) -> Option<RuntimeExit> {
+        if self.worker.check_lease() != LeaseAction::Renew {
+            return None; // expiry is handled by the reconnect path
+        }
+        let secret = match self.secrets.load().await {
+            Ok(Some(secret)) => secret,
+            Ok(None) | Err(SecretStoreFailure::Denied | SecretStoreFailure::Unavailable) => {
+                return Some(RuntimeExit::SecretUnavailable)
+            }
+        };
+        let renewed = tokio::time::timeout(
+            self.config.connect_deadline,
+            self.worker.renew_if_due(secret.as_str()),
+        )
+        .await;
+        drop(secret);
+        match renewed {
+            Ok(Err(failure @ (SessionFailure::AuthRequired | SessionFailure::Forbidden))) => {
+                Some(RuntimeExit::PairingRequired(failure))
+            }
+            // Other failures leave the session Failed; a timed-out renewal
+            // leaves it Connecting. Both are picked up by the reconnect path.
+            _ => None,
+        }
+    }
+
+    async fn reconnect_if_due(&mut self) -> Option<RuntimeExit> {
+        let now = Instant::now();
+        let due = match self.reconnect_at {
+            Some(at) => at,
+            None => {
+                let at = now + self.backoff();
+                self.reconnect_at = Some(at);
+                at
+            }
+        };
+        if now < due {
+            return None;
+        }
+        self.reconnect_at = None;
+        self.attempts = self.attempts.saturating_add(1);
+        let secret = match self.secrets.load().await {
+            Ok(Some(secret)) => secret,
+            Ok(None) | Err(SecretStoreFailure::Denied | SecretStoreFailure::Unavailable) => {
+                return Some(RuntimeExit::SecretUnavailable)
+            }
+        };
+        let connected = tokio::time::timeout(
+            self.config.connect_deadline,
+            self.worker.connect(secret.as_str()),
+        )
+        .await;
+        drop(secret);
+        match connected {
+            Ok(Err(failure @ (SessionFailure::AuthRequired | SessionFailure::Forbidden))) => {
+                Some(RuntimeExit::PairingRequired(failure))
+            }
+            _ => None,
+        }
+    }
+
+    fn backoff(&self) -> Duration {
+        if self.attempts == 0 {
+            return Duration::ZERO;
+        }
+        let factor = 1_u32.checked_shl(self.attempts - 1).unwrap_or(u32::MAX);
+        self.config
+            .backoff_min
+            .saturating_mul(factor)
+            .min(self.config.backoff_max)
+    }
+
+    async fn prepare_snapshot(&mut self) {
+        let Some(subscription) = self.worker.subscription() else {
+            return;
+        };
+        let Self {
+            worker,
+            snapshots,
+            config,
+            ..
+        } = self;
+        let prepared = tokio::time::timeout(config.snapshot_deadline, async {
+            let ticket = worker.begin_snapshot().await?;
+            let snapshot = {
+                let reader = worker.snapshot_reader(&ticket)?;
+                snapshots.build(&reader).await?
+            };
+            worker.commit_snapshot(ticket, snapshot).map(|_| ())
+        })
+        .await;
+        let failure = match prepared {
+            Ok(Ok(())) => return,
+            Ok(Err(failure)) => failure,
+            Err(_) => SessionFailure::Transport,
+        };
+        // A stale ticket after an intervening reconnect needs no action; any
+        // other failure ends this subscription so the reconnect path retries
+        // with backoff instead of spinning on SnapshotRequired.
+        if failure != SessionFailure::StaleSnapshot
+            && self.worker.phase() == SessionPhase::SnapshotRequired
+        {
+            self.worker.stream_failed(subscription, failure);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests;
