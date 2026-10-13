@@ -28,6 +28,12 @@ pub(crate) trait PresentationHost {
     fn session_phase(&mut self, phase: SessionPhase);
     fn lifecycle(&mut self, projection: &LifecycleProjection, effects: ProjectionEffects);
     fn install_snapshot(&mut self, snapshot: Self::Snapshot);
+    /// Whether the presentation owner has confirmed installing the latest
+    /// snapshot. Write admission stays revoked until it has. Hosts that install
+    /// synchronously inside `install_snapshot` are acknowledged immediately.
+    fn snapshot_acknowledged(&self) -> bool {
+        true
+    }
 }
 
 pub(crate) struct HostController<B: SessionBackend, C: SessionClock, H: PresentationHost> {

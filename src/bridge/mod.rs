@@ -10,6 +10,7 @@ pub(crate) mod controller;
 pub(crate) mod events;
 pub(crate) mod legacy;
 pub(crate) mod pairing;
+pub(crate) mod presentation;
 pub(crate) mod projection;
 pub(crate) mod read_dispatch;
 pub(crate) mod session;

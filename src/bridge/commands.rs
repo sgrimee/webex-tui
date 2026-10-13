@@ -147,6 +147,9 @@ impl<H: PresentationHost> PresentationHost for AdmissionHost<H> {
     fn install_snapshot(&mut self, snapshot: Self::Snapshot) {
         self.inner.install_snapshot(snapshot);
     }
+    fn snapshot_acknowledged(&self) -> bool {
+        self.inner.snapshot_acknowledged()
+    }
 }
 
 /// Sole owner of HostController. Lifecycle methods are explicit, caller-
@@ -192,8 +195,18 @@ impl<B: SessionBackend, C: SessionClock, H: PresentationHost> CommandWorker<B, C
 
     /// Worker-side publication after lifecycle/snapshot work. This is only a
     /// pre-admission hint; actual readiness/generation is checked again at dequeue.
+    /// Ready is published only once the presentation owner has acknowledged
+    /// the latest snapshot installation (ordered install/ack barrier).
     fn publish(&mut self) {
-        lock(&self.shared).published = self.controller.write_admission_stamp();
+        let stamp = self.controller.write_admission_stamp();
+        let acknowledged = self.controller.host().snapshot_acknowledged();
+        lock(&self.shared).published = if acknowledged { stamp } else { stamp.revoked() };
+    }
+
+    /// Re-evaluate admission after the presentation owner acknowledged a
+    /// snapshot. Caller-scheduled; no timer or wakeup is installed here.
+    pub(crate) fn refresh_admission(&mut self) {
+        self.publish();
     }
 
     pub(crate) fn phase(&self) -> SessionPhase {
@@ -309,7 +322,10 @@ impl<B: SessionBackend, C: SessionClock, H: PresentationHost> CommandWorker<B, C
         // Check the actual lease-aware state, not just the published hint. Even
         // if a later generation is ready, an old command must refuse immediately.
         let actual = self.controller.write_admission_stamp();
-        if command.stamp != actual || !actual.ready() {
+        if command.stamp != actual
+            || !actual.ready()
+            || !self.controller.host().snapshot_acknowledged()
+        {
             reservation.finish(SubmissionTerminal::NotDispatched {
                 context: command.request.context,
                 reason: NotDispatchedReason::NotReady,

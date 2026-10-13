@@ -27,7 +27,7 @@ pub(crate) enum RefreshTarget {
     LoadedMessages(ChangeScope),
 }
 
-#[derive(Default, PartialEq, Eq)]
+#[derive(Clone, Default, PartialEq, Eq)]
 pub(crate) struct ProjectionEffects {
     pub(crate) refresh: Vec<RefreshTarget>,
     /// Only an explicit committed message-delete event permits immediate body
@@ -68,7 +68,7 @@ impl ProjectionEffects {
     }
 }
 
-#[derive(Default)]
+#[derive(Clone, Default, PartialEq, Eq)]
 pub(crate) struct LifecycleProjection {
     pub(crate) local_daemon: ConnectionState,
     pub(crate) upstream_webex: ConnectionState,
