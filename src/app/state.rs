@@ -377,6 +377,13 @@ impl AppState<'_> {
         self.cache.nth_message_in_room(index, &room_id)
     }
 
+    /// The selected message, only if a user action (reply, edit, delete,
+    /// copy) may target it. A deleted-root tombstone row is selectable, so the
+    /// selection can stay anchored in its thread, but it is not actionable.
+    pub(crate) fn selected_actionable_message(&self) -> Result<&MessageSnapshot> {
+        actionable(self.selected_message()?)
+    }
+
     /// Returns true if the selected message is from me.
     pub(crate) fn selected_message_is_from_me(&self) -> Result<bool> {
         let message = self.selected_message()?;
@@ -419,5 +426,40 @@ impl Default for AppState<'_> {
             show_logs: false,
             show_rooms: true,
         }
+    }
+}
+
+/// Refuse tombstones as action targets (REVIEW-14 nit b).
+fn actionable(message: &MessageSnapshot) -> Result<&MessageSnapshot> {
+    if message.status == crate::frontend::data::MessageStatus::Active {
+        Ok(message)
+    } else {
+        Err(eyre!("The selected message was deleted"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::frontend::data::{MessageId, MessageStatus, RoomId};
+
+    #[test]
+    fn tombstones_are_not_action_targets() {
+        let mut message = MessageSnapshot {
+            id: MessageId::new("root"),
+            room_id: RoomId::new("room"),
+            revision: Some(1),
+            parent_id: None,
+            sender_id: None,
+            sender_email: None,
+            created_at: None,
+            updated_at: None,
+            status: MessageStatus::Active,
+            body: None,
+            attachment_count: None,
+        };
+        assert!(actionable(&message).is_ok());
+        message.status = MessageStatus::Deleted;
+        assert!(actionable(&message).is_err());
     }
 }

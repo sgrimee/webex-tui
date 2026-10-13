@@ -462,7 +462,7 @@ impl App<'_> {
     /// Deletes the selected message, if there is one and it was authored by self.
     /// Otherwise does nothing.
     fn delete_selected_message(&mut self) -> Result<()> {
-        let message = self.state.selected_message()?;
+        let message = self.state.selected_actionable_message()?;
         let room_id = self.state.id_of_selected_room().unwrap();
 
         // Ensure we attempt to delete only our own messages.
@@ -494,7 +494,7 @@ impl App<'_> {
         use std::io::Write;
         use std::process::{Command, Stdio};
 
-        let message = self.state.selected_message()?;
+        let message = self.state.selected_actionable_message()?;
         let content = MessagePresentation::from(message).body.copy_text()?;
 
         // On Wayland, use wl-copy for better compatibility
@@ -530,7 +530,7 @@ impl App<'_> {
 
     /// Prepares the message editor to respond to the selected message
     fn respond_to_selected_message(&mut self) -> Result<()> {
-        let message = self.state.selected_message()?;
+        let message = self.state.selected_actionable_message()?;
         self.state
             .message_editor
             .set_response_to(Some(message.clone()));
@@ -539,7 +539,7 @@ impl App<'_> {
 
     /// Prepeares the message editor with the contents of the selected message
     fn edit_selected_message(&mut self) -> Result<()> {
-        let message = self.state.selected_message()?.clone();
+        let message = self.state.selected_actionable_message()?.clone();
         if !self
             .state
             .cache
