@@ -50,9 +50,15 @@ impl<B: SessionBackend, C: SessionClock, H: PresentationHost> HostController<B, 
         &mut self,
         intent: FrontendIntent,
     ) -> Result<FrontendResult, SessionWriteError> {
+        // Compare phases like check_lease, so any transition observed by the
+        // call (not only active-session removal) is published without lag.
+        let previous = self.session.phase();
         let had_active = self.session.subscription().is_some();
         let result = self.session.dispatch_write(intent).await;
-        if had_active && self.session.subscription().is_none() {
+        // phase() is lease-aware, so a silent expiry already reads Expired
+        // before the call: also publish when the active session was removed.
+        if self.session.phase() != previous || (had_active && self.session.subscription().is_none())
+        {
             self.phase_changed();
         }
         result
@@ -64,9 +70,13 @@ impl<B: SessionBackend, C: SessionClock, H: PresentationHost> HostController<B, 
         &mut self,
         request: RequestEnvelope,
     ) -> Result<ResultEnvelope, SessionReadError> {
+        let previous = self.session.phase();
         let had_active = self.session.subscription().is_some();
         let result = self.session.dispatch_read(request).await;
-        if had_active && self.session.subscription().is_none() {
+        // phase() is lease-aware, so a silent expiry already reads Expired
+        // before the call: also publish when the active session was removed.
+        if self.session.phase() != previous || (had_active && self.session.subscription().is_none())
+        {
             self.phase_changed();
         }
         result

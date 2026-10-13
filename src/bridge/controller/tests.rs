@@ -717,3 +717,29 @@ async fn unknown_sequenced_frames_and_disconnect_never_become_host_actions_or_wr
     assert_eq!(f.controller.phase(), SessionPhase::Disconnected);
     assert_eq!(f.controller.host().installed, ["initial"]);
 }
+
+#[tokio::test]
+async fn host_read_expiry_publishes_one_phase_update_like_writes() {
+    let mut f = fixture();
+    active(&mut f).await;
+    let phase_len = f.controller.host().phases.len();
+    let lifecycle_len = f.controller.host().effects.len();
+    f.clock.advance(100);
+    let read = || {
+        crate::frontend::envelopes::RequestSequence::default()
+            .begin(FrontendIntent::ListAllRooms, None)
+            .unwrap()
+    };
+    for _ in 0..2 {
+        assert!(matches!(
+            f.controller.dispatch_read(read()).await,
+            Err(SessionReadError::Expired)
+        ));
+        assert_eq!(f.controller.host().phases.len(), phase_len + 1);
+        assert_eq!(f.controller.host().effects.len(), lifecycle_len + 1);
+    }
+    assert_eq!(
+        f.controller.host().phases.last(),
+        Some(&SessionPhase::Expired)
+    );
+}
