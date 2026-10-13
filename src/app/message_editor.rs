@@ -1,5 +1,12 @@
 //! Neutral editor selection/display state.
-use crate::frontend::data::MessageSnapshot;
+//!
+//! Every change to the text, reply target or edit target advances a draft
+//! revision, so a write result can clear exactly the composition it was
+//! submitted from and never newer text (see `frontend::editor_submission`).
+use crate::frontend::{
+    data::{ComposedBody, MessageSnapshot, OwnedMessageBody, RoomId},
+    editor_submission::{DraftRevision, DraftSnapshot, DraftStamp, DraftTarget},
+};
 use tui_textarea::{Input, TextArea};
 #[derive(Default)]
 pub(crate) struct MessageEditor<'a> {
@@ -7,6 +14,7 @@ pub(crate) struct MessageEditor<'a> {
     is_composing: bool,
     response_to: Option<MessageSnapshot>,
     editing_of: Option<MessageSnapshot>,
+    revision: DraftRevision,
 }
 impl MessageEditor<'_> {
     pub(crate) fn lines(&self) -> &[String] {
@@ -19,10 +27,15 @@ impl MessageEditor<'_> {
         self.is_composing = value
     }
     pub(crate) fn input(&mut self, input: impl Into<Input>) -> bool {
-        self.textarea.input(input)
+        let modified = self.textarea.input(input);
+        if modified {
+            self.advance();
+        }
+        modified
     }
     pub(crate) fn insert_newline(&mut self) {
-        self.textarea.insert_newline()
+        self.textarea.insert_newline();
+        self.advance();
     }
     pub(crate) fn textarea(&self) -> &TextArea<'_> {
         &self.textarea
@@ -36,25 +49,96 @@ impl MessageEditor<'_> {
     pub(crate) fn reset_with_text(&mut self, text: String) {
         self.textarea = TextArea::new(text.split('\n').map(str::to_owned).collect());
         self.response_to = None;
-        self.editing_of = None
+        self.editing_of = None;
+        self.advance();
     }
     pub(crate) fn response_to(&self) -> Option<&MessageSnapshot> {
         self.response_to.as_ref()
     }
     pub(crate) fn set_response_to(&mut self, value: Option<MessageSnapshot>) {
-        self.response_to = value
+        self.response_to = value;
+        self.advance();
     }
     pub(crate) fn editing_of(&self) -> Option<&MessageSnapshot> {
         self.editing_of.as_ref()
     }
     pub(crate) fn set_editing_of(&mut self, value: Option<MessageSnapshot>) {
-        self.editing_of = value
+        self.editing_of = value;
+        self.advance();
+    }
+
+    #[allow(dead_code)] // dormant bridge write glue
+    pub(crate) fn revision(&self) -> DraftRevision {
+        self.revision
+    }
+
+    fn advance(&mut self) {
+        // Saturating at the end of a 64-bit counter keeps the editor usable;
+        // the submission ledger refuses to reuse an exhausted revision.
+        if let Ok(next) = self.revision.next() {
+            self.revision = next;
+        }
+    }
+
+    /// The current composition as an explicit write draft. An edit is bound to
+    /// the edited message's own room and keeps its known format (Markdown only
+    /// if the original was Markdown; unknown legacy formats become explicit
+    /// plain text). A reply is bound to the replied-to message's room and its
+    /// thread root. Only a plain send uses `active_room`.
+    #[allow(dead_code)] // dormant bridge write glue
+    pub(crate) fn draft(&self, active_room: Option<&RoomId>) -> Option<DraftSnapshot> {
+        let text = self.lines().join("\n");
+        let (target, markdown) = if let Some(edited) = &self.editing_of {
+            let markdown = matches!(
+                &edited.body,
+                Some(OwnedMessageBody::Forms {
+                    markdown: Some(_),
+                    ..
+                })
+            );
+            (
+                DraftTarget::Edit {
+                    room_id: edited.room_id.clone(),
+                    message_id: edited.id.clone(),
+                },
+                markdown,
+            )
+        } else if let Some(replied) = &self.response_to {
+            (
+                DraftTarget::Reply {
+                    room_id: replied.room_id.clone(),
+                    parent_id: replied
+                        .parent_id
+                        .clone()
+                        .unwrap_or_else(|| replied.id.clone()),
+                },
+                false,
+            )
+        } else {
+            (
+                DraftTarget::Send {
+                    room_id: active_room?.clone(),
+                },
+                false,
+            )
+        };
+        Some(DraftSnapshot {
+            stamp: DraftStamp {
+                target,
+                revision: self.revision,
+            },
+            body: if markdown {
+                ComposedBody::Markdown(text)
+            } else {
+                ComposedBody::PlainText(text)
+            },
+        })
     }
 }
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::frontend::data::{MessageId, MessageStatus, RoomId};
+    use crate::frontend::data::{MessageId, MessageStatus};
     fn message(status: MessageStatus) -> MessageSnapshot {
         MessageSnapshot {
             id: MessageId::new("m"),
@@ -70,6 +154,93 @@ mod tests {
             attachment_count: None,
         }
     }
+    #[test]
+    fn every_change_advances_the_draft_revision() {
+        let mut e = MessageEditor::default();
+        let mut last = e.revision();
+        let mut check = |e: &MessageEditor, what: &str| {
+            assert_ne!(e.revision(), last, "{what}");
+            last = e.revision();
+        };
+        e.input(Input {
+            key: tui_textarea::Key::Char('x'),
+            ..Default::default()
+        });
+        check(&e, "input");
+        e.insert_newline();
+        check(&e, "newline");
+        e.set_response_to(Some(message(MessageStatus::Active)));
+        check(&e, "reply target");
+        e.set_editing_of(None);
+        check(&e, "edit target");
+        e.reset();
+        check(&e, "reset");
+        // A non-modifying input does not advance.
+        let before = e.revision();
+        assert!(!e.input(Input {
+            key: tui_textarea::Key::Left,
+            ..Default::default()
+        }));
+        assert_eq!(e.revision(), before);
+    }
+
+    #[test]
+    fn drafts_bind_targets_to_their_own_rooms_and_formats() {
+        let active = RoomId::new("active");
+        let mut e = MessageEditor::default();
+        e.reset_with_text("hello\nworld".into());
+        assert!(e.draft(None).is_none(), "a send needs a room");
+        let send = e.draft(Some(&active)).unwrap();
+        assert!(
+            send.stamp.target
+                == DraftTarget::Send {
+                    room_id: active.clone()
+                }
+        );
+        assert!(send.body == ComposedBody::PlainText("hello\nworld".into()));
+        assert_eq!(send.stamp.revision, e.revision());
+
+        // A reply to a reply targets the thread root in the message's room.
+        let mut reply = message(MessageStatus::Active);
+        reply.room_id = RoomId::new("other");
+        reply.parent_id = Some(MessageId::new("root"));
+        e.set_response_to(Some(reply));
+        let draft = e.draft(Some(&active)).unwrap();
+        assert!(
+            draft.stamp.target
+                == DraftTarget::Reply {
+                    room_id: RoomId::new("other"),
+                    parent_id: MessageId::new("root"),
+                }
+        );
+
+        // Edits keep a known Markdown format; unknown legacy becomes plain.
+        let mut edited = message(MessageStatus::Active);
+        edited.room_id = RoomId::new("edited-room");
+        edited.body = Some(OwnedMessageBody::Forms {
+            text: None,
+            markdown: Some("**old**".into()),
+            html: None,
+        });
+        e.set_response_to(None);
+        e.set_editing_of(Some(edited.clone()));
+        let draft = e.draft(Some(&active)).unwrap();
+        assert!(
+            draft.stamp.target
+                == DraftTarget::Edit {
+                    room_id: RoomId::new("edited-room"),
+                    message_id: MessageId::new("m"),
+                }
+        );
+        assert!(matches!(draft.body, ComposedBody::Markdown(_)));
+        edited.body = Some(OwnedMessageBody::LegacyUnknown("old".into()));
+        e.set_editing_of(Some(edited));
+        assert!(matches!(
+            e.draft(Some(&active)).unwrap().body,
+            ComposedBody::PlainText(_)
+        ));
+    }
+
     #[test]
     fn neutral_selection_cancels_and_restores() {
         let mut e = MessageEditor::default();
