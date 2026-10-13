@@ -150,6 +150,9 @@ where
     stop: Arc<AtomicBool>,
     attempts: u32,
     reconnect_at: Option<Instant>,
+    /// Persistent lease-tick schedule. Checked at the top of every loop
+    /// iteration, so steady SSE traffic or queued work cannot starve renewal.
+    next_tick: Instant,
 }
 
 impl<B, C, H, K, P> Runtime<B, C, H, K, P>
@@ -185,6 +188,7 @@ where
                 stop,
                 attempts: 0,
                 reconnect_at: None,
+                next_tick: Instant::now(),
             },
             control,
         )
@@ -204,6 +208,13 @@ where
         loop {
             if self.stop.load(Ordering::SeqCst) {
                 return RuntimeExit::Shutdown;
+            }
+            let now = Instant::now();
+            if now >= self.next_tick {
+                self.next_tick = now + self.config.tick;
+                if let Some(exit) = self.on_tick().await {
+                    return exit;
+                }
             }
             match self.worker.phase() {
                 SessionPhase::SnapshotRequired => {
@@ -238,22 +249,17 @@ where
             match woke {
                 Woke::App => self.worker.refresh_admission(),
                 Woke::Event(subscription, event) => self.on_event(subscription, event),
-                Woke::Tick => {
-                    if let Some(exit) = self.on_tick().await {
-                        return exit;
-                    }
-                }
+                // The tick itself runs at the top of the next iteration.
+                Woke::Tick => {}
             }
         }
     }
 
     async fn wait(&mut self) -> Woke {
         let wake = Arc::clone(&self.wake);
-        let sleep_for = match self.reconnect_at {
-            Some(at) => at
-                .saturating_duration_since(Instant::now())
-                .min(self.config.tick),
-            None => self.config.tick,
+        let deadline = match self.reconnect_at {
+            Some(at) => at.min(self.next_tick),
+            None => self.next_tick,
         };
         let subscription = self.worker.subscription();
         let worker = &mut self.worker;
@@ -266,7 +272,7 @@ where
                     _ => std::future::pending().await,
                 }
             } => Woke::Event(event.0, event.1),
-            () = tokio::time::sleep(sleep_for) => Woke::Tick,
+            () = tokio::time::sleep_until(deadline) => Woke::Tick,
         }
     }
 

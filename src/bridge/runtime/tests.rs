@@ -632,3 +632,35 @@ async fn reads_are_served_in_order_and_stream_errors_reconnect() {
     let (exit, ()) = tokio::join!(runtime.run(), driver);
     assert_eq!(exit, RuntimeExit::Shutdown);
 }
+
+#[tokio::test]
+async fn sustained_sse_traffic_cannot_starve_lease_renewal() {
+    let (runtime, f) = fixture();
+    let driver = async {
+        connect_and_install(&f, 1).await;
+        // Past the renewal point, then a steady stream of events 1 ms apart
+        // (faster than the 5 ms tick) for longer than many ticks.
+        f.clock.advance(85);
+        let started = tokio::time::Instant::now();
+        let mut watermark = 1;
+        while f.shared.subscribes.load(Ordering::SeqCst) < 2 {
+            assert!(
+                started.elapsed() < Duration::from_millis(500),
+                "renewal starved by SSE traffic"
+            );
+            f.shared.push(Some(Ok(BridgeEvent {
+                name: "room.updated".into(),
+                data: json!({
+                    "roomId": "room/a?opaque",
+                    "continuity": {"instanceId": "synthetic-instance", "watermark": watermark},
+                }),
+            })));
+            watermark += 1;
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        }
+        assert_eq!(f.secrets.loads.load(Ordering::SeqCst), 2);
+        f.control.shutdown();
+    };
+    let (exit, ()) = tokio::join!(runtime.run(), driver);
+    assert_eq!(exit, RuntimeExit::Shutdown);
+}
