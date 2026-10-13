@@ -156,12 +156,25 @@ impl SessionClock for Clock {
 struct Secrets {
     loads: Arc<AtomicUsize>,
     missing: Arc<AtomicBool>,
+    denied: Arc<AtomicBool>,
+    /// Number of upcoming loads that fail as transiently Unavailable.
+    unavailable: Arc<AtomicUsize>,
 }
 impl UiSecretStore for Secrets {
     async fn load(&mut self) -> Result<Option<UiSecret>, SecretStoreFailure> {
         self.loads.fetch_add(1, Ordering::SeqCst);
         if self.missing.load(Ordering::SeqCst) {
             return Ok(None);
+        }
+        if self.denied.load(Ordering::SeqCst) {
+            return Err(SecretStoreFailure::Denied);
+        }
+        if self
+            .unavailable
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))
+            .is_ok()
+        {
+            return Err(SecretStoreFailure::Unavailable);
         }
         // 43 base64url characters encode 32 zero bytes: a canonical secret.
         UiSecret::from_persisted("A".repeat(43)).map(Some)
@@ -767,4 +780,44 @@ async fn shutdown_abandons_a_pending_connect_or_snapshot_promptly() {
             .any(|event| matches!(event, PumpEvent::Snapshot { .. }));
         assert!(!installed, "{stage}");
     }
+}
+
+#[tokio::test]
+async fn transient_secret_store_failures_are_retried_not_fatal() {
+    let (runtime, f) = fixture();
+    let driver = async {
+        connect_and_install(&f, 1).await;
+        // Renewal while the store is briefly unavailable (locked keychain).
+        f.secrets.unavailable.store(3, Ordering::SeqCst);
+        f.clock.advance(85);
+        until("renewal after retries", || {
+            f.shared.subscribes.load(Ordering::SeqCst) == 2
+        })
+        .await;
+        assert_eq!(f.secrets.loads.load(Ordering::SeqCst), 1 + 3 + 1);
+        f.shared.push(ready());
+        ack_next_snapshot(&f).await;
+        // Reconnect path: transient failures back off and retry as well.
+        f.secrets.unavailable.store(2, Ordering::SeqCst);
+        f.shared.push(None);
+        until("reconnect after retries", || {
+            f.shared.subscribes.load(Ordering::SeqCst) == 3
+        })
+        .await;
+        f.control.shutdown();
+    };
+    let (exit, ()) = tokio::join!(runtime.run(), driver);
+    assert_eq!(exit, RuntimeExit::Shutdown);
+}
+
+#[tokio::test]
+async fn denied_secret_at_renewal_exits() {
+    let (runtime, f) = fixture();
+    let driver = async {
+        connect_and_install(&f, 1).await;
+        f.secrets.denied.store(true, Ordering::SeqCst);
+        f.clock.advance(85);
+    };
+    let (exit, ()) = tokio::join!(runtime.run(), driver);
+    assert_eq!(exit, RuntimeExit::SecretUnavailable);
 }

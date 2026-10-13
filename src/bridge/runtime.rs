@@ -98,7 +98,8 @@ pub(crate) enum RuntimeExit {
     /// The daemon refused the pairing secret itself; explicit re-pairing is
     /// a user decision outside this loop.
     PairingRequired(SessionFailure),
-    /// The TUI secret store denied, lost or could not provide the secret.
+    /// The TUI secret store denied access or no longer holds the secret.
+    /// Transient store unavailability is retried instead.
     SecretUnavailable,
 }
 
@@ -332,7 +333,11 @@ where
         }
         let secret = match self.secrets.load().await {
             Ok(Some(secret)) => secret,
-            Ok(None) | Err(SecretStoreFailure::Denied | SecretStoreFailure::Unavailable) => {
+            // A transient store failure (e.g. locked keychain) retries on the
+            // next tick while the lease is still valid; expiry then falls to
+            // the reconnect path, which keeps retrying with backoff.
+            Err(SecretStoreFailure::Unavailable) => return None,
+            Ok(None) | Err(SecretStoreFailure::Denied) => {
                 return Some(RuntimeExit::SecretUnavailable)
             }
         };
@@ -373,7 +378,9 @@ where
         self.attempts = self.attempts.saturating_add(1);
         let secret = match self.secrets.load().await {
             Ok(Some(secret)) => secret,
-            Ok(None) | Err(SecretStoreFailure::Denied | SecretStoreFailure::Unavailable) => {
+            // Transient: the next attempt follows the (already advanced) backoff.
+            Err(SecretStoreFailure::Unavailable) => return None,
+            Ok(None) | Err(SecretStoreFailure::Denied) => {
                 return Some(RuntimeExit::SecretUnavailable)
             }
         };
