@@ -36,6 +36,9 @@ use super::{
     write_rules::valid_opaque_id,
 };
 use chrono::{DateTime, Utc};
+
+/// Ancestor hops examined when collapsing malformed nested replies.
+const MAX_PARENT_DEPTH: usize = 8;
 use std::collections::{HashMap, HashSet};
 use webex_bridge::threads::{group, ThreadMessage};
 
@@ -447,12 +450,14 @@ impl RoomMessageView {
     /// Display grouping parent. Webex threads are one level deep, but stored
     /// data could still be malformed: a nested reply collapses to its top-most
     /// loaded ancestor (or the first absent one, shown as a missing root), and
-    /// any member of a parent cycle is shown as its own root. Every message
-    /// therefore appears in exactly one row. Canonical parent IDs are untouched.
+    /// any member of a parent cycle is shown as its own root. The ancestor
+    /// walk is capped at `MAX_PARENT_DEPTH` hops; a deeper chain is shown like
+    /// a cycle member (its own root), which keeps rebuilds linear and still
+    /// puts every message in exactly one row. Canonical parent IDs are untouched.
     fn display_parent<'a>(&'a self, message: &'a MessageSnapshot) -> Option<&'a MessageId> {
         let mut parent = message.parent_id.as_ref()?;
         let mut visited = HashSet::from([&message.id]);
-        loop {
+        for _ in 0..MAX_PARENT_DEPTH {
             let Some(ancestor) = self.messages.get(parent) else {
                 return Some(parent); // absent: missing-root group
             };
@@ -464,6 +469,7 @@ impl RoomMessageView {
             }
             parent = next;
         }
+        None // pathological depth: show as its own root
     }
 
     fn active(&self, id: &MessageId) -> bool {

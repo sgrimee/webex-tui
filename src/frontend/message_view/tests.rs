@@ -690,3 +690,24 @@ fn pre_clear_in_flight_older_page_loses_but_new_instance_starts_fresh() {
     );
     assert_eq!(ids(&v), ["a", "gone"]);
 }
+
+#[test]
+fn pathologically_deep_parent_chains_are_capped_without_duplicates() {
+    let mut v = view();
+    v.upsert(&msg("m0", None, at(0), 0)).unwrap();
+    for depth in 1..=20 {
+        let parent = format!("m{}", depth - 1);
+        v.upsert(&msg(&format!("m{depth}"), Some(&parent), at(depth), 0))
+            .unwrap();
+    }
+    let rows = ids(&v);
+    assert_eq!(
+        rows.len(),
+        21,
+        "every message exactly once, no placeholders"
+    );
+    for depth in 0..=20 {
+        let id = format!("m{depth}");
+        assert_eq!(rows.iter().filter(|row| **row == id).count(), 1, "{id}");
+    }
+}

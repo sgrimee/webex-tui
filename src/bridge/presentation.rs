@@ -37,6 +37,9 @@ use std::{
     sync::{Arc, Mutex, MutexGuard},
 };
 
+/// Queued lifecycle entries. Redaction keys inside them are deliberately not
+/// capped (privacy: never dropped); they are deduplicated per entry and only
+/// grow with distinct committed deletes before the App drains.
 pub(crate) const LIFECYCLE_CAP: usize = 64;
 /// Distinct refresh targets per queued lifecycle entry before collapsing to a
 /// whole-mirror lag reconcile.
