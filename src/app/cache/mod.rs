@@ -1,5 +1,13 @@
 //! Frontend-neutral message cache; legacy Webex values are projected in `bridge`.
-use crate::frontend::data::{MessageSnapshot, PersonSnapshot};
+//!
+//! Each loaded room holds either legacy thread-grouped content (the current
+//! direct-Webex runtime) or a canonical bridge `RoomMessageView`. A room never
+//! mixes the two, and only the dormant bridge glue creates canonical rooms, so
+//! the legacy runtime is unchanged. The read API below serves both.
+use crate::frontend::{
+    data::{MessageSnapshot, PersonSnapshot},
+    message_view::{RoomMessageView, ViewRow},
+};
 use chrono::{DateTime, Utc};
 use color_eyre::{eyre::eyre, Result};
 use fuzzy_matcher::{skim::SkimMatcherV2, FuzzyMatcher};
@@ -18,10 +26,63 @@ use room::RoomId;
 use rooms::Rooms;
 use teams::Teams;
 pub(crate) type MessageId = String;
+
+/// Per-room message storage; see the module documentation.
+enum RoomMessages {
+    Legacy(RoomContent),
+    // Dormant until the bridge glue is started (Step 5 cutover).
+    #[allow(dead_code)]
+    Canonical(RoomMessageView),
+}
+
+impl RoomMessages {
+    /// Displayed messages in order. Canonical deleted-root placeholders are
+    /// included as their (body-purged) tombstone; missing-root placeholders
+    /// have no snapshot and are not listed here.
+    fn messages(&self) -> Box<dyn Iterator<Item = &MessageSnapshot> + '_> {
+        match self {
+            Self::Legacy(content) => Box::new(content.messages()),
+            Self::Canonical(view) => Box::new(view.rows().filter_map(|row| match row {
+                ViewRow::Message(message) | ViewRow::DeletedRoot(message) => Some(message),
+                ViewRow::MissingRoot(_) => None,
+            })),
+        }
+    }
+    fn len(&self) -> usize {
+        match self {
+            Self::Legacy(content) => content.len(),
+            Self::Canonical(_) => self.messages().count(),
+        }
+    }
+    fn is_empty(&self) -> bool {
+        match self {
+            Self::Legacy(content) => content.is_empty(),
+            Self::Canonical(_) => self.messages().next().is_none(),
+        }
+    }
+    fn nth(&self, index: usize) -> Result<&MessageSnapshot> {
+        match self {
+            Self::Legacy(content) => content.nth_message(index),
+            Self::Canonical(_) => self
+                .messages()
+                .nth(index)
+                .ok_or(eyre!("Message {} not found in room", index)),
+        }
+    }
+    fn index_of(&self, id: &MessageId) -> Option<usize> {
+        match self {
+            Self::Legacy(content) => content.index_of_message(id),
+            Self::Canonical(_) => self
+                .messages()
+                .position(|message| message.id.as_str() == id),
+        }
+    }
+}
+
 #[derive(Default)]
 pub(crate) struct Cache {
     pub(crate) rooms: Rooms,
-    rooms_content: HashMap<RoomId, RoomContent>,
+    rooms_content: HashMap<RoomId, RoomMessages>,
     pub(crate) teams: Teams,
     pub(crate) me: Option<PersonSnapshot>,
     pub(crate) persons: Persons,
@@ -35,10 +96,16 @@ impl Cache {
     }
     pub(crate) fn add_message(&mut self, msg: &MessageSnapshot) -> Result<()> {
         let room_id = msg.room_id.as_str().to_owned();
-        self.rooms_content
+        match self
+            .rooms_content
             .entry(room_id.clone())
-            .or_default()
-            .add(msg)?;
+            .or_insert_with(|| RoomMessages::Legacy(RoomContent::default()))
+        {
+            RoomMessages::Legacy(content) => content.add(msg)?,
+            RoomMessages::Canonical(_) => {
+                return Err(eyre!("legacy message for a canonical bridge room"))
+            }
+        }
         if let Some(room) = self.rooms.room_with_id_mut(&room_id) {
             let timestamp = msg
                 .updated_at
@@ -56,19 +123,26 @@ impl Cache {
     ) -> Box<dyn Iterator<Item = &MessageSnapshot> + '_> {
         self.rooms_content
             .get(id)
-            .map(|c| Box::new(c.messages()) as Box<dyn Iterator<Item = &MessageSnapshot>>)
+            .map(RoomMessages::messages)
             .unwrap_or_else(|| Box::new(std::iter::empty()))
     }
     pub(crate) fn room_is_empty(&self, id: &RoomId) -> bool {
-        self.rooms_content.get(id).is_none_or(RoomContent::is_empty)
+        self.rooms_content
+            .get(id)
+            .is_none_or(RoomMessages::is_empty)
     }
     pub(crate) fn nb_messages_in_room(&self, id: &RoomId) -> usize {
-        self.rooms_content.get(id).map_or(0, RoomContent::len)
+        self.rooms_content.get(id).map_or(0, RoomMessages::len)
     }
     #[allow(dead_code)]
     pub(crate) fn delete_message(&mut self, id: &MessageId, room: &RoomId) -> Result<()> {
-        if let Some(content) = self.rooms_content.get_mut(room) {
-            content.delete_message(id)?;
+        match self.rooms_content.get_mut(room) {
+            Some(RoomMessages::Legacy(content)) => content.delete_message(id)?,
+            // Canonical rooms only change through daemon tombstones.
+            Some(RoomMessages::Canonical(_)) => {
+                return Err(eyre!("canonical bridge rooms apply tombstones only"))
+            }
+            None => {}
         }
         Ok(())
     }
@@ -76,12 +150,46 @@ impl Cache {
         self.rooms_content
             .get(room)
             .ok_or(eyre!("Room {} not found", index))?
-            .nth_message(index)
+            .nth(index)
     }
     pub(crate) fn index_of_message_in_room(&self, id: &MessageId, room: &RoomId) -> Option<usize> {
-        self.rooms_content
-            .get(room)
-            .and_then(|c| c.index_of_message(id))
+        self.rooms_content.get(room)?.index_of(id)
+    }
+
+    /// Canonical bridge view for a room, created on first use. Refuses a room
+    /// already holding legacy content (never mixes backends in one room).
+    #[allow(dead_code)] // dormant bridge glue
+    pub(crate) fn canonical_view_mut(&mut self, id: &RoomId) -> Option<&mut RoomMessageView> {
+        let entry = self.rooms_content.entry(id.clone()).or_insert_with(|| {
+            RoomMessages::Canonical(RoomMessageView::new(crate::frontend::data::RoomId::new(
+                id.as_str(),
+            )))
+        });
+        match entry {
+            RoomMessages::Canonical(view) => Some(view),
+            RoomMessages::Legacy(_) => None,
+        }
+    }
+
+    #[allow(dead_code)] // dormant bridge glue
+    pub(crate) fn canonical_view(&self, id: &RoomId) -> Option<&RoomMessageView> {
+        match self.rooms_content.get(id)? {
+            RoomMessages::Canonical(view) => Some(view),
+            RoomMessages::Legacy(_) => None,
+        }
+    }
+
+    /// Rooms whose canonical view has been created (loaded or requested).
+    #[allow(dead_code)] // dormant bridge glue
+    pub(crate) fn canonical_rooms(&self) -> Vec<RoomId> {
+        let mut rooms: Vec<RoomId> = self
+            .rooms_content
+            .iter()
+            .filter(|(_, content)| matches!(content, RoomMessages::Canonical(_)))
+            .map(|(id, _)| id.clone())
+            .collect();
+        rooms.sort();
+        rooms
     }
     pub(crate) fn message_exists_in_room(&self, id: &MessageId, room: &RoomId) -> bool {
         self.index_of_message_in_room(id, room).is_some()
@@ -110,10 +218,11 @@ impl Cache {
         })
     }
     pub(crate) fn wipe_messages_in_room(&mut self, id: &str) -> Result<usize> {
-        self.rooms_content
-            .get_mut(id)
-            .map(RoomContent::wipe)
-            .ok_or(eyre!("Could not wipe messages, room {} not found", id))
+        match self.rooms_content.get_mut(id) {
+            Some(RoomMessages::Legacy(content)) => Ok(content.wipe()),
+            Some(RoomMessages::Canonical(view)) => Ok(view.clear_messages()),
+            None => Err(eyre!("Could not wipe messages, room {} not found", id)),
+        }
     }
     pub(crate) fn remove_room(&mut self, id: &RoomId) {
         self.rooms_content.remove(id);
@@ -262,5 +371,63 @@ mod tests {
     #[test]
     fn wipe_missing_room_is_an_error() {
         assert!(Cache::default().wipe_messages_in_room("missing").is_err());
+    }
+
+    fn canonical(id: &str, parent: Option<&str>, created: &str, revision: u64) -> MessageSnapshot {
+        let mut message = message(id, parent, created);
+        message.revision = Some(revision);
+        message
+    }
+
+    #[test]
+    fn canonical_rooms_serve_the_same_read_api_and_never_mix_with_legacy() {
+        let mut cache = Cache::default();
+        let room: String = "room".into();
+        let view = cache.canonical_view_mut(&room).unwrap();
+        view.upsert(&canonical("root", None, "2026-01-01T00:01:00Z", 1))
+            .unwrap();
+        view.upsert(&canonical("reply", Some("root"), "2026-01-01T00:02:00Z", 1))
+            .unwrap();
+        view.upsert(&canonical("later", None, "2026-01-01T00:03:00Z", 1))
+            .unwrap();
+        view.tombstone(&RoomId::new("room"), &Id::new("root"), None)
+            .unwrap();
+        // Deleted root with a reply is listed as its body-purged tombstone.
+        let ids: Vec<_> = cache
+            .messages_in_room(&room)
+            .map(|m| m.id.as_str())
+            .collect();
+        assert_eq!(ids, ["root", "reply", "later"]);
+        assert!(cache
+            .nth_message_in_room(0, "room")
+            .unwrap()
+            .presentation()
+            .body
+            .text
+            .is_none());
+        assert_eq!(cache.nb_messages_in_room(&room), 3);
+        assert_eq!(
+            cache.index_of_message_in_room(&"later".into(), &room),
+            Some(2)
+        );
+        assert!(cache.message_exists_in_room(&"reply".into(), &room));
+        assert_eq!(cache.canonical_rooms(), ["room".to_owned()]);
+        // Never mixes: legacy adds and local deletes are refused for it.
+        assert!(cache
+            .add_message(&message("legacy", None, "2026-01-01T00:04:00Z"))
+            .is_err());
+        assert!(cache.delete_message(&"later".into(), &room).is_err());
+        assert_eq!(cache.nb_messages_in_room(&room), 3);
+        assert_eq!(cache.wipe_messages_in_room("room").unwrap(), 3);
+        assert!(cache.room_is_empty(&room));
+        assert!(cache.canonical_view(&room).is_some());
+        // A legacy room cannot become canonical.
+        let room: String = "room".into();
+        let mut legacy = Cache::default();
+        legacy
+            .add_message(&message("a", None, "2026-01-01T00:00:00Z"))
+            .unwrap();
+        assert!(legacy.canonical_view_mut(&room).is_none());
+        assert!(legacy.canonical_rooms().is_empty());
     }
 }
