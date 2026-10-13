@@ -30,7 +30,7 @@ serde_json = "1"
 serde_yaml = "0.9"
 textwrap = "0.16"
 thiserror = "2.0"
-# rt-multi-thread: the terminal event reader blocks one worker thread.
+# rt-multi-thread: #[tokio::main] runs the UI loop and the bridge runtime task in parallel.
 tokio = { version = "1.43.1", features = ["rt", "rt-multi-thread", "macros", "sync", "time"] }
 webex-bridge = { path = "../webex-bridge", default-features = false, features = ["client"] }
 

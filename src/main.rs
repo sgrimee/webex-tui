@@ -162,8 +162,10 @@ async fn run(debug: bool, messages_to_load: u32, theme: theme::Theme) -> Result<
             tokio::select! {
                 event = tui.events.next() => {
                     let result = match event {
-                        Event::Input(key_event) => app.process_key_event(key_event).await,
-                        Event::Tick => app.update_on_tick().await,
+                        Some(Event::Input(key_event)) => app.process_key_event(key_event).await,
+                        Some(Event::Tick) => app.update_on_tick().await,
+                        // Terminal input failed: quit (the normal path) rather than freeze.
+                        None => AppReturn::Exit,
                     };
                     if result == AppReturn::Exit {
                         return Ok(());
