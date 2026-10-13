@@ -6,6 +6,7 @@
 
 use super::{
     events::project_ui_event,
+    read_dispatch::ReadTerminal,
     session::{
         FrameAction, LeaseAction, SessionBackend, SessionClock, SessionFailure, SessionLifecycle,
         SessionPhase, SessionReadError, SessionWriteError, SnapshotTicket, SubscriptionId,
@@ -34,6 +35,9 @@ pub(crate) trait PresentationHost {
     fn snapshot_acknowledged(&self) -> bool {
         true
     }
+    /// Exactly one terminal per admitted read, in production order with the
+    /// other presentation events. Required: a host must never drop reads.
+    fn deliver_read(&mut self, terminal: ReadTerminal);
 }
 
 pub(crate) struct HostController<B: SessionBackend, C: SessionClock, H: PresentationHost> {
@@ -103,6 +107,10 @@ impl<B: SessionBackend, C: SessionClock, H: PresentationHost> HostController<B, 
     }
     pub(crate) fn host(&self) -> &H {
         &self.host
+    }
+    /// Worker-only: deliver read terminals through the same ordered sink.
+    pub(super) fn host_mut(&mut self) -> &mut H {
+        &mut self.host
     }
 
     fn phase_changed(&mut self) {

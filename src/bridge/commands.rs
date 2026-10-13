@@ -19,9 +19,11 @@
 
 use super::{
     controller::{HostController, PresentationHost},
+    read_dispatch::{validate as validate_read, ReadTerminal, ReadUnavailable},
     session::{
         FrameAction, LeaseAction, SessionBackend, SessionClock, SessionFailure, SessionLifecycle,
-        SessionPhase, SessionWriteError, SnapshotTicket, SubscriptionId, WriteAdmissionStamp,
+        SessionPhase, SessionReadError, SessionWriteError, SnapshotTicket, SubscriptionId,
+        WriteAdmissionStamp,
     },
     write_dispatch::DispatchError,
 };
@@ -32,9 +34,27 @@ use crate::frontend::{
     write_rules::{valid_editor_write, write_success_matches},
 };
 use std::{
+    collections::VecDeque,
     sync::{Arc, Mutex, MutexGuard},
     time::{Duration, Instant},
 };
+
+/// Hard per-read deadline; reads are idempotent, so a timeout is simply
+/// Unavailable and the App may issue a fresh request.
+pub(crate) const READ_DEADLINE: Duration = Duration::from_secs(15);
+/// Queued (not yet dispatched) read requests.
+pub(crate) const READ_CAPACITY: usize = 16;
+
+/// Read admission. Only `Accepted` produces a later terminal; `Duplicate`
+/// means an identical read is already queued or in flight.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ReadAdmission {
+    Accepted,
+    Duplicate,
+    Full,
+    Closed,
+    InvalidRequest,
+}
 
 /// Hard per-write deadline. The UI lease is 600 s with renewal at 80%, and
 /// the UDS client has no deadline of its own, so a stuck write must not keep
@@ -64,6 +84,11 @@ struct Mailbox {
     open: bool,
     published: WriteAdmissionStamp,
     slot: Slot,
+    /// Bounded, ordered, never-coalesced-with-writes read requests.
+    reads: VecDeque<RequestEnvelope>,
+    /// Read currently being dispatched; survives a dropped handle_read so its
+    /// terminal can still be delivered as Interrupted.
+    reading: Option<RequestEnvelope>,
 }
 
 type Shared = Arc<Mutex<Mailbox>>;
@@ -109,6 +134,28 @@ impl CommandMailbox {
         CommandAdmission::Accepted
     }
 
+    /// Queue one paired-UI read. Reads are not readiness-gated here: a read
+    /// dequeued while the session is not Active yields an Unavailable terminal
+    /// with zero I/O. Identical queued/in-flight reads are coalesced.
+    pub(crate) fn try_read(&self, request: RequestEnvelope) -> ReadAdmission {
+        if validate_read(&request).is_err() {
+            return ReadAdmission::InvalidRequest;
+        }
+        let mut mailbox = lock(&self.shared);
+        if !mailbox.open {
+            return ReadAdmission::Closed;
+        }
+        let duplicate = |queued: &RequestEnvelope| queued.intent == request.intent;
+        if mailbox.reads.iter().any(duplicate) || mailbox.reading.as_ref().is_some_and(duplicate) {
+            return ReadAdmission::Duplicate;
+        }
+        if mailbox.reads.len() >= READ_CAPACITY {
+            return ReadAdmission::Full;
+        }
+        mailbox.reads.push_back(request);
+        ReadAdmission::Accepted
+    }
+
     /// At most one event; queued/in-flight work cannot be drained or cancelled.
     pub(crate) fn drain(&self) -> Option<SubmissionTerminal> {
         let mut mailbox = lock(&self.shared);
@@ -150,6 +197,9 @@ impl<H: PresentationHost> PresentationHost for AdmissionHost<H> {
     fn snapshot_acknowledged(&self) -> bool {
         self.inner.snapshot_acknowledged()
     }
+    fn deliver_read(&mut self, terminal: ReadTerminal) {
+        self.inner.deliver_read(terminal);
+    }
 }
 
 /// Sole owner of HostController. Lifecycle methods are explicit, caller-
@@ -160,6 +210,7 @@ pub(crate) struct CommandWorker<B: SessionBackend, C: SessionClock, H: Presentat
     controller: HostController<B, C, AdmissionHost<H>>,
     shared: Shared,
     write_deadline: Duration,
+    read_deadline: Duration,
 }
 
 impl<B: SessionBackend, C: SessionClock, H: PresentationHost> CommandWorker<B, C, H> {
@@ -169,6 +220,8 @@ impl<B: SessionBackend, C: SessionClock, H: PresentationHost> CommandWorker<B, C
             open: true,
             published,
             slot: Slot::Empty,
+            reads: VecDeque::new(),
+            reading: None,
         }));
         let host = AdmissionHost {
             inner: host,
@@ -182,6 +235,7 @@ impl<B: SessionBackend, C: SessionClock, H: PresentationHost> CommandWorker<B, C
                 controller: HostController::new(session, host),
                 shared,
                 write_deadline: WRITE_DEADLINE,
+                read_deadline: READ_DEADLINE,
             },
         )
     }
@@ -191,6 +245,11 @@ impl<B: SessionBackend, C: SessionClock, H: PresentationHost> CommandWorker<B, C
     #[cfg(test)]
     pub(crate) fn set_write_deadline(&mut self, deadline: Duration) {
         self.write_deadline = deadline.min(WRITE_DEADLINE);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_read_deadline(&mut self, deadline: Duration) {
+        self.read_deadline = deadline.min(READ_DEADLINE);
     }
 
     /// Worker-side publication after lifecycle/snapshot work. This is only a
@@ -353,12 +412,78 @@ impl<B: SessionBackend, C: SessionClock, H: PresentationHost> CommandWorker<B, C
         true
     }
 
+    /// Dispatch one queued read (Active only, bounded by READ_DEADLINE) and
+    /// deliver exactly one terminal through the ordered presentation host.
+    /// A previously dropped handle_read is first settled as Interrupted.
+    /// Explicit, caller-scheduled; never retried.
+    pub(crate) async fn handle_read(&mut self) -> bool {
+        self.settle_interrupted_read();
+        let request = {
+            let mut mailbox = lock(&self.shared);
+            let Some(request) = mailbox.reads.pop_front() else {
+                return false;
+            };
+            mailbox.reading = Some(RequestEnvelope {
+                context: request.context.clone(),
+                intent: request.intent.clone(),
+            });
+            request
+        };
+        let context = request.context.clone();
+        let terminal =
+            match tokio::time::timeout(self.read_deadline, self.controller.dispatch_read(request))
+                .await
+            {
+                Ok(Ok(envelope)) => ReadTerminal::Result(Box::new(envelope)),
+                Ok(Err(error)) => ReadTerminal::Unavailable {
+                    context,
+                    reason: match error {
+                        SessionReadError::NotReady => ReadUnavailable::NotReady,
+                        SessionReadError::Expired => ReadUnavailable::Expired,
+                        SessionReadError::Failed => ReadUnavailable::SessionFailed,
+                        SessionReadError::Dispatch(_) => ReadUnavailable::InvalidRequest,
+                    },
+                },
+                Err(_) => ReadTerminal::Unavailable {
+                    context,
+                    reason: ReadUnavailable::TimedOut,
+                },
+            };
+        lock(&self.shared).reading = None;
+        self.publish();
+        self.controller.host_mut().deliver_read(terminal);
+        true
+    }
+
+    fn settle_interrupted_read(&mut self) {
+        let interrupted = lock(&self.shared).reading.take();
+        if let Some(request) = interrupted {
+            self.controller
+                .host_mut()
+                .deliver_read(ReadTerminal::Unavailable {
+                    context: request.context,
+                    reason: ReadUnavailable::Interrupted,
+                });
+        }
+    }
+
     /// Stop admission and settle unstarted work. An active handle_one must first
     /// finish or be explicitly interrupted by its owner; its RAII guard preserves
     /// that terminal before shutdown can acquire the worker again. No event is
     /// overwritten, and the frontend may still drain after shutdown/worker drop.
     pub(crate) fn shutdown(&mut self) {
         close(&self.shared);
+        // Reads: settle an interrupted dispatch, then every unstarted read.
+        self.settle_interrupted_read();
+        let unstarted: Vec<_> = lock(&self.shared).reads.drain(..).collect();
+        for request in unstarted {
+            self.controller
+                .host_mut()
+                .deliver_read(ReadTerminal::Unavailable {
+                    context: request.context,
+                    reason: ReadUnavailable::Shutdown,
+                });
+        }
     }
 }
 

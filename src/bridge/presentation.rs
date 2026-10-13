@@ -5,21 +5,24 @@
 //! and acknowledges snapshot installation. No await, task, timer or logging.
 //!
 //! Ordering: events are drained exactly in the order the controller produced
-//! them, so post-boundary lifecycle metadata replayed after a snapshot commit
-//! always follows that snapshot. Bounds without silent loss:
+//! them, so post-boundary lifecycle metadata replayed after a snapshot commit,
+//! and read results dispatched after it, always follow that snapshot.
+//! Bounds without silent loss:
 //! - adjacent phase updates coalesce to the latest;
 //! - adjacent lifecycle updates merge (latest projection, union of hints);
 //! - at most `LIFECYCLE_CAP` lifecycle entries are queued; beyond that new
 //!   hints merge into the newest entry, which is upgraded to a whole-mirror
 //!   lag resync, and redaction keys are always retained;
 //! - an undrained snapshot superseded by a newer install is dropped; only the
-//!   latest install can be acknowledged.
+//!   latest install can be acknowledged;
+//! - read terminals are bounded by the worker's read capacity (one terminal
+//!   per admitted read) and are never coalesced or dropped.
 //!
 //! Barrier: until the App has drained and acknowledged the latest install,
 //! `snapshot_acknowledged()` is false and the worker keeps write admission
 //! revoked, so Active cannot race ahead of App installation.
 
-use super::{controller::PresentationHost, session::SessionPhase};
+use super::{controller::PresentationHost, read_dispatch::ReadTerminal, session::SessionPhase};
 use crate::frontend::{
     events::{ChangeScope, ResyncReason},
     lifecycle::{LifecycleProjection, ProjectionEffects, RefreshTarget},
@@ -46,6 +49,8 @@ pub(crate) enum PumpEvent<S> {
         install: InstallId,
         snapshot: S,
     },
+    /// Bounded by the worker's read capacity plus one in-flight read.
+    Read(ReadTerminal),
 }
 
 struct Pump<S> {
@@ -157,6 +162,12 @@ impl<S> PresentationHost for PumpHost<S> {
         pump.drained_latest = false;
         pump.queue
             .push_back(PumpEvent::Snapshot { install, snapshot });
+    }
+
+    fn deliver_read(&mut self, terminal: ReadTerminal) {
+        lock(&self.shared)
+            .queue
+            .push_back(PumpEvent::Read(terminal));
     }
 
     fn snapshot_acknowledged(&self) -> bool {

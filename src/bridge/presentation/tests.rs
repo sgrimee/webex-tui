@@ -48,6 +48,7 @@ fn kinds<S>(events: &[PumpEvent<S>]) -> Vec<&'static str> {
             PumpEvent::Phase(_) => "phase",
             PumpEvent::Lifecycle { .. } => "lifecycle",
             PumpEvent::Snapshot { .. } => "snapshot",
+            PumpEvent::Read(_) => "read",
         })
         .collect()
 }
@@ -370,4 +371,287 @@ async fn write_admission_waits_for_app_snapshot_acknowledgement() {
     };
     worker.shutdown();
     let _ = mailbox.drain();
+}
+
+// ---- Read mailbox and worker read dispatch --------------------------------
+
+mod reads {
+    use super::*;
+    use crate::{
+        bridge::{
+            commands::{ReadAdmission, READ_CAPACITY},
+            read_dispatch::{ReadTerminal, ReadUnavailable, UiReadBackend},
+        },
+        frontend::envelopes::{
+            FrontendIntent, FrontendResult, ReadOutcome, RequestEnvelope, RequestSequence,
+        },
+    };
+    use std::{
+        future::Future,
+        pin::Pin,
+        sync::atomic::{AtomicBool, AtomicUsize, Ordering},
+        task::{Context, Poll, Waker},
+        time::Duration,
+    };
+    use webex_bridge::{client::ClientError, dto};
+
+    type Reply<T> = Result<T, ClientError>;
+
+    #[derive(Clone, Default)]
+    struct Reader {
+        calls: Arc<AtomicUsize>,
+        pending: Arc<AtomicBool>,
+    }
+    fn inert<T>() -> Reply<T> {
+        Err(ClientError::Transport(
+            std::io::Error::other("synthetic").into(),
+        ))
+    }
+    impl UiReadBackend for Reader {
+        async fn me(&self) -> Reply<dto::Person> {
+            inert()
+        }
+        async fn rooms(&self) -> Reply<Vec<dto::Room>> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            if self.pending.load(Ordering::SeqCst) {
+                std::future::pending::<()>().await;
+            }
+            Ok(Vec::new())
+        }
+        async fn room(&self, _: &str) -> Reply<dto::Room> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            inert()
+        }
+        async fn team(&self, _: &str) -> Reply<dto::Team> {
+            inert()
+        }
+        async fn person_read(&self, _: &str) -> Reply<dto::PersonRead> {
+            inert()
+        }
+        async fn room_messages_page(
+            &self,
+            _: &str,
+            _: Option<&str>,
+            _: Option<u32>,
+        ) -> Reply<dto::MessagePage> {
+            inert()
+        }
+        async fn message_read(&self, _: &str) -> Reply<dto::MessageRead> {
+            inert()
+        }
+        async fn thread_children(
+            &self,
+            _: &str,
+            _: Option<&str>,
+            _: Option<u32>,
+        ) -> Reply<dto::ThreadChildren> {
+            inert()
+        }
+    }
+
+    struct ReadBackend(Reader);
+    impl SessionBackend for ReadBackend {
+        type Client = Reader;
+        type Stream = ();
+        type Writer = ();
+        type SnapshotReader<'a> = Reader;
+        async fn issue(&mut self, _: &str) -> Result<Reader, SessionFailure> {
+            Ok(self.0.clone())
+        }
+        async fn subscribe(&mut self, _: &Reader) -> Result<(), SessionFailure> {
+            Ok(())
+        }
+        async fn continuity(&mut self, _: &Reader) -> Result<ContinuityBoundary, SessionFailure> {
+            Ok(marker())
+        }
+        fn lease_ttl(_: &Reader) -> u64 {
+            600
+        }
+        fn writer(_: &Reader) {}
+        fn snapshot_reader(client: &Reader) -> Reader {
+            client.clone()
+        }
+    }
+
+    type Worker = CommandWorker<ReadBackend, Clock, PumpHost<&'static str>>;
+    struct Fixture {
+        mailbox: crate::bridge::commands::CommandMailbox,
+        worker: Worker,
+        endpoint: PresentationEndpoint<&'static str>,
+        reader: Reader,
+    }
+    fn fixture() -> Fixture {
+        let reader = Reader::default();
+        let (host, endpoint) = pump();
+        let (mailbox, worker) = CommandWorker::new(
+            SessionLifecycle::new(ReadBackend(reader.clone()), Clock(Instant::now())),
+            host,
+        );
+        Fixture {
+            mailbox,
+            worker,
+            endpoint,
+            reader,
+        }
+    }
+    async fn active(f: &mut Fixture) {
+        let sub = f.worker.connect("synthetic-secret").await.unwrap();
+        f.worker
+            .frame(
+                sub,
+                UiLifecycleFrame::Control(LifecycleControl::Ready(marker())),
+            )
+            .unwrap();
+        let ticket = f.worker.begin_snapshot().await.unwrap();
+        f.worker.commit_snapshot(ticket, "snapshot").unwrap();
+    }
+    fn read(intent: FrontendIntent) -> RequestEnvelope {
+        RequestSequence::default().begin(intent, None).unwrap()
+    }
+    fn rooms() -> RequestEnvelope {
+        read(FrontendIntent::ListAllRooms)
+    }
+    fn room_read(id: &str) -> RequestEnvelope {
+        read(FrontendIntent::UpdateRoom(room(id)))
+    }
+    fn reads_of(events: Vec<PumpEvent<&'static str>>) -> Vec<ReadTerminal> {
+        events
+            .into_iter()
+            .filter_map(|event| match event {
+                PumpEvent::Read(terminal) => Some(terminal),
+                _ => None,
+            })
+            .collect()
+    }
+    fn unavailable(terminal: &ReadTerminal) -> Option<ReadUnavailable> {
+        match terminal {
+            ReadTerminal::Unavailable { reason, .. } => Some(*reason),
+            ReadTerminal::Result(_) => None,
+        }
+    }
+    fn poll_once<F: Future + ?Sized>(future: Pin<&mut F>) -> Poll<F::Output> {
+        future.poll(&mut Context::from_waker(Waker::noop()))
+    }
+
+    #[tokio::test]
+    async fn admission_refuses_invalid_duplicate_full_and_closed() {
+        let mut f = fixture();
+        assert_eq!(
+            f.mailbox
+                .try_read(read(FrontendIntent::LeaveRoom(room("r")))),
+            ReadAdmission::InvalidRequest
+        );
+        assert_eq!(
+            f.mailbox.try_read(room_read("")),
+            ReadAdmission::InvalidRequest
+        );
+        assert_eq!(f.mailbox.try_read(rooms()), ReadAdmission::Accepted);
+        assert_eq!(f.mailbox.try_read(rooms()), ReadAdmission::Duplicate);
+        for index in 1..READ_CAPACITY {
+            assert_eq!(
+                f.mailbox.try_read(room_read(&format!("room-{index}"))),
+                ReadAdmission::Accepted
+            );
+        }
+        assert_eq!(
+            f.mailbox.try_read(room_read("one-too-many")),
+            ReadAdmission::Full
+        );
+        f.worker.shutdown();
+        assert_eq!(f.mailbox.try_read(room_read("late")), ReadAdmission::Closed);
+        // Every admitted read got exactly one Shutdown terminal, zero I/O.
+        let terminals = reads_of(f.endpoint.drain(usize::MAX));
+        assert_eq!(terminals.len(), READ_CAPACITY);
+        assert!(terminals
+            .iter()
+            .all(|t| unavailable(t) == Some(ReadUnavailable::Shutdown)));
+        assert_eq!(f.reader.calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn reads_are_active_only_and_ordered_after_their_snapshot() {
+        let mut f = fixture();
+        let early = rooms();
+        let early_context = early.context.clone();
+        assert_eq!(f.mailbox.try_read(early), ReadAdmission::Accepted);
+        assert!(f.worker.handle_read().await);
+        let terminals = reads_of(f.endpoint.drain(usize::MAX));
+        assert_eq!(terminals.len(), 1);
+        assert_eq!(terminals[0].context(), &early_context);
+        assert_eq!(unavailable(&terminals[0]), Some(ReadUnavailable::NotReady));
+        assert_eq!(f.reader.calls.load(Ordering::SeqCst), 0);
+
+        active(&mut f).await;
+        let r = rooms();
+        let context = r.context.clone();
+        assert_eq!(f.mailbox.try_read(r), ReadAdmission::Accepted);
+        assert!(f.worker.handle_read().await);
+        assert!(!f.worker.handle_read().await, "queue empty, no replay");
+        let events = f.endpoint.drain(usize::MAX);
+        let kinds = kinds(&events);
+        let snapshot = kinds.iter().position(|k| *k == "snapshot").unwrap();
+        let read_at = kinds.iter().position(|k| *k == "read").unwrap();
+        assert!(snapshot < read_at, "{kinds:?}");
+        let terminals = reads_of(events);
+        let ReadTerminal::Result(envelope) = &terminals[0] else {
+            panic!("result")
+        };
+        assert_eq!(envelope.context, context);
+        assert!(matches!(
+            envelope.result,
+            FrontendResult::ListAllRooms(ReadOutcome::Success(_))
+        ));
+        assert_eq!(f.reader.calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn stuck_read_times_out_and_frees_the_controller() {
+        let mut f = fixture();
+        active(&mut f).await;
+        f.worker.set_read_deadline(Duration::from_millis(20));
+        f.reader.pending.store(true, Ordering::SeqCst);
+        assert_eq!(f.mailbox.try_read(rooms()), ReadAdmission::Accepted);
+        assert!(f.worker.handle_read().await);
+        let terminals = reads_of(f.endpoint.drain(usize::MAX));
+        assert_eq!(unavailable(&terminals[0]), Some(ReadUnavailable::TimedOut));
+        assert_eq!(f.reader.calls.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            f.worker.check_lease(),
+            crate::bridge::session::LeaseAction::None
+        );
+        // The same read may be requested afresh; it was not retried by itself.
+        assert_eq!(f.mailbox.try_read(rooms()), ReadAdmission::Accepted);
+    }
+
+    #[tokio::test]
+    async fn dropped_read_is_settled_once_as_interrupted() {
+        let mut f = fixture();
+        active(&mut f).await;
+        f.reader.pending.store(true, Ordering::SeqCst);
+        let r = rooms();
+        let context = r.context.clone();
+        assert_eq!(f.mailbox.try_read(r), ReadAdmission::Accepted);
+        {
+            let mut handle = Box::pin(f.worker.handle_read());
+            assert!(poll_once(handle.as_mut()).is_pending());
+        } // dropped mid-await by its owner
+          // In flight: an identical request is still coalesced, not re-sent.
+        assert_eq!(f.mailbox.try_read(rooms()), ReadAdmission::Duplicate);
+        assert!(reads_of(f.endpoint.drain(usize::MAX)).is_empty());
+        f.reader.pending.store(false, Ordering::SeqCst);
+        assert!(!f.worker.handle_read().await);
+        let terminals = reads_of(f.endpoint.drain(usize::MAX));
+        assert_eq!(terminals.len(), 1);
+        assert_eq!(terminals[0].context(), &context);
+        assert_eq!(
+            unavailable(&terminals[0]),
+            Some(ReadUnavailable::Interrupted)
+        );
+        f.worker.shutdown();
+        assert!(
+            reads_of(f.endpoint.drain(usize::MAX)).is_empty(),
+            "exactly once"
+        );
+        assert_eq!(f.reader.calls.load(Ordering::SeqCst), 1);
+    }
 }

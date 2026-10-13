@@ -180,6 +180,7 @@ struct Host {
 }
 impl PresentationHost for Host {
     type Snapshot = ();
+    fn deliver_read(&mut self, _: crate::bridge::read_dispatch::ReadTerminal) {}
     fn session_phase(&mut self, _: SessionPhase) {}
     fn lifecycle(&mut self, _: &LifecycleProjection, _: ProjectionEffects) {}
     fn install_snapshot(&mut self, _: ()) {
@@ -1002,6 +1003,9 @@ fn endpoints_worker_and_concrete_handle_future_are_send_without_exposing_capabil
     let snapshot = f.worker.begin_snapshot();
     assert_send(&snapshot);
     drop(snapshot);
+    let read = f.worker.handle_read();
+    assert_send(&read);
+    drop(read);
 }
 
 fn published_ready(worker: &Worker) -> bool {

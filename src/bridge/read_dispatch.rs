@@ -10,7 +10,7 @@ use super::{
 };
 use crate::frontend::{
     data::PageCursor,
-    envelopes::{FrontendIntent, PageRequest, RequestEnvelope, ResultEnvelope},
+    envelopes::{FrontendIntent, PageRequest, RequestContext, RequestEnvelope, ResultEnvelope},
     write_rules::valid_opaque_id,
 };
 use std::future::Future;
@@ -128,6 +128,37 @@ fn inert() -> ClientError {
     ClientError::Transport(std::io::Error::other("inert reader").into())
 }
 
+/// Why an admitted read produced no result. Reads are idempotent, so the App
+/// may issue a fresh request later; nothing here is retried automatically.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ReadUnavailable {
+    NotReady,
+    Expired,
+    SessionFailed,
+    InvalidRequest,
+    TimedOut,
+    Interrupted,
+    Shutdown,
+}
+
+/// Exactly one terminal per admitted read. No Debug: results carry content.
+pub(crate) enum ReadTerminal {
+    Result(Box<ResultEnvelope>),
+    Unavailable {
+        context: RequestContext,
+        reason: ReadUnavailable,
+    },
+}
+
+impl ReadTerminal {
+    pub(crate) fn context(&self) -> &RequestContext {
+        match self {
+            Self::Result(envelope) => &envelope.context,
+            Self::Unavailable { context, .. } => context,
+        }
+    }
+}
+
 /// Metadata-only refusal before any read I/O.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ReadDispatchError {
@@ -184,7 +215,8 @@ fn cursor(page: &PageRequest) -> Option<&str> {
     page.before.as_ref().map(PageCursor::as_str)
 }
 
-fn validate(request: &RequestEnvelope) -> Result<(), ReadDispatchError> {
+/// Shared pre-I/O read validation, also used at mailbox admission.
+pub(super) fn validate(request: &RequestEnvelope) -> Result<(), ReadDispatchError> {
     let operation = request.intent.operation();
     if operation.is_write() || request.context.operation != operation {
         return Err(ReadDispatchError::WrongIntent);
