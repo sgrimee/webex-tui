@@ -870,7 +870,7 @@ fn backoff_is_immediate_then_exponential_and_capped() {
 }
 
 /// Compile-time: the loop over the real bridge backend and real snapshot
-/// source is spawnable later.
+/// source is spawnable (never called).
 #[allow(dead_code)]
 fn real_bridge_runtime_future_is_send(
     runtime: Runtime<

@@ -187,7 +187,6 @@ fn room_id() -> RoomId {
 fn reads() -> Vec<(FrontendIntent, &'static str)> {
     vec![
         (FrontendIntent::Initialize, "me"),
-        (FrontendIntent::WhoAmI, "me"),
         (FrontendIntent::ListAllRooms, "rooms"),
         (FrontendIntent::UpdateRoom(room_id()), "room:room/a?opaque"),
         (
@@ -228,9 +227,9 @@ fn request(intent: FrontendIntent) -> RequestEnvelope {
 }
 
 #[tokio::test]
-async fn all_nine_reads_call_exactly_one_matching_method_and_correlate() {
+async fn all_eight_reads_call_exactly_one_matching_method_and_correlate() {
     let cases = reads();
-    assert_eq!(cases.len(), 9);
+    assert_eq!(cases.len(), 8);
     for (intent, call) in cases {
         let fake = Arc::new(Fake::default());
         let operation = intent.operation();
@@ -259,7 +258,6 @@ async fn backend_errors_become_typed_rejections_without_retry_or_detail() {
         assert_eq!(fake.calls().len(), 1, "no retry");
         let rejected = match &envelope.result {
             FrontendResult::Initialize(ReadOutcome::Rejected(e))
-            | FrontendResult::WhoAmI(ReadOutcome::Rejected(e))
             | FrontendResult::UpdatePerson(ReadOutcome::Rejected(e)) => Some(e),
             FrontendResult::ListAllRooms(ReadOutcome::Rejected(e)) => Some(e),
             FrontendResult::UpdateRoom(ReadOutcome::Rejected(e)) => Some(e),
@@ -301,7 +299,7 @@ async fn writes_mismatches_and_invalid_ids_or_pages_refuse_before_io() {
         );
     }
     let mut mismatched = request(FrontendIntent::ListAllRooms);
-    mismatched.context.operation = Operation::WhoAmI;
+    mismatched.context.operation = Operation::Initialize;
     assert_eq!(
         dispatch_read(&fake, mismatched).await.refused(),
         ReadDispatchError::WrongIntent

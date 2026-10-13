@@ -4,15 +4,14 @@
 use super::text::{body_text, label_text};
 use crate::frontend::{
     data::{
-        ComposedBody, Initialization, MessageId, MessagePage, MessageSnapshot, MessageStatus,
-        OwnedMessageBody, PageCursor, PersonId, PersonSnapshot, RoomId, RoomKind, RoomSnapshot,
-        TeamId, TeamSnapshot,
+        Initialization, MessageId, MessagePage, MessageSnapshot, MessageStatus, OwnedMessageBody,
+        PageCursor, PersonId, PersonSnapshot, RoomId, RoomKind, RoomSnapshot, TeamId, TeamSnapshot,
     },
     envelopes::{
         FrontendError, FrontendIntent, FrontendResult, PartialReason, ReadOutcome, RequestEnvelope,
         ResultEnvelope, WriteOutcome,
     },
-    events::{ConnectionLayer, ConnectionState, LifecycleEvent, SyncProgress},
+    events::ConnectionState,
     threads::{ThreadPage, ThreadParent},
     write_rules::valid_opaque_id,
 };
@@ -36,7 +35,6 @@ pub(crate) enum ProjectionError {
 /// handle and deliberately has no Debug implementation that could log content.
 pub(crate) enum ClientResponse {
     Initialize(Reply<dto::Person>),
-    WhoAmI(Reply<dto::Person>),
     ListAllRooms(Reply<Vec<dto::Room>>),
     UpdateRoom(Reply<dto::Room>),
     UpdateTeam(Reply<dto::Team>),
@@ -44,10 +42,6 @@ pub(crate) enum ClientResponse {
     ListMessagesInRoom(Reply<dto::MessagePage>),
     UpdateMessage(Reply<dto::MessageRead>),
     UpdateChildrenMessages(Reply<dto::ThreadChildren>),
-    SendMessage(Reply<dto::Message>),
-    EditMessage(Reply<dto::Message>),
-    DeleteMessage(Reply<()>),
-    LeaveRoom(Reply<()>),
 }
 
 /// Shares the frontend's single opaque-ID bound; IDs are never decoded.
@@ -180,19 +174,6 @@ fn message(value: dto::Message, expected_room: &RoomId) -> Project<MessageSnapsh
     })
 }
 
-pub(crate) fn composed_body(body: &ComposedBody) -> dto::MessageBodyInput {
-    let (kind, content) = match body {
-        ComposedBody::PlainText(content) => ("plainText", content),
-        ComposedBody::Markdown(content) => ("markdown", content),
-    };
-    // User-composed outbound text remains exact. Incoming display sanitization
-    // must not silently change a deliberate user write.
-    dto::MessageBodyInput {
-        kind: kind.into(),
-        content: content.clone(),
-    }
-}
-
 fn projection_error() -> FrontendError {
     FrontendError {
         code: "invalid_response".into(),
@@ -277,16 +258,6 @@ pub(crate) fn write_failure<T>(error: ClientError) -> WriteOutcome<T> {
         WriteOutcome::Rejected(client_error(&error))
     } else {
         WriteOutcome::DeliveryUnknown(client_error(&error))
-    }
-}
-
-fn write<T, U>(reply: Reply<T>, project: impl FnOnce(T) -> Project<U>) -> WriteOutcome<U> {
-    match reply {
-        Ok(value) => match project(value) {
-            Ok(value) => WriteOutcome::Success(value),
-            Err(_) => WriteOutcome::DeliveryUnknown(projection_error()),
-        },
-        Err(error) => write_failure(error),
     }
 }
 
@@ -465,7 +436,7 @@ fn children(
     }
 }
 
-/// Covers all 13 operations, but consumes *results*, never dispatches an intent.
+/// Covers all read operations, but consumes *results*, never dispatches an intent.
 /// Wrong response kinds are local correlation errors, not definitive write failure.
 pub(crate) fn project_response(
     request: RequestEnvelope,
@@ -486,9 +457,6 @@ pub(crate) fn project_response(
                     account: Some(person(p)?),
                 })
             }))
-        }
-        (FrontendIntent::WhoAmI, ClientResponse::WhoAmI(reply)) => {
-            FrontendResult::WhoAmI(read(reply, person))
         }
         (FrontendIntent::ListAllRooms, ClientResponse::ListAllRooms(reply)) => {
             FrontendResult::ListAllRooms(read(reply, |rooms| rooms.into_iter().map(room).collect()))
@@ -527,35 +495,6 @@ pub(crate) fn project_response(
             },
             ClientResponse::UpdateChildrenMessages(reply),
         ) => FrontendResult::UpdateChildrenMessages(children(reply, parent_id, room_id, page.max)),
-        (
-            FrontendIntent::SendMessage {
-                room_id, parent_id, ..
-            },
-            ClientResponse::SendMessage(reply),
-        ) => FrontendResult::SendMessage(write(reply, |m| {
-            if m.parent_id.as_deref() != parent_id.as_ref().map(MessageId::as_str) {
-                return Err(ProjectionError::Identity);
-            }
-            message(m, room_id)
-        })),
-        (
-            FrontendIntent::EditMessage {
-                message_id,
-                room_id,
-                ..
-            },
-            ClientResponse::EditMessage(reply),
-        ) => FrontendResult::EditMessage(write(reply, |m| {
-            same_id(&m.id, message_id.as_str())?;
-            message(m, room_id)
-        })),
-        (
-            FrontendIntent::DeleteMessage { message_id, .. },
-            ClientResponse::DeleteMessage(reply),
-        ) => FrontendResult::DeleteMessage(write(reply, |()| Ok(message_id.clone()))),
-        (FrontendIntent::LeaveRoom(room_id), ClientResponse::LeaveRoom(reply)) => {
-            FrontendResult::LeaveRoom(write(reply, |()| Ok(room_id.clone())))
-        }
         _ => return Err(ProjectionError::ResponseKind),
     };
     request
@@ -570,28 +509,4 @@ pub(super) fn connection(value: &str) -> Project<ConnectionState> {
         "auth_required" => Ok(ConnectionState::AuthRequired),
         _ => Err(ProjectionError::Metadata),
     }
-}
-
-pub(crate) fn project_status(value: dto::Status) -> Project<Vec<LifecycleEvent>> {
-    if value.api_version != 1 {
-        return Err(ProjectionError::Metadata);
-    }
-    let count = |value| {
-        u64::try_from(value)
-            .map(Some)
-            .map_err(|_| ProjectionError::Metadata)
-    };
-    Ok(vec![
-        LifecycleEvent::Connection {
-            layer: ConnectionLayer::UpstreamWebex,
-            state: connection(&value.connection)?,
-        },
-        LifecycleEvent::Sync(SyncProgress {
-            rooms: count(value.sync.rooms)?,
-            revisions: count(value.sync.revisions)?,
-            initial_pending: count(value.sync.initial_pending)?,
-            gaps: count(value.sync.gaps)?,
-            failures: count(value.sync.failures)?,
-        }),
-    ])
 }

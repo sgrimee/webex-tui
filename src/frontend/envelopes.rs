@@ -1,22 +1,24 @@
-//! Pure frontend intents/results for the 13-operation migration parity map.
+//! Pure frontend intents/results for the migration parity map (12 operations;
+//! the former WhoAmI read is covered by Initialize).
 //!
 //! This is a transitional boundary, not a bridge wire protocol or dispatcher.
 //! No backend/domain type crosses it. Payloads intentionally do not derive Debug:
 //! bodies, names and emails must not accidentally become command/result traces.
 
+#[cfg(test)]
+use super::requests::RoomViewRequests;
 use super::{
     data::{
         ComposedBody, Initialization, MessageId, MessagePage, MessageSnapshot, PageCursor,
         PersonId, PersonSnapshot, RoomId, RoomSnapshot, TeamId, TeamSnapshot,
     },
-    requests::{CounterExhausted, RoomRequestContext, RoomViewRequests},
+    requests::{CounterExhausted, RoomRequestContext},
     threads::ThreadPage,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Operation {
     Initialize,
-    WhoAmI,
     ListAllRooms,
     UpdateRoom,
     UpdateTeam,
@@ -51,7 +53,6 @@ pub(crate) struct PageRequest {
 /// Display, or serialization implementation because variants may carry bodies.
 pub(crate) enum FrontendIntent {
     Initialize,
-    WhoAmI,
     ListAllRooms,
     UpdateRoom(RoomId),
     UpdateTeam(TeamId),
@@ -90,7 +91,6 @@ impl FrontendIntent {
     pub(crate) fn operation(&self) -> Operation {
         match self {
             Self::Initialize => Operation::Initialize,
-            Self::WhoAmI => Operation::WhoAmI,
             Self::ListAllRooms => Operation::ListAllRooms,
             Self::UpdateRoom(_) => Operation::UpdateRoom,
             Self::UpdateTeam(_) => Operation::UpdateTeam,
@@ -133,8 +133,6 @@ pub(crate) enum PartialReason {
     NotMirrored,
     IdentityUnavailable,
     ParentUnavailable,
-    PermissionUnavailable,
-    SyncInProgress,
     MorePages,
     RemoteUnavailable,
     ResourceMismatch,
@@ -160,7 +158,6 @@ pub(crate) enum WriteOutcome<T> {
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) enum FrontendResult {
     Initialize(ReadOutcome<Initialization>),
-    WhoAmI(ReadOutcome<PersonSnapshot>),
     ListAllRooms(ReadOutcome<Vec<RoomSnapshot>>),
     UpdateRoom(ReadOutcome<RoomSnapshot>),
     UpdateTeam(ReadOutcome<TeamSnapshot>),
@@ -178,7 +175,6 @@ impl FrontendResult {
     pub(crate) fn operation(&self) -> Operation {
         match self {
             Self::Initialize(_) => Operation::Initialize,
-            Self::WhoAmI(_) => Operation::WhoAmI,
             Self::ListAllRooms(_) => Operation::ListAllRooms,
             Self::UpdateRoom(_) => Operation::UpdateRoom,
             Self::UpdateTeam(_) => Operation::UpdateTeam,
@@ -282,6 +278,7 @@ impl RequestEnvelope {
 impl ResultEnvelope {
     /// View-specific hint only. A stale/unknown write result must still be
     /// processed; do not use this method as a global result-delivery filter.
+    #[cfg(test)]
     pub(crate) fn is_current_room_view(&self, requests: &RoomViewRequests) -> bool {
         self.context
             .room_view
@@ -317,10 +314,6 @@ mod tests {
             (
                 FrontendIntent::Initialize,
                 FrontendResult::Initialize(ReadOutcome::Rejected(error())),
-            ),
-            (
-                FrontendIntent::WhoAmI,
-                FrontendResult::WhoAmI(ReadOutcome::Rejected(error())),
             ),
             (
                 FrontendIntent::ListAllRooms,
@@ -391,9 +384,9 @@ mod tests {
     }
 
     #[test]
-    fn all_thirteen_intents_have_matching_typed_results_and_unique_request_ids() {
+    fn all_twelve_intents_have_matching_typed_results_and_unique_request_ids() {
         let cases = parity_cases();
-        assert_eq!(cases.len(), 13);
+        assert_eq!(cases.len(), 12);
         let mut sequence = RequestSequence::default();
         let mut operations = Vec::new();
         let mut last_id = 0;
@@ -415,7 +408,7 @@ mod tests {
     #[test]
     fn unrelated_operation_result_is_rejected_without_an_envelope() {
         let request = RequestSequence::default()
-            .begin(FrontendIntent::WhoAmI, None)
+            .begin(FrontendIntent::ListAllRooms, None)
             .unwrap();
         let result = request.complete(FrontendResult::UpdatePerson(ReadOutcome::Rejected(error())));
         assert!(matches!(result, Err(EnvelopeError::OperationMismatch)));
@@ -573,7 +566,7 @@ mod tests {
     fn request_sequence_fails_closed_on_exhaustion() {
         let mut sequence = RequestSequence { last_id: u64::MAX };
         assert!(matches!(
-            sequence.begin(FrontendIntent::WhoAmI, None),
+            sequence.begin(FrontendIntent::ListAllRooms, None),
             Err(EnvelopeError::CounterExhausted)
         ));
         assert_eq!(sequence.last_id, u64::MAX);

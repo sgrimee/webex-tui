@@ -341,25 +341,13 @@ fn superseded_snapshot_drops_its_post_boundary_lifecycle_hints() {
     host.lifecycle(&projection, effects(vec![RefreshTarget::Room(room("new"))]));
     let events = endpoint.drain(usize::MAX);
     assert_eq!(kinds(&events), ["lifecycle", "snapshot", "lifecycle"]);
-    let PumpEvent::Lifecycle { install, .. } = &events[0] else {
-        panic!("pre-snapshot lifecycle")
-    };
-    assert_eq!(*install, None);
-    let PumpEvent::Snapshot {
-        install: latest,
-        snapshot,
-    } = &events[1]
-    else {
+    let PumpEvent::Snapshot { snapshot, .. } = &events[1] else {
         panic!("snapshot")
     };
     assert_eq!(*snapshot, 2);
-    let PumpEvent::Lifecycle {
-        install, effects, ..
-    } = &events[2]
-    else {
+    let PumpEvent::Lifecycle { effects, .. } = &events[2] else {
         panic!("post-boundary lifecycle")
     };
-    assert_eq!(*install, Some(*latest));
     assert_eq!(effects.refresh, [RefreshTarget::Room(room("new"))]);
 }
 
@@ -373,13 +361,9 @@ fn lifecycle_hints_never_merge_across_a_snapshot_install() {
     let _ = endpoint.drain(usize::MAX);
     host.lifecycle(&projection, effects(vec![RefreshTarget::Rooms]));
     let events = endpoint.drain(usize::MAX);
-    let PumpEvent::Lifecycle {
-        install, effects, ..
-    } = &events[0]
-    else {
+    let PumpEvent::Lifecycle { effects, .. } = &events[0] else {
         panic!("lifecycle")
     };
-    assert!(install.is_some());
     assert_eq!(effects.refresh, [RefreshTarget::Rooms]);
 }
 
@@ -443,13 +427,9 @@ fn overflow_never_merges_post_install_hints_into_an_older_install() {
         "pre-install entries stay untouched"
     );
     for event in &events[..snapshot] {
-        let PumpEvent::Lifecycle {
-            install, effects, ..
-        } = event
-        else {
+        let PumpEvent::Lifecycle { effects, .. } = event else {
             panic!("lifecycle")
         };
-        assert_eq!(*install, None);
         assert!(
             effects.redact.is_empty(),
             "no post-install redaction leaked back"
@@ -458,13 +438,9 @@ fn overflow_never_merges_post_install_hints_into_an_older_install() {
     }
     // Post-install hints form one lag entry after the snapshot.
     assert_eq!(events.len(), snapshot + 2);
-    let PumpEvent::Lifecycle {
-        install, effects, ..
-    } = &events[snapshot + 1]
-    else {
+    let PumpEvent::Lifecycle { effects, .. } = &events[snapshot + 1] else {
         panic!("post-install lifecycle")
     };
-    assert!(install.is_some());
     assert_eq!(
         effects.redact,
         [key("deleted-after-install"), key("deleted-later")]

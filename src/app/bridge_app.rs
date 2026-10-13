@@ -38,10 +38,7 @@ impl App<'_> {
         self.refresh_bridge_view();
     }
 
-    pub(crate) fn has_bridge(&self) -> bool {
-        self.bridge.is_some()
-    }
-
+    #[cfg(test)]
     pub(crate) fn bridge(&self) -> Option<&BridgeGlue> {
         self.bridge.as_ref()
     }
@@ -294,7 +291,7 @@ pub(crate) fn status_line(glue: &BridgeGlue, queued_leaves: usize, quitting: boo
         EditorWriteStatus::Unavailable => {
             parts.push("not sent: bridge unavailable (x to dismiss)".into())
         }
-        EditorWriteStatus::Ready | EditorWriteStatus::Cancelled => {}
+        EditorWriteStatus::Ready => {}
     }
     if let Some(outcome) = glue.last_action() {
         let (verb, action) = match outcome {

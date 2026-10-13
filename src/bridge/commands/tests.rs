@@ -559,8 +559,8 @@ async fn invalid_bounds_anchors_operations_and_retargeted_context_refuse_zero_io
     // Reads are never admitted through the write slot; delete/leave need
     // valid opaque IDs.
     let mut r = request();
-    r.intent = FrontendIntent::WhoAmI;
-    r.context.operation = Operation::WhoAmI;
+    r.intent = FrontendIntent::ListAllRooms;
+    r.context.operation = Operation::ListAllRooms;
     invalid.push(r);
     let mut r = request();
     r.intent = FrontendIntent::DeleteMessage {
@@ -744,7 +744,7 @@ fn post_attempt_operation_resource_or_request_operation_mismatch_is_uncertain() 
     wrong_id.id = MessageId::new("");
     for result in [
         FrontendResult::EditMessage(WriteOutcome::Rejected(error())),
-        FrontendResult::WhoAmI(ReadOutcome::Rejected(error())),
+        FrontendResult::ListAllRooms(ReadOutcome::Rejected(error())),
         FrontendResult::SendMessage(WriteOutcome::Success(wrong_room)),
         FrontendResult::SendMessage(WriteOutcome::Success(wrong_parent)),
         FrontendResult::SendMessage(WriteOutcome::Success(wrong_id)),
@@ -791,7 +791,7 @@ async fn backend_rejection_unknown_transport_loss_and_invalid_success_are_retain
             0 => send_reply(
                 &mut f,
                 Err(ClientError::Api {
-                    status: reqwest::StatusCode::FORBIDDEN,
+                    status: http::StatusCode::FORBIDDEN,
                     code: "forbidden".into(),
                     message: "synthetic backend detail".into(),
                 }),
@@ -799,7 +799,7 @@ async fn backend_rejection_unknown_transport_loss_and_invalid_success_are_retain
             1 => send_reply(
                 &mut f,
                 Err(ClientError::Api {
-                    status: reqwest::StatusCode::ACCEPTED,
+                    status: http::StatusCode::ACCEPTED,
                     code: "delivery_unknown".into(),
                     message: "synthetic backend detail".into(),
                 }),
@@ -849,7 +849,7 @@ async fn completed_success_and_rejection_survive_backpressure_worker_drop_and_sh
             send_reply(
                 &mut f,
                 Err(ClientError::Api {
-                    status: reqwest::StatusCode::FORBIDDEN,
+                    status: http::StatusCode::FORBIDDEN,
                     code: "forbidden".into(),
                     message: "detail".into(),
                 }),

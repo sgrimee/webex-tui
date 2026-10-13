@@ -20,7 +20,6 @@ pub(crate) enum EditorWriteStatus {
     DeliveryUnknown,
     /// Local lifecycle gate prevented dispatch; it is not a daemon rejection.
     Unavailable,
-    Cancelled,
 }
 
 /// Composition is retained across every non-success outcome for user review.
@@ -40,6 +39,7 @@ impl EditorWriteState {
             status: EditorWriteStatus::Ready,
         }
     }
+    #[cfg(test)]
     pub(crate) fn body(&self) -> &ComposedBody {
         &self.body
     }
@@ -86,10 +86,6 @@ impl EditorWriteState {
             self.status = EditorWriteStatus::Unavailable;
         }
     }
-    pub(crate) fn cancel(&mut self) {
-        self.pending = None;
-        self.status = EditorWriteStatus::Cancelled;
-    }
     /// Reads never alter write state. A stale or unrelated write is ignored.
     pub(crate) fn accept(&mut self, result: &ResultEnvelope) {
         if !result.context.operation.is_write() || self.pending != Some(result.context.id) {
@@ -111,6 +107,7 @@ impl EditorWriteState {
 }
 
 /// Labels intentionally omit legacy person/resource types and terminal controls.
+#[cfg(test)]
 pub(crate) fn sanitized_label(display_name: Option<&str>, email: Option<&str>) -> String {
     display_name
         .or(email)
@@ -191,7 +188,7 @@ mod tests {
         assert!(matches!(state.body(),ComposedBody::PlainText(value)if value=="private body"));
     }
     #[test]
-    fn delivery_unknown_and_cancel_preserve_draft() {
+    fn delivery_unknown_preserves_draft() {
         let mut state = EditorWriteState::new(body());
         let request = state.send(RoomId::new("room"), None).unwrap();
         let result = request
@@ -201,8 +198,6 @@ mod tests {
             .unwrap();
         state.accept(&result);
         assert_eq!(state.status(), EditorWriteStatus::DeliveryUnknown);
-        state.cancel();
-        assert_eq!(state.status(), EditorWriteStatus::Cancelled);
         assert!(matches!(state.body(),ComposedBody::PlainText(value)if value=="private body"));
     }
     #[test]
@@ -211,9 +206,9 @@ mod tests {
         let request = state.send(RoomId::new("room"), None).unwrap();
         let mut reads = RequestSequence::default();
         let read = reads
-            .begin(FrontendIntent::WhoAmI, None)
+            .begin(FrontendIntent::ListAllRooms, None)
             .unwrap()
-            .complete(FrontendResult::WhoAmI(ReadOutcome::Rejected(error())))
+            .complete(FrontendResult::ListAllRooms(ReadOutcome::Rejected(error())))
             .unwrap();
         state.accept(&read);
         assert_eq!(state.status(), EditorWriteStatus::Pending);

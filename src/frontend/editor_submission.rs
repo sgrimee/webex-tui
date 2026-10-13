@@ -1,4 +1,4 @@
-//! Dormant, pure submitted-write ledger; no App, queue, gate or I/O ownership.
+//! Pure submitted-write ledger; no App, queue, gate or I/O ownership.
 //!
 //! Preparation reserves one immutable request. The caller reports its synchronous
 //! queue admission before processing terminal events. Losing that report is not
@@ -183,7 +183,10 @@ pub(crate) struct ReviewSnapshot {
 /// an already confirmed write into rejection/unavailability or cause a retry.
 #[derive(Default)]
 pub(crate) struct SubmissionEffects {
+    /// Test-observable reducer outcome; the App reads the ledger instead.
+    #[cfg(test)]
     pub(crate) settled: Option<RequestContext>,
+    #[cfg(test)]
     pub(crate) status: Option<EditorWriteStatus>,
     pub(crate) canonical: Option<MessageSnapshot>,
     /// Apply only to this exact current draft stamp; never to newer composition.
@@ -406,8 +409,12 @@ impl EditorSubmission {
                 status,
             });
         }
+        #[cfg(not(test))]
+        let _ = context;
         SubmissionEffects {
+            #[cfg(test)]
             settled: Some(context),
+            #[cfg(test)]
             status: Some(status),
             canonical,
             clear_current,
@@ -942,14 +949,18 @@ mod tests {
         let mut ledger = EditorSubmission::default();
         let request = accepted(&mut ledger, &draft);
         let read = RequestSequence::default()
-            .begin(FrontendIntent::WhoAmI, None)
+            .begin(FrontendIntent::Initialize, None)
             .unwrap();
         assert_eq!(read.context.id, request.context.id);
-        let read_result = FrontendResult::WhoAmI(ReadOutcome::Success(PersonSnapshot {
-            id: crate::frontend::data::PersonId::new("person"),
-            display_name: None,
-            emails: None,
-        }));
+        let read_result = FrontendResult::Initialize(ReadOutcome::Success(
+            crate::frontend::data::Initialization {
+                account: Some(PersonSnapshot {
+                    id: crate::frontend::data::PersonId::new("person"),
+                    display_name: None,
+                    emails: None,
+                }),
+            },
+        ));
         assert_inert(&ledger.reduce(
             SubmissionTerminal::result(read.complete(read_result.clone()).unwrap()),
             Some(&draft.stamp),

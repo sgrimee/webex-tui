@@ -219,13 +219,6 @@ impl UiSnapshotReader {
         self.client.room_messages_page(room_id, before, max).await
     }
 
-    pub(crate) async fn thread_parent(
-        &self,
-        message_id: &str,
-    ) -> Result<dto::ThreadParent, ClientError> {
-        self.client.thread_parent(message_id).await
-    }
-
     pub(crate) async fn thread_children(
         &self,
         parent_id: &str,
@@ -242,19 +235,11 @@ impl UiSnapshotReader {
         self.client.message_read(message_id).await
     }
 
-    pub(crate) async fn message(&self, message_id: &str) -> Result<dto::Message, ClientError> {
-        self.client.message(message_id).await
-    }
-
     pub(crate) async fn person_read(
         &self,
         person_id: &str,
     ) -> Result<dto::PersonRead, ClientError> {
         self.client.person_read(person_id).await
-    }
-
-    pub(crate) async fn person(&self, person_id: &str) -> Result<dto::Person, ClientError> {
-        self.client.person(person_id).await
     }
 }
 
@@ -554,9 +539,11 @@ impl<B: SessionBackend, C: SessionClock> SessionLifecycle<B, C> {
     pub(crate) fn backend_for_tests(&self) -> &B {
         &self.backend
     }
+    #[cfg(test)]
     pub(crate) fn lease_deadline(&self) -> Option<Instant> {
         self.active.as_ref().map(|a| a.lease_deadline)
     }
+    #[cfg(test)]
     pub(crate) fn renew_at(&self) -> Option<Instant> {
         self.active.as_ref().map(|a| a.renew_at)
     }
@@ -782,6 +769,7 @@ impl<B: SessionBackend, C: SessionClock> SessionLifecycle<B, C> {
         RenewStep::Renewed
     }
 
+    #[cfg(test)]
     pub(crate) async fn renew_if_due(&mut self, secret: &str) -> Result<bool, SessionFailure> {
         let Some(attempt) = self.begin_renew_if_due()? else {
             return Ok(false);

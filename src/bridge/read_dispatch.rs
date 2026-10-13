@@ -174,10 +174,6 @@ impl ReadTerminal {
 pub(crate) struct ReadCredits(Arc<AtomicUsize>);
 
 impl ReadCredits {
-    pub(crate) fn outstanding(&self) -> usize {
-        self.0.load(Ordering::SeqCst)
-    }
-
     /// Reserve one credit unless `cap` are already outstanding.
     pub(crate) fn try_acquire(&self, cap: usize) -> bool {
         self.0
@@ -229,7 +225,6 @@ pub(crate) async fn dispatch_read_observed<R: UiReadBackend>(
     validate(&request)?;
     let response = match &request.intent {
         FrontendIntent::Initialize => ClientResponse::Initialize(reader.me().await),
-        FrontendIntent::WhoAmI => ClientResponse::WhoAmI(reader.me().await),
         FrontendIntent::ListAllRooms => ClientResponse::ListAllRooms(reader.rooms().await),
         FrontendIntent::UpdateRoom(id) => {
             ClientResponse::UpdateRoom(reader.room(id.as_str()).await)
@@ -270,7 +265,7 @@ fn session_failure(response: &ClientResponse) -> Option<SessionFailure> {
         reply.as_ref().err().and_then(session_auth_failure)
     }
     match response {
-        ClientResponse::Initialize(reply) | ClientResponse::WhoAmI(reply) => of(reply),
+        ClientResponse::Initialize(reply) => of(reply),
         ClientResponse::ListAllRooms(reply) => of(reply),
         ClientResponse::UpdateRoom(reply) => of(reply),
         ClientResponse::UpdateTeam(reply) => of(reply),
@@ -278,7 +273,6 @@ fn session_failure(response: &ClientResponse) -> Option<SessionFailure> {
         ClientResponse::ListMessagesInRoom(reply) => of(reply),
         ClientResponse::UpdateMessage(reply) => of(reply),
         ClientResponse::UpdateChildrenMessages(reply) => of(reply),
-        _ => None, // write responses never reach the read path
     }
 }
 
@@ -302,7 +296,7 @@ pub(super) fn validate(request: &RequestEnvelope) -> Result<(), ReadDispatchErro
         (1..=100).contains(&page.max) && page.before.as_ref().is_none_or(|c| ok(c.as_str()))
     };
     let valid = match &request.intent {
-        FrontendIntent::Initialize | FrontendIntent::WhoAmI | FrontendIntent::ListAllRooms => true,
+        FrontendIntent::Initialize | FrontendIntent::ListAllRooms => true,
         FrontendIntent::UpdateRoom(id) => ok(id.as_str()),
         FrontendIntent::UpdateTeam(id) => ok(id.as_str()),
         FrontendIntent::UpdatePerson(id) => ok(id.as_str()),

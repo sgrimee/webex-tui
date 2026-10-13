@@ -3,11 +3,7 @@
 //! Controller: handles user input and routes Webex reads/writes to the bridge glue.
 
 pub(crate) mod actions;
-// Attached by `main` since the S4 startup switch; some helpers are test-only
-// or unused until the 5E legacy removal.
-#[allow(dead_code)]
 mod bridge_app;
-#[allow(dead_code)]
 pub(crate) mod bridge_glue;
 pub(crate) mod cache;
 mod dump;

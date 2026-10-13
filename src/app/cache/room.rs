@@ -41,7 +41,6 @@ impl Room {
     /// Bridge rooms may lack an activity timestamp (never fabricated). Such a
     /// room keeps the earliest ordering key, so it sorts last; the key is
     /// ordering-only and never displayed as a time.
-    #[allow(dead_code)] // dormant bridge glue
     pub(crate) fn from_bridge_snapshot(value: &RoomSnapshot) -> Result<Self> {
         if value.last_activity.is_some() {
             return Self::from_snapshot(value);

@@ -22,24 +22,16 @@ color-eyre = "0.6"
 dirs = "6"
 enum-iterator = "2"
 fuzzy-matcher = "0.3"
-gethostname = "1.1"
 html2text = "0.16"
 itertools = "0.14"
 log = "0.4"
-oauth2 = { version = "5", features = ["reqwest"] }
-open = "5"
-reqwest = { version = "0.12", features = ["json"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_yaml = "0.9"
 textwrap = "0.16"
 thiserror = "2.0"
-tokio = { version = "1.43.1", features = ["rt", "macros", "sync", "time"] }
-webbrowser = "1.0.1"
-# webex = "0.10.1"
-# webex = { git = "https://github.com/sgrimee/webex-rust.git", branch = "master" }
-# webex = { git = "https://github.com/wr-org/webex-rust.git", branch = "master"}
-webex = { path = "../webex-rust" }
+# rt-multi-thread: the terminal event reader blocks one worker thread.
+tokio = { version = "1.43.1", features = ["rt", "rt-multi-thread", "macros", "sync", "time"] }
 webex-bridge = { path = "../webex-bridge", default-features = false, features = ["client"] }
 
 # UI dependencies - allow latest compatible versions
@@ -52,5 +44,7 @@ tui-textarea = "0.7"
 keyring = { version = "3.6.3", features = ["apple-native"] }
 
 [dev-dependencies]
+# StatusCode for synthetic bridge ClientError values in tests.
+http = "1"
 rstest = "0.26.1"
 tempfile = "3.0"

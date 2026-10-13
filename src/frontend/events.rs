@@ -56,7 +56,6 @@ pub(crate) enum ResyncReason {
     EventLag,
     DaemonRestart,
     StreamReconnect,
-    SnapshotBoundary,
     Sync,
     Reconciliation,
     Unknown,

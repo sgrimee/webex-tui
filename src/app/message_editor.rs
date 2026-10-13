@@ -90,7 +90,7 @@ impl MessageEditor<'_> {
             .is_some_and(|edited| markdown_source(edited).is_some())
     }
 
-    #[allow(dead_code)] // dormant bridge write glue
+    #[cfg(test)]
     pub(crate) fn revision(&self) -> DraftRevision {
         self.revision
     }

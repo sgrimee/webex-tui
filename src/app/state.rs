@@ -45,8 +45,7 @@ pub(crate) struct AppState<'a> {
     pub(crate) show_logs: bool,
     pub(crate) show_rooms: bool,
 
-    /// Presentation of the bridge backend, set only when App has a bridge
-    /// glue attached (dormant until the consented startup switch).
+    /// Presentation of the bridge backend, set once App has its glue attached.
     pub(crate) bridge: Option<BridgeView>,
 }
 
@@ -434,12 +433,6 @@ impl AppState<'_> {
         Ok(self
             .cache
             .is_me(&message.sender_id.as_ref().map(|id| id.as_str().to_owned())))
-    }
-
-    /// Set the theme for the application
-    #[allow(dead_code)]
-    pub(crate) fn set_theme(&mut self, theme: Theme) {
-        self.theme = theme;
     }
 }
 

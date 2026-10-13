@@ -4,10 +4,9 @@
 //! validates a disposable page for its requested room/root and retains ordering,
 //! cursors and orphan replies exactly as supplied by the eventual adapter.
 
-use super::{
-    data::{MessageId, MessagePage, MessageSnapshot, MessageStatus, RoomId},
-    models::MessagePresentation,
-};
+use super::data::{MessageId, MessagePage, MessageSnapshot, MessageStatus, RoomId};
+#[cfg(test)]
+use super::models::MessagePresentation;
 
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) enum ThreadParent {
@@ -27,6 +26,7 @@ impl ThreadParent {
 
     /// A missing/unavailable root is a placeholder, never a fabricated message.
     /// Deleted-root snapshots keep identity but cannot present retained bodies.
+    #[cfg(test)]
     pub(crate) fn presentation(&self) -> Option<MessagePresentation<'_>> {
         match self {
             Self::Active(message) | Self::Deleted(message) => Some(message.presentation()),

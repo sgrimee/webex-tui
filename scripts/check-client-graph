@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Fail if webex-tui's normal dependency graph contains Webex transport, OAuth,
+# HTTP-to-Webex, WebSocket, SQLite or TLS crates. webex-tui is a client of the
+# webex-bridge daemon (UDS only); those belong to the daemon.
+set -euo pipefail
+cd "$(dirname -- "${BASH_SOURCE[0]}")/.."
+
+forbidden='^(webex|oauth2|reqwest|tungstenite|tokio-tungstenite|rusqlite|libsqlite3-sys|webbrowser|rustls|hyper-rustls|native-tls|openssl|axum|gethostname)$'
+crates=$(cargo tree -e normal --prefix none | sed -E 's/ v[0-9].*//' | sort -u)
+if hits=$(grep -E "$forbidden" <<<"$crates"); then
+    echo "client-only graph check failed; forbidden crates:" >&2
+    echo "$hits" >&2
+    exit 1
+fi
+echo "client-only graph OK ($(wc -l <<<"$crates" | tr -d ' ') crates)"

@@ -133,10 +133,6 @@ impl RoomMessageView {
         }
     }
 
-    pub(crate) fn room_id(&self) -> &RoomId {
-        &self.room_id
-    }
-
     /// Stored canonical snapshot (active or tombstone), displayed or not.
     pub(crate) fn get(&self, id: &MessageId) -> Option<&MessageSnapshot> {
         self.messages.get(id)
@@ -155,6 +151,7 @@ impl RoomMessageView {
     }
 
     /// Re-anchor selection by ID after any reorder.
+    #[cfg(test)]
     pub(crate) fn index_of(&self, id: &MessageId) -> Option<usize> {
         self.rows.iter().position(|key| match key {
             RowKey::Message(row) | RowKey::DeletedRoot(row) | RowKey::MissingRoot(row) => row == id,
@@ -165,6 +162,7 @@ impl RoomMessageView {
         self.rows.len()
     }
 
+    #[cfg(test)]
     pub(crate) fn is_empty(&self) -> bool {
         self.rows.is_empty()
     }

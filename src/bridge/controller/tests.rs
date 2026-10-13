@@ -287,7 +287,9 @@ async fn host_write_wrong_intent_has_no_mutation() {
     let mut f = fixture();
     active(&mut f).await;
     assert!(matches!(
-        f.controller.dispatch_write(FrontendIntent::WhoAmI).await,
+        f.controller
+            .dispatch_write(FrontendIntent::ListAllRooms)
+            .await,
         Err(SessionWriteError::Dispatch(_))
     ));
     assert_eq!(f.writer_calls.load(Ordering::SeqCst), 0);

@@ -2,8 +2,6 @@
 
 mod app;
 mod banner;
-// Parts of the bridge boundary stay unused until the 5E legacy removal.
-#[allow(dead_code)]
 mod bridge;
 mod config;
 mod frontend;

@@ -10,6 +10,11 @@ check-all:
     just lint
     just test
     just fmt
+    just check-graph
+
+# Fail if the dependency graph pulls in Webex/OAuth/WebSocket/SQLite/TLS crates
+check-graph:
+    ./scripts/check-client-graph
 
 # Compile check
 check:

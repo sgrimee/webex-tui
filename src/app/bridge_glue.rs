@@ -1,6 +1,5 @@
-//! Dormant App-side glue between the bridge runtime and the presentation
-//! cache. Not constructed by `main` or App; driven only by fake-backed tests
-//! until the separately approved startup slice.
+//! App-side glue between the bridge runtime and the presentation cache,
+//! assembled by `bridge::startup` and attached to the App by `main`.
 //!
 //! Owns the App-side endpoints (presentation pump, command mailbox, runtime
 //! control) and an App read tracker, and reduces drained runtime events into
@@ -451,6 +450,7 @@ impl BridgeGlue {
         &self.status
     }
 
+    #[cfg(test)]
     pub(crate) fn outstanding_reads(&self) -> usize {
         self.pending.len() + self.deferred.len()
     }
@@ -1010,9 +1010,7 @@ fn review_outcome(status: EditorWriteStatus) -> QuitOutcome {
     match status {
         EditorWriteStatus::DeliveryUnknown | EditorWriteStatus::Pending => QuitOutcome::Unknown,
         EditorWriteStatus::Ready => QuitOutcome::Confirmed,
-        EditorWriteStatus::Rejected
-        | EditorWriteStatus::Unavailable
-        | EditorWriteStatus::Cancelled => QuitOutcome::NotSent,
+        EditorWriteStatus::Rejected | EditorWriteStatus::Unavailable => QuitOutcome::NotSent,
     }
 }
 

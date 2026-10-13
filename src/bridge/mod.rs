@@ -16,7 +16,6 @@ pub(crate) mod session;
 pub(crate) mod snapshot;
 pub(crate) mod startup;
 mod text;
-pub(crate) mod write_coordinator;
 pub(crate) mod write_dispatch;
 
 #[cfg(test)]

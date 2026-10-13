@@ -279,7 +279,7 @@ async fn lifecycle_dispatches_only_through_current_active_writer() {
     ));
     assert_eq!(owner.backend.counts.writer_calls.load(Ordering::SeqCst), 1);
     assert!(matches!(
-        owner.dispatch_write(FrontendIntent::WhoAmI).await,
+        owner.dispatch_write(FrontendIntent::ListAllRooms).await,
         Err(SessionWriteError::Dispatch(_))
     ));
     assert_eq!(owner.backend.counts.writer_calls.load(Ordering::SeqCst), 1);

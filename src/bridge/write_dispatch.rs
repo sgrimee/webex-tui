@@ -115,6 +115,7 @@ impl<B: UiWriteBackend> WriteDispatcher<B> {
     pub(crate) fn new(backend: B) -> Self {
         Self { backend }
     }
+    #[cfg(test)]
     pub(crate) async fn dispatch(
         &mut self,
         intent: FrontendIntent,
@@ -323,7 +324,7 @@ mod tests {
     }
     fn unknown() -> ClientError {
         ClientError::Api {
-            status: reqwest::StatusCode::ACCEPTED,
+            status: http::StatusCode::ACCEPTED,
             code: "delivery_unknown".into(),
             message: "safe".into(),
         }
@@ -333,7 +334,7 @@ mod tests {
     }
     fn rejected() -> ClientError {
         ClientError::Api {
-            status: reqwest::StatusCode::BAD_REQUEST,
+            status: http::StatusCode::BAD_REQUEST,
             code: "webex_rejected".into(),
             message: "safe".into(),
         }
@@ -360,7 +361,7 @@ mod tests {
             FrontendResult::SendMessage(WriteOutcome::Success(_))
         ));
         assert!(matches!(
-            d.dispatch(FrontendIntent::WhoAmI).await,
+            d.dispatch(FrontendIntent::ListAllRooms).await,
             Err(DispatchError::WrongIntent)
         ));
         assert_eq!(d.backend.calls, 1);
@@ -544,7 +545,7 @@ mod tests {
         };
         let intents = vec![
             FrontendIntent::Initialize,
-            FrontendIntent::WhoAmI,
+            FrontendIntent::ListAllRooms,
             FrontendIntent::ListAllRooms,
             FrontendIntent::UpdateRoom(RoomId::new("r")),
             FrontendIntent::UpdateTeam(TeamId::new("t")),

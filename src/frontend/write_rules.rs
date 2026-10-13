@@ -15,8 +15,10 @@ use super::{
 use webex_bridge::dto;
 
 /// Current UI API body bound, shared with the daemon via the bridge DTOs.
+#[cfg(test)]
 pub(crate) const MAX_WRITE_BODY_BYTES: usize = dto::MAX_MESSAGE_BODY_BYTES;
 /// Opaque resource-ID bound, shared with the daemon via the bridge DTOs.
+#[cfg(test)]
 pub(crate) const MAX_OPAQUE_ID_BYTES: usize = dto::MAX_RESOURCE_ID_BYTES;
 
 /// Nonempty, bounded and free of control characters. IDs are never decoded.
@@ -189,7 +191,7 @@ mod tests {
                 message_id: MessageId::new("m"),
             },
             FrontendIntent::LeaveRoom(RoomId::new("r")),
-            FrontendIntent::WhoAmI,
+            FrontendIntent::ListAllRooms,
         ] {
             assert!(!valid_editor_write(&other));
         }

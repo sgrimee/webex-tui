@@ -114,6 +114,7 @@ impl<B: SessionBackend, C: SessionClock, H: PresentationHost> HostController<B, 
     pub(crate) fn subscription(&self) -> Option<SubscriptionId> {
         self.session.subscription()
     }
+    #[cfg(test)]
     pub(crate) fn projection(&self) -> &LifecycleProjection {
         &self.projection
     }

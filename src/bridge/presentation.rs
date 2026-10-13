@@ -48,14 +48,10 @@ pub(crate) const REFRESH_CAP: usize = 64;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct InstallId(u64);
 
-/// No Debug: snapshots carry presentation data. `install` on lifecycle events
-/// is the latest snapshot install at production; on read events it is the
-/// install captured when the worker dequeued the read (`None` before the
-/// first snapshot).
+/// No Debug: snapshots carry presentation data.
 pub(crate) enum PumpEvent<S> {
     Phase(SessionPhase),
     Lifecycle {
-        install: Option<InstallId>,
         projection: LifecycleProjection,
         effects: ProjectionEffects,
     },
@@ -68,7 +64,6 @@ pub(crate) enum PumpEvent<S> {
     /// dispatched before a newer snapshot install is delivered as
     /// `Unavailable { Stale }`: settled once, never applied over newer data.
     Read {
-        install: Option<InstallId>,
         terminal: ReadTerminal,
     },
 }
@@ -124,13 +119,12 @@ impl<S> Entry<S> {
             Self::Lifecycle(entry) => {
                 let entry = *entry;
                 PumpEvent::Lifecycle {
-                    install: entry.install,
                     projection: entry.projection,
                     effects: entry.effects,
                 }
             }
             Self::Snapshot { install, snapshot } => PumpEvent::Snapshot { install, snapshot },
-            Self::Read { install, terminal } => PumpEvent::Read { install, terminal },
+            Self::Read { terminal, .. } => PumpEvent::Read { terminal },
         }
     }
 }

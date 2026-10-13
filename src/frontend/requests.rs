@@ -14,6 +14,7 @@ pub(crate) struct RoomRequestContext {
 }
 
 /// A typed worker result returns the exact context supplied with the request.
+#[cfg(test)]
 pub(crate) struct RoomResult<T, E> {
     pub(crate) context: RoomRequestContext,
     pub(crate) outcome: Result<T, E>,
@@ -34,6 +35,7 @@ impl std::error::Error for CounterExhausted {}
 /// Latest-read context for the selected room. Not an application-wide tracker:
 /// independent read targets should have their own tracker/request identity.
 #[derive(Default)]
+#[cfg(test)]
 pub(crate) struct RoomViewRequests {
     active_room: Option<String>,
     view_generation: u64,
@@ -41,6 +43,7 @@ pub(crate) struct RoomViewRequests {
     latest_request: Option<u64>,
 }
 
+#[cfg(test)]
 impl RoomViewRequests {
     /// Change focus, invalidating outstanding results even for A → B → A.
     /// Selecting the already-active room leaves its outstanding read intact.

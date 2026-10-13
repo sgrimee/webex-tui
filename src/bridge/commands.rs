@@ -1,4 +1,4 @@
-//! Dormant single-write mailbox. No App, runtime loop, socket or startup wiring.
+//! Single-write mailbox between the App-side glue and the runtime's worker.
 //!
 //! The frontend endpoint only submits/drains synchronously. The worker alone owns
 //! HostController. One slot spans queued, reserved/in-flight and undrained terminal
@@ -317,9 +317,7 @@ impl<B: SessionBackend, C: SessionClock, H: PresentationHost> CommandWorker<B, C
     pub(crate) fn subscription(&self) -> Option<SubscriptionId> {
         self.controller.subscription()
     }
-    pub(crate) fn projection(&self) -> &LifecycleProjection {
-        self.controller.projection()
-    }
+    #[cfg(test)]
     pub(crate) fn host(&self) -> &H {
         &self.controller.host().inner
     }
@@ -378,6 +376,7 @@ impl<B: SessionBackend, C: SessionClock, H: PresentationHost> CommandWorker<B, C
         result
     }
 
+    #[cfg(test)]
     pub(crate) fn frame(
         &mut self,
         subscription: SubscriptionId,
@@ -657,8 +656,7 @@ async fn dispatch_envelope<B: SessionBackend, C: SessionClock, H: PresentationHo
     reservation: &mut Reservation,
 ) -> SubmissionTerminal {
     // Conservative boundary immediately before polling the one retained future.
-    // Use the concrete controller future: the older WriteGate trait does not
-    // promise Send. No reducer or controller/client capability crosses to App.
+    // No reducer or controller/client capability crosses to App.
     reservation.attempted = true;
     let result = controller.dispatch_write(request.intent.clone()).await;
     complete(request, result)

@@ -43,6 +43,7 @@ pub(crate) struct ProjectionEffects {
 impl ProjectionEffects {
     /// Scope hint, not permission to change focus or suppress another room's
     /// cache updates. Global refresh affects any current room.
+    #[cfg(test)]
     pub(crate) fn affects_room(&self, room_id: &RoomId) -> bool {
         self.refresh.iter().any(|target| match target {
             RefreshTarget::Status => false,
@@ -437,7 +438,7 @@ mod tests {
         let mut projection = LifecycleProjection::default();
         projection.apply(LifecycleEvent::ResyncRequired {
             scope: ChangeScope::WholeMirror,
-            reason: ResyncReason::SnapshotBoundary,
+            reason: ResyncReason::EventLag,
         });
         projection.apply(LifecycleEvent::MessageInvalidated {
             key: key(),

@@ -1,4 +1,4 @@
-//! Dormant single-task bridge runtime loop. Not started from `main` or App.
+//! Single-task bridge runtime loop, spawned by `main` on its own task.
 //!
 //! The runtime solely owns the `CommandWorker` (and therefore the session
 //! controller, SSE stream and capabilities). It drives, in one task:
