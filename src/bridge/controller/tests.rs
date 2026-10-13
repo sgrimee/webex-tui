@@ -107,6 +107,10 @@ impl SessionBackend for Backend {
         self.calls.lock().unwrap().push("continuity");
         Ok(self.boundary.lock().unwrap().clone())
     }
+    async fn renew(&mut self, _: &Client) -> Result<u64, crate::bridge::session::RenewFailure> {
+        // Not exercised here: behaves like a daemon at the 12 h cap.
+        Err(crate::bridge::session::RenewFailure::CapReached)
+    }
     fn lease_ttl(_: &Client) -> u64 {
         100
     }

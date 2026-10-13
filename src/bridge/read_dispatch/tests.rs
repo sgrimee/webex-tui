@@ -391,6 +391,10 @@ impl SessionBackend for Backend {
     async fn continuity(&mut self, _: &Arc<Fake>) -> Result<ContinuityBoundary, SessionFailure> {
         Ok(marker())
     }
+    async fn renew(&mut self, _: &Arc<Fake>) -> Result<u64, crate::bridge::session::RenewFailure> {
+        // Not exercised here: behaves like a daemon at the 12 h cap.
+        Err(crate::bridge::session::RenewFailure::CapReached)
+    }
     fn lease_ttl(_: &Arc<Fake>) -> u64 {
         100
     }

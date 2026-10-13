@@ -289,6 +289,13 @@ impl SessionBackend for Backend {
             watermark: self.0.watermark.load(Ordering::SeqCst),
         })
     }
+    async fn renew(
+        &mut self,
+        _: &Arc<Shared>,
+    ) -> Result<u64, crate::bridge::session::RenewFailure> {
+        // Not exercised here: behaves like a daemon at the 12 h cap.
+        Err(crate::bridge::session::RenewFailure::CapReached)
+    }
     fn lease_ttl(_: &Arc<Shared>) -> u64 {
         600
     }

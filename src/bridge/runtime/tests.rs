@@ -7,7 +7,7 @@ use crate::{
         pairing::UiSecret,
         presentation::{pump, PresentationEndpoint, PumpEvent, PumpHost},
         read_dispatch::{ReadTerminal, ReadUnavailable},
-        session::SessionLifecycle,
+        session::{RenewFailure, SessionLifecycle},
         write_dispatch::UiWriteBackend,
     },
     frontend::{
@@ -44,6 +44,10 @@ struct Shared {
     stream: Mutex<Option<mpsc::UnboundedSender<Item>>>,
     writer_pending: AtomicBool,
     issue_pending: AtomicBool,
+    renews: AtomicUsize,
+    /// Scripted in-place renewal replies; empty means success (100 s lease).
+    renew_replies: Mutex<VecDeque<Result<u64, RenewFailure>>>,
+    renew_pending: AtomicBool,
 }
 
 impl Shared {
@@ -129,6 +133,18 @@ impl SessionBackend for Backend {
             instance_id: DaemonInstanceId::new("synthetic-instance"),
             watermark: 0,
         })
+    }
+    async fn renew(&mut self, _: &Arc<Shared>) -> Result<u64, RenewFailure> {
+        self.0.renews.fetch_add(1, Ordering::SeqCst);
+        if self.0.renew_pending.load(Ordering::SeqCst) {
+            std::future::pending::<()>().await;
+        }
+        self.0
+            .renew_replies
+            .lock()
+            .unwrap()
+            .pop_front()
+            .unwrap_or(Ok(100))
     }
     fn lease_ttl(_: &Arc<Shared>) -> u64 {
         100
@@ -310,6 +326,16 @@ fn read_request() -> RequestEnvelope {
         .unwrap()
 }
 
+/// The next in-place renewal is refused at the 12 h cap, so the loop falls
+/// back to a new session (secret re-borrow, new subscription, re-snapshot).
+fn cap_next_renewal(f: &Fixture) {
+    f.shared
+        .renew_replies
+        .lock()
+        .unwrap()
+        .push_back(Err(RenewFailure::CapReached));
+}
+
 async fn submit_until_accepted(f: &Fixture) {
     until("write admission", || {
         f.mailbox.try_submit(write_request()) == CommandAdmission::Accepted
@@ -376,13 +402,14 @@ async fn connects_installs_behind_ack_dispatches_one_write_and_shuts_down() {
 }
 
 #[tokio::test]
-async fn due_renewal_reborrows_the_secret_and_resnapshots() {
+async fn renewal_at_the_cap_reborrows_the_secret_and_resnapshots() {
     let (runtime, f) = fixture();
     let driver = async {
         connect_and_install(&f, 1).await;
         submit_until_accepted(&f).await;
         until("write terminal", || f.mailbox.drain().is_some()).await;
-        // Past the 80% renewal point of the 100 s fake lease.
+        // Past the 80% renewal point of the 100 s fake lease, at the cap.
+        cap_next_renewal(&f);
         f.clock.advance(85);
         until("renewal subscription", || {
             f.shared.subscribes.load(Ordering::SeqCst) == 2
@@ -407,6 +434,109 @@ async fn due_renewal_reborrows_the_secret_and_resnapshots() {
     let terminal = f.mailbox.drain();
     assert!(terminal.is_some());
     assert!(f.shared.writes.load(Ordering::SeqCst) <= 2);
+}
+
+#[tokio::test]
+async fn due_renewal_is_in_place_without_secret_subscription_or_snapshot() {
+    let (runtime, f) = fixture();
+    let driver = async {
+        connect_and_install(&f, 1).await;
+        // Past the 80% renewal point of the 100 s fake lease.
+        f.clock.advance(85);
+        until("in-place renewal", || {
+            f.shared.renews.load(Ordering::SeqCst) == 1
+        })
+        .await;
+        // Past the old deadline (100 s): the extended lease (85 + 100 s)
+        // keeps the same session writable without a new snapshot.
+        f.clock.advance(30);
+        submit_until_accepted(&f).await;
+        until("write dispatched", || {
+            f.shared.writes.load(Ordering::SeqCst) == 1
+        })
+        .await;
+        until("write terminal", || f.mailbox.drain().is_some()).await;
+        // The next renewal point is 80% into the new lease (85 + 80 s).
+        f.clock.advance(55);
+        until("second renewal", || {
+            f.shared.renews.load(Ordering::SeqCst) == 2
+        })
+        .await;
+        f.control.shutdown();
+    };
+    let (exit, ()) = tokio::join!(runtime.run(), driver);
+    assert_eq!(exit, RuntimeExit::Shutdown);
+    assert_eq!(f.secrets.loads.load(Ordering::SeqCst), 1, "no re-borrow");
+    assert_eq!(f.shared.issues.load(Ordering::SeqCst), 1);
+    assert_eq!(f.shared.subscribes.load(Ordering::SeqCst), 1);
+    assert_eq!(f.snapshots.builds.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn removed_pairing_at_renewal_exits_pairing_required_without_the_secret() {
+    let (runtime, f) = fixture();
+    let driver = async {
+        connect_and_install(&f, 1).await;
+        f.shared
+            .renew_replies
+            .lock()
+            .unwrap()
+            .push_back(Err(RenewFailure::PairingRemoved));
+        f.clock.advance(85);
+    };
+    let (exit, ()) = tokio::join!(runtime.run(), driver);
+    assert_eq!(
+        exit,
+        RuntimeExit::PairingRequired(SessionFailure::AuthRequired)
+    );
+    assert_eq!(f.secrets.loads.load(Ordering::SeqCst), 1);
+    assert_eq!(f.shared.issues.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn other_renewal_failures_take_the_reconnect_path() {
+    for failure in [SessionFailure::Transport, SessionFailure::AuthRequired] {
+        let (runtime, f) = fixture();
+        let driver = async {
+            connect_and_install(&f, 1).await;
+            f.shared
+                .renew_replies
+                .lock()
+                .unwrap()
+                .push_back(Err(RenewFailure::Session(failure)));
+            f.clock.advance(85);
+            // A plain 401 (e.g. unknown token after a daemon restart) is a
+            // session failure, not a pairing failure: reconnect.
+            until("reconnect", || {
+                f.shared.subscribes.load(Ordering::SeqCst) == 2
+            })
+            .await;
+            assert_eq!(f.secrets.loads.load(Ordering::SeqCst), 2);
+            f.control.shutdown();
+        };
+        let (exit, ()) = tokio::join!(runtime.run(), driver);
+        assert_eq!(exit, RuntimeExit::Shutdown, "{failure:?}");
+    }
+}
+
+#[tokio::test]
+async fn shutdown_abandons_a_pending_in_place_renewal() {
+    let (runtime, f) = fixture();
+    let driver = async {
+        connect_and_install(&f, 1).await;
+        f.shared.renew_pending.store(true, Ordering::SeqCst);
+        f.clock.advance(85);
+        until("renewal in flight", || {
+            f.shared.renews.load(Ordering::SeqCst) == 1
+        })
+        .await;
+        f.control.shutdown();
+    };
+    let started = tokio::time::Instant::now();
+    let (exit, ()) = tokio::join!(runtime.run(), driver);
+    assert_eq!(exit, RuntimeExit::Shutdown);
+    assert!(started.elapsed() < Duration::from_millis(400), "prompt");
+    assert_eq!(f.secrets.loads.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]
@@ -498,6 +628,7 @@ async fn missing_secret_at_renewal_exits_without_creating_one() {
     let (runtime, f) = fixture();
     let driver = async {
         connect_and_install(&f, 1).await;
+        cap_next_renewal(&f);
         f.secrets.missing.store(true, Ordering::SeqCst);
         f.clock.advance(85);
     };
@@ -668,7 +799,7 @@ async fn sustained_sse_traffic_cannot_starve_lease_renewal() {
         f.clock.advance(85);
         let started = tokio::time::Instant::now();
         let mut watermark = 1;
-        while f.shared.subscribes.load(Ordering::SeqCst) < 2 {
+        while f.shared.renews.load(Ordering::SeqCst) < 1 {
             assert!(
                 started.elapsed() < Duration::from_millis(500),
                 "renewal starved by SSE traffic"
@@ -683,7 +814,9 @@ async fn sustained_sse_traffic_cannot_starve_lease_renewal() {
             watermark += 1;
             tokio::time::sleep(Duration::from_millis(1)).await;
         }
-        assert_eq!(f.secrets.loads.load(Ordering::SeqCst), 2);
+        // Renewed in place: no secret, same subscription.
+        assert_eq!(f.secrets.loads.load(Ordering::SeqCst), 1);
+        assert_eq!(f.shared.subscribes.load(Ordering::SeqCst), 1);
         f.control.shutdown();
     };
     let (exit, ()) = tokio::join!(runtime.run(), driver);
@@ -791,7 +924,9 @@ async fn transient_secret_store_failures_are_retried_not_fatal() {
     let (runtime, f) = fixture();
     let driver = async {
         connect_and_install(&f, 1).await;
-        // Renewal while the store is briefly unavailable (locked keychain).
+        // New-session renewal while the store is briefly unavailable
+        // (locked keychain). The cap is remembered for this subscription.
+        cap_next_renewal(&f);
         f.secrets.unavailable.store(3, Ordering::SeqCst);
         f.clock.advance(85);
         until("renewal after retries", || {
@@ -821,9 +956,11 @@ async fn transient_renewal_secret_failures_are_paced_by_backoff() {
     let (runtime, f) = fixture();
     let driver = async {
         connect_and_install(&f, 1).await;
+        cap_next_renewal(&f);
         f.secrets.unavailable.store(usize::MAX, Ordering::SeqCst);
         f.clock.advance(85);
         tokio::time::sleep(Duration::from_millis(120)).await;
+        assert_eq!(f.shared.renews.load(Ordering::SeqCst), 1, "cap remembered");
         let retries = f.secrets.loads.load(Ordering::SeqCst) - 1;
         // Per tick this would be ~24 loads; backoff allows about 5.
         assert!((1..=6).contains(&retries), "{retries} renewal secret loads");
@@ -844,6 +981,7 @@ async fn corrupt_secret_at_renewal_or_reconnect_exits() {
             if reconnect {
                 f.shared.push(None);
             } else {
+                cap_next_renewal(&f);
                 f.clock.advance(85);
             }
         };
@@ -862,6 +1000,7 @@ async fn denied_secret_at_renewal_exits() {
     let (runtime, f) = fixture();
     let driver = async {
         connect_and_install(&f, 1).await;
+        cap_next_renewal(&f);
         f.secrets.denied.store(true, Ordering::SeqCst);
         f.clock.advance(85);
     };

@@ -8,15 +8,20 @@
 //! - queued writes (`handle_one`, `WRITE_DEADLINE`) and reads (`handle_read`,
 //!   `READ_DEADLINE`), one at a time, never retried;
 //! - SSE frames from the current subscription;
-//! - lease ticks: due renewal and reconnection with bounded exponential
-//!   backoff, each re-borrowing the TUI-owned pairing secret from its store
-//!   for exactly one call (`connect_deadline`) and dropping it immediately;
+//! - lease ticks: due in-place renewal (no secret), and new-session renewal
+//!   or reconnection with bounded exponential backoff, each re-borrowing the
+//!   TUI-owned pairing secret from its store for exactly one call
+//!   (`connect_deadline`) and dropping it immediately;
 //! - App wakeups (submission, snapshot ack, shutdown) via `RuntimeControl`.
 //!
-//! Renewal is currently a full reconnect: new subscription, Ready, snapshot
-//! and install/ack, about every 8 minutes with the 600 s UI lease (renewal
-//! at 80%). Expect that churn, and re-snapshots after long writes/snapshots,
-//! until the bridge offers a lighter UI session renew.
+//! Renewal (at 80% of the lease) is in place: `POST /v1/ui/sessions/renew`
+//! keeps the same token, subscription, SSE stream and installed snapshot and
+//! needs no secret. Only when the daemon refuses with the 12 h cap (or a
+//! zero lease) does the loop fall back to a new session: secret re-borrow,
+//! new subscription, Ready, snapshot and install/ack. A removed pairing
+//! exits `PairingRequired`; other renewal failures fail the session and the
+//! reconnect path applies. Re-snapshots still follow reconnects, lag and
+//! long writes/snapshots.
 //!
 //! Writes and snapshot preparation borrow the worker, so SSE is not polled
 //! meanwhile; the session buffers or signals lag and the loop resyncs. Exit,
@@ -28,8 +33,8 @@ use super::{
     controller::PresentationHost,
     pairing::{SecretStoreFailure, UiSecretStore},
     session::{
-        io_failure, LeaseAction, SessionBackend, SessionClock, SessionFailure, SessionPhase,
-        SubscriptionId,
+        io_failure, LeaseAction, RenewStep, SessionBackend, SessionClock, SessionFailure,
+        SessionPhase, SubscriptionId,
     },
 };
 use std::{
@@ -192,6 +197,9 @@ where
     /// paced by the reconnect backoff, not every tick (REVIEW-13 LOW-4).
     renew_attempts: u32,
     renew_retry_at: Option<Instant>,
+    /// Subscription whose in-place renewal hit the 12 h cap: renew it by a
+    /// new session only.
+    new_session_for: Option<SubscriptionId>,
     burst: usize,
 }
 
@@ -235,6 +243,7 @@ where
                 active_since: None,
                 renew_attempts: 0,
                 renew_retry_at: None,
+                new_session_for: None,
                 burst: 0,
             },
             control,
@@ -369,6 +378,43 @@ where
         if self.renew_retry_at.is_some_and(|at| now < at) {
             return None;
         }
+        // 1. In place: same token and SSE stream, no secret, no snapshot.
+        // Skipped once the daemon reported the 12 h cap for this
+        // subscription; only a new session helps then.
+        let subscription = self.worker.subscription();
+        if subscription.is_none() || subscription != self.new_session_for {
+            let stop = stopped(Arc::clone(&self.stop), Arc::clone(&self.stop_notify));
+            let step = tokio::select! {
+                biased;
+                () = stop => return Some(RuntimeExit::Shutdown),
+                step = tokio::time::timeout(
+                    self.config.connect_deadline,
+                    self.worker.renew_in_place_if_due(),
+                ) => step,
+            };
+            match step {
+                Ok(RenewStep::Renewed | RenewStep::NotDue) => {
+                    self.renew_attempts = 0;
+                    self.renew_retry_at = None;
+                    return None;
+                }
+                // The daemon ended the session because the pairing is gone.
+                Ok(RenewStep::PairingRemoved) => {
+                    return Some(RuntimeExit::PairingRequired(SessionFailure::AuthRequired))
+                }
+                // Session Failed: the reconnect path (with backoff) applies.
+                Ok(RenewStep::Failed(_)) => return None,
+                Ok(RenewStep::NewSession) => self.new_session_for = subscription,
+                // Abandoned mid-call: the old lease is untouched and still
+                // valid; retry with backoff rather than every tick.
+                Err(_) => {
+                    self.renew_attempts = self.renew_attempts.saturating_add(1);
+                    self.renew_retry_at = Some(now + backoff(&self.config, self.renew_attempts));
+                    return None;
+                }
+            }
+        }
+        // 2. New session (cap reached): re-borrow the secret for one call.
         let secret = match self.secrets.load().await {
             Ok(Some(secret)) => {
                 self.renew_attempts = 0;

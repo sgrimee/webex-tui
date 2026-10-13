@@ -169,6 +169,10 @@ mod tests {
         ) -> Result<crate::frontend::continuity::ContinuityBoundary, SessionFailure> {
             unreachable!()
         }
+        async fn renew(&mut self, _: &()) -> Result<u64, crate::bridge::session::RenewFailure> {
+            // Not exercised here: behaves like a daemon at the 12 h cap.
+            Err(crate::bridge::session::RenewFailure::CapReached)
+        }
         fn lease_ttl(_: &()) -> u64 {
             1
         }

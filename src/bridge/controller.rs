@@ -9,9 +9,9 @@ use super::{
     presentation::InstallId,
     read_dispatch::{ReadCredits, ReadTerminal},
     session::{
-        FrameAction, LeaseAction, SessionBackend, SessionClock, SessionFailure, SessionLifecycle,
-        SessionPhase, SessionReadError, SessionWriteError, SnapshotTicket, SubscriptionId,
-        WriteAdmissionStamp,
+        FrameAction, LeaseAction, RenewStep, SessionBackend, SessionClock, SessionFailure,
+        SessionLifecycle, SessionPhase, SessionReadError, SessionWriteError, SnapshotTicket,
+        SubscriptionId, WriteAdmissionStamp,
     },
 };
 use crate::frontend::{
@@ -209,6 +209,18 @@ impl<B: SessionBackend, C: SessionClock, H: PresentationHost> HostController<B, 
             .map(|_| true);
         self.phase_changed();
         result
+    }
+
+    /// In-place renewal of a due lease: no secret, same subscription, no
+    /// phase change on success. A refusal that ends the session publishes the
+    /// new phase; the cap leaves the session untouched for the caller's
+    /// new-session fallback.
+    pub(crate) async fn renew_in_place_if_due(&mut self) -> RenewStep {
+        let step = self.session.renew_in_place_if_due().await;
+        if matches!(step, RenewStep::PairingRemoved | RenewStep::Failed(_)) {
+            self.phase_changed();
+        }
+        step
     }
 
     /// Caller-scheduled lease check, not a background timer/reconnect command.

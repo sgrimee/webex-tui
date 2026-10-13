@@ -2,7 +2,9 @@
 //!
 //! The real backend owns UiClient (and its private bearer token) and EventStream.
 //! Nothing starts automatically. The caller supplies a paired secret for each
-//! explicit connect/renew; this owner never stores it, pairs or accesses Keychain.
+//! explicit connect or new-session renewal; this owner never stores it, pairs
+//! or accesses Keychain. In-place renewal (`renew_in_place_if_due`) needs no
+//! secret: it extends the same token's lease and keeps the stream open.
 //! No message write is dispatched/retried here. Snapshot data stays host-owned.
 
 use super::{
@@ -71,6 +73,48 @@ pub(super) fn io_failure(error: ClientError) -> SessionFailure {
     }
 }
 
+/// Why an in-place UI session renewal did not extend the lease.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum RenewFailure {
+    /// 401 `pairing_removed`: the daemon removed this client's pairing and
+    /// already ended the session. Re-pairing is a user decision.
+    PairingRemoved,
+    /// 409 `session_cap_reached`: the 12 h absolute lifetime is reached. The
+    /// token stays valid until its current expiry; create a new session.
+    CapReached,
+    /// Any other failure (transport, expired/unknown token, bad response).
+    Session(SessionFailure),
+}
+
+/// Classify a bridge renewal error. Only the two documented refusals are
+/// special; everything else is an ordinary session failure.
+pub(super) fn renew_failure(error: ClientError) -> RenewFailure {
+    if error.is_pairing_removed() {
+        RenewFailure::PairingRemoved
+    } else if error.is_session_cap_reached() {
+        RenewFailure::CapReached
+    } else {
+        RenewFailure::Session(io_failure(error))
+    }
+}
+
+/// Result of one due in-place renewal attempt.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum RenewStep {
+    /// No active lease is due for renewal.
+    NotDue,
+    /// Same token and subscription; the lease deadline was extended.
+    Renewed,
+    /// The lease is still valid but cannot be extended in place (12 h cap,
+    /// or a zero lease reply): create a new session now.
+    NewSession,
+    /// The daemon removed this client's pairing; the session is Failed.
+    PairingRemoved,
+    /// The renewal failed; the session is Failed and the caller's reconnect
+    /// path (with its backoff) applies.
+    Failed(SessionFailure),
+}
+
 pub(crate) trait SessionBackend: Send {
     type Client: Send + Sync;
     type Stream: Send;
@@ -95,6 +139,12 @@ pub(crate) trait SessionBackend: Send {
         &mut self,
         client: &Self::Client,
     ) -> impl Future<Output = Result<ContinuityBoundary, SessionFailure>> + Send;
+    /// Extend the client's lease in place (same token, open stream kept)
+    /// and return the seconds until the new expiry. No secret is involved.
+    fn renew(
+        &mut self,
+        client: &Self::Client,
+    ) -> impl Future<Output = Result<u64, RenewFailure>> + Send;
     fn lease_ttl(client: &Self::Client) -> u64;
     fn writer(client: &Self::Client) -> Self::Writer;
     fn snapshot_reader(client: &Self::Client) -> Self::SnapshotReader;
@@ -202,6 +252,9 @@ impl SessionBackend for BridgeSessionBackend {
     ) -> Result<ContinuityBoundary, SessionFailure> {
         project_continuity(client.continuity().await.map_err(io_failure)?)
             .map_err(|_| SessionFailure::InvalidContinuity)
+    }
+    async fn renew(&mut self, client: &UiClient) -> Result<u64, RenewFailure> {
+        client.renew().await.map_err(renew_failure)
     }
     fn lease_ttl(client: &UiClient) -> u64 {
         client.lease_ttl()
@@ -610,6 +663,51 @@ impl<B: SessionBackend, C: SessionClock> SessionLifecycle<B, C> {
         } else {
             Ok(None)
         }
+    }
+
+    /// Renew a due lease in place: same token, subscription, stream and
+    /// snapshot; only the lease deadline and renewal point move. The phase
+    /// stays Active throughout, nothing is mutated before the reply, so a
+    /// cancelled call leaves the old (still valid) lease untouched. The new
+    /// lease is the daemon's reply measured from the request start, never
+    /// past what it granted (it also never exceeds the 12 h cap).
+    pub(crate) async fn renew_in_place_if_due(&mut self) -> RenewStep {
+        if self.check_lease() != LeaseAction::Renew {
+            return RenewStep::NotDue;
+        }
+        let Some(active) = &self.active else {
+            return RenewStep::NotDue;
+        };
+        let started = self.clock.now();
+        let reply = self.backend.renew(&active.client).await;
+        let ttl = match reply {
+            Ok(ttl) => ttl,
+            Err(RenewFailure::CapReached) => return RenewStep::NewSession,
+            Err(RenewFailure::PairingRemoved) => {
+                self.fail(SessionFailure::AuthRequired);
+                return RenewStep::PairingRemoved;
+            }
+            Err(RenewFailure::Session(failure)) => {
+                self.fail(failure);
+                return RenewStep::Failed(failure);
+            }
+        };
+        let lease = Duration::from_secs(ttl);
+        let (Some(lease_deadline), Some(renew_at)) = (
+            started.checked_add(lease),
+            started.checked_add(lease - lease / 5),
+        ) else {
+            return RenewStep::NewSession;
+        };
+        if ttl == 0 || self.clock.now() >= lease_deadline {
+            return RenewStep::NewSession;
+        }
+        let Some(active) = &mut self.active else {
+            return RenewStep::NotDue;
+        };
+        active.lease_deadline = lease_deadline;
+        active.renew_at = renew_at;
+        RenewStep::Renewed
     }
 
     pub(crate) async fn renew_if_due(&mut self, secret: &str) -> Result<bool, SessionFailure> {

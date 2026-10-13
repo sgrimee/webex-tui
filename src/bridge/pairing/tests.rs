@@ -114,6 +114,12 @@ impl SessionBackend for Session {
         unreachable!("bootstrap never starts a snapshot")
     }
 
+    async fn renew(&mut self, _: &()) -> Result<u64, crate::bridge::session::RenewFailure> {
+        // Not exercised here: behaves like a daemon at the 12 h cap.
+
+        Err(crate::bridge::session::RenewFailure::CapReached)
+    }
+
     fn lease_ttl(_: &()) -> u64 {
         600
     }
@@ -379,6 +385,12 @@ impl SessionBackend for FailingSession {
         _: &(),
     ) -> Result<crate::frontend::continuity::ContinuityBoundary, SessionFailure> {
         unreachable!("the issue failure prevents continuity")
+    }
+
+    async fn renew(&mut self, _: &()) -> Result<u64, crate::bridge::session::RenewFailure> {
+        // Not exercised here: behaves like a daemon at the 12 h cap.
+
+        Err(crate::bridge::session::RenewFailure::CapReached)
     }
 
     fn lease_ttl(_: &()) -> u64 {

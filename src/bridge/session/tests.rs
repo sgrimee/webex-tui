@@ -119,6 +119,7 @@ struct Backend {
     stream_delay: Duration,
     pending_issue: bool,
     boundary: ContinuityBoundary,
+    renew_reply: Result<u64, RenewFailure>,
 }
 impl SessionBackend for Backend {
     type Client = Client;
@@ -156,6 +157,14 @@ impl SessionBackend for Backend {
         }
         Ok(self.boundary.clone())
     }
+    async fn renew(&mut self, _: &Client) -> Result<u64, RenewFailure> {
+        self.calls.push("renew");
+        self.clock.advance(self.issue_delay);
+        if self.pending_issue {
+            std::future::pending::<()>().await;
+        }
+        self.renew_reply
+    }
     fn lease_ttl(client: &Client) -> u64 {
         client.ttl
     }
@@ -188,6 +197,7 @@ fn owner() -> Owner {
         stream_delay: Duration::ZERO,
         pending_issue: false,
         boundary: boundary("instance-a", 0),
+        renew_reply: Ok(100),
     };
     SessionLifecycle::new(backend, clock)
 }
@@ -345,6 +355,144 @@ async fn ready_then_subscribe_first_snapshot_enables_client_without_any_write() 
         Err(SessionFailure::StaleSnapshot)
     );
     assert_eq!(owner.backend.calls, ["issue", "subscribe", "continuity"]);
+}
+
+#[tokio::test]
+async fn in_place_renewal_extends_the_lease_and_keeps_every_handle() {
+    let mut owner = owner();
+    let id = active(&mut owner).await;
+    let start = owner.clock.now();
+    assert_eq!(owner.renew_in_place_if_due().await, RenewStep::NotDue);
+    owner.clock.advance(Duration::from_secs(80));
+    owner.backend.issue_delay = Duration::from_secs(1);
+    assert_eq!(owner.renew_in_place_if_due().await, RenewStep::Renewed);
+    // Measured from the request start, not the reply.
+    let renewed_at = start + Duration::from_secs(80);
+    assert_eq!(
+        owner.lease_deadline(),
+        Some(renewed_at + Duration::from_secs(100))
+    );
+    assert_eq!(owner.renew_at(), Some(renewed_at + Duration::from_secs(80)));
+    assert_eq!(owner.subscription(), Some(id));
+    assert_eq!(owner.phase(), SessionPhase::Active);
+    assert_eq!(
+        owner
+            .backend
+            .calls
+            .iter()
+            .filter(|c| **c == "issue")
+            .count(),
+        1
+    );
+    assert_eq!(
+        owner.backend.counts.clients_dropped.load(Ordering::SeqCst),
+        0
+    );
+    assert_eq!(
+        owner.backend.counts.streams_dropped.load(Ordering::SeqCst),
+        0
+    );
+    // Past the old deadline the same session is still writable.
+    owner.clock.advance(Duration::from_secs(30));
+    assert!(owner.dispatch_write(send_intent()).await.is_ok());
+    // A shorter grant near the cap is honoured as given.
+    owner.clock.advance(Duration::from_secs(60));
+    owner.backend.renew_reply = Ok(10);
+    assert_eq!(owner.renew_in_place_if_due().await, RenewStep::Renewed);
+    assert_eq!(
+        owner.lease_deadline(),
+        Some(start + Duration::from_secs(80 + 1 + 30 + 60 + 10))
+    );
+}
+
+#[tokio::test]
+async fn in_place_renewal_refusals_are_classified() {
+    // Cap (or a zero lease): untouched, still valid, caller makes a new session.
+    for reply in [Err(RenewFailure::CapReached), Ok(0)] {
+        let mut o = owner();
+        let id = active(&mut o).await;
+        let deadline = o.lease_deadline();
+        o.clock.advance(Duration::from_secs(80));
+        o.backend.renew_reply = reply;
+        assert_eq!(o.renew_in_place_if_due().await, RenewStep::NewSession);
+        assert_eq!(o.phase(), SessionPhase::Active);
+        assert_eq!(o.subscription(), Some(id));
+        assert_eq!(o.lease_deadline(), deadline);
+        // The ordinary new-session renewal then applies.
+        assert!(o.renew_if_due(SECRET).await.unwrap());
+        assert_ne!(o.subscription(), Some(id));
+    }
+    // Removed pairing: the daemon ended the session.
+    let mut o = owner();
+    active(&mut o).await;
+    o.clock.advance(Duration::from_secs(80));
+    o.backend.renew_reply = Err(RenewFailure::PairingRemoved);
+    assert_eq!(o.renew_in_place_if_due().await, RenewStep::PairingRemoved);
+    assert_eq!(
+        o.phase(),
+        SessionPhase::Failed(SessionFailure::AuthRequired)
+    );
+    assert!(o.subscription().is_none());
+    // Anything else fails the session for the reconnect path.
+    let mut o = owner();
+    active(&mut o).await;
+    o.clock.advance(Duration::from_secs(80));
+    o.backend.renew_reply = Err(RenewFailure::Session(SessionFailure::Transport));
+    assert_eq!(
+        o.renew_in_place_if_due().await,
+        RenewStep::Failed(SessionFailure::Transport)
+    );
+    assert_eq!(o.phase(), SessionPhase::Failed(SessionFailure::Transport));
+}
+
+#[tokio::test]
+async fn a_cancelled_in_place_renewal_leaves_the_old_lease_untouched() {
+    let mut owner = owner();
+    let id = active(&mut owner).await;
+    let deadline = owner.lease_deadline();
+    owner.clock.advance(Duration::from_secs(80));
+    owner.backend.pending_issue = true;
+    {
+        let mut renew = Box::pin(owner.renew_in_place_if_due());
+        assert!(futures_poll_once(renew.as_mut()).is_none());
+    }
+    assert_eq!(owner.phase(), SessionPhase::Active);
+    assert_eq!(owner.subscription(), Some(id));
+    assert_eq!(owner.lease_deadline(), deadline);
+}
+
+/// Poll a future exactly once with a no-op waker.
+fn futures_poll_once<F: Future>(future: std::pin::Pin<&mut F>) -> Option<F::Output> {
+    let mut context = std::task::Context::from_waker(std::task::Waker::noop());
+    match future.poll(&mut context) {
+        std::task::Poll::Ready(output) => Some(output),
+        std::task::Poll::Pending => None,
+    }
+}
+
+#[test]
+fn bridge_renewal_errors_are_classified_by_code() {
+    let api = |status: u16, code: &str| ClientError::Api {
+        status: status.try_into().unwrap(),
+        code: code.into(),
+        message: "synthetic".into(),
+    };
+    assert_eq!(
+        renew_failure(api(401, "pairing_removed")),
+        RenewFailure::PairingRemoved
+    );
+    assert_eq!(
+        renew_failure(api(409, "session_cap_reached")),
+        RenewFailure::CapReached
+    );
+    assert_eq!(
+        renew_failure(api(401, "auth_required")),
+        RenewFailure::Session(SessionFailure::AuthRequired)
+    );
+    assert_eq!(
+        renew_failure(api(409, "other")),
+        RenewFailure::Session(SessionFailure::InvalidResponse)
+    );
 }
 
 #[tokio::test]

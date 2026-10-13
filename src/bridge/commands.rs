@@ -22,9 +22,9 @@ use super::{
     presentation::InstallId,
     read_dispatch::{validate as validate_read, ReadCredits, ReadTerminal, ReadUnavailable},
     session::{
-        FrameAction, LeaseAction, SessionBackend, SessionClock, SessionFailure, SessionLifecycle,
-        SessionPhase, SessionReadError, SessionWriteError, SnapshotTicket, SubscriptionId,
-        WriteAdmissionStamp,
+        FrameAction, LeaseAction, RenewStep, SessionBackend, SessionClock, SessionFailure,
+        SessionLifecycle, SessionPhase, SessionReadError, SessionWriteError, SnapshotTicket,
+        SubscriptionId, WriteAdmissionStamp,
     },
     write_dispatch::DispatchError,
 };
@@ -341,6 +341,14 @@ impl<B: SessionBackend, C: SessionClock, H: PresentationHost> CommandWorker<B, C
         let result = self.controller.renew_if_due(paired_secret).await;
         self.publish();
         result
+    }
+
+    /// In-place renewal; republishes admission so the extended lease
+    /// deadline reaches the write-admission hint.
+    pub(crate) async fn renew_in_place_if_due(&mut self) -> RenewStep {
+        let step = self.controller.renew_in_place_if_due().await;
+        self.publish();
+        step
     }
 
     pub(crate) fn check_lease(&mut self) -> LeaseAction {

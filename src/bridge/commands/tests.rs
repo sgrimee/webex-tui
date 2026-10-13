@@ -179,6 +179,12 @@ impl SessionBackend for Backend {
     async fn continuity(&mut self, _: &Self::Client) -> Result<ContinuityBoundary, SessionFailure> {
         Ok(marker())
     }
+    async fn renew(
+        &mut self,
+        _: &Arc<Control>,
+    ) -> Result<u64, crate::bridge::session::RenewFailure> {
+        Ok(100)
+    }
     fn lease_ttl(_: &Self::Client) -> u64 {
         100
     }
@@ -1173,6 +1179,25 @@ async fn host_phase_hook_revokes_without_worker_publication_and_never_restores()
     assert_eq!(f.worker.check_lease(), LeaseAction::None);
     assert!(published_ready(&f.worker));
     assert_eq!(f.worker.host().snapshots, 2);
+}
+
+#[tokio::test]
+async fn in_place_renewal_republishes_the_extended_admission_deadline() {
+    let mut f = fixture();
+    active(&mut f).await;
+    f.clock.advance(85);
+    assert_eq!(
+        f.worker.renew_in_place_if_due().await,
+        crate::bridge::session::RenewStep::Renewed
+    );
+    // Past the old deadline (100 s), within the new one (85 + 100 s).
+    f.clock.advance(30);
+    assert_eq!(
+        f.endpoint
+            .try_submit_at(request(), SessionClock::now(&f.clock)),
+        CommandAdmission::Accepted
+    );
+    assert_eq!(f.worker.host().snapshots, 1, "no re-snapshot");
 }
 
 #[tokio::test]

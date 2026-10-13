@@ -526,6 +526,10 @@ impl SessionBackend for Backend {
     async fn continuity(&mut self, _: &()) -> Result<ContinuityBoundary, SessionFailure> {
         Ok(marker())
     }
+    async fn renew(&mut self, _: &()) -> Result<u64, crate::bridge::session::RenewFailure> {
+        // Not exercised here: behaves like a daemon at the 12 h cap.
+        Err(crate::bridge::session::RenewFailure::CapReached)
+    }
     fn lease_ttl(_: &()) -> u64 {
         600
     }
@@ -748,6 +752,10 @@ mod reads {
         }
         async fn continuity(&mut self, _: &Reader) -> Result<ContinuityBoundary, SessionFailure> {
             Ok(marker())
+        }
+        async fn renew(&mut self, _: &Reader) -> Result<u64, crate::bridge::session::RenewFailure> {
+            // Not exercised here: behaves like a daemon at the 12 h cap.
+            Err(crate::bridge::session::RenewFailure::CapReached)
         }
         fn lease_ttl(_: &Reader) -> u64 {
             600
