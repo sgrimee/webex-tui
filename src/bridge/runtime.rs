@@ -403,6 +403,10 @@ where
                     return None;
                 }
                 // The daemon ended the session because the pairing is gone.
+                // Note: `webex-bridge ui unpair` revokes live tokens, so the
+                // usual unpair signal is a plain 401 on the next renew or
+                // request instead; that fails the session, the reconnect's
+                // create-session 401 then exits `PairingRequired` as well.
                 Ok(RenewStep::PairingRemoved) => {
                     return Some(RuntimeExit::PairingRequired(SessionFailure::AuthRequired))
                 }
