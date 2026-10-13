@@ -47,12 +47,15 @@ pub(crate) const READ_DEADLINE: Duration = Duration::from_secs(15);
 /// that consume synchronously).
 pub(crate) const READ_CAPACITY: usize = 16;
 
-/// Read admission. Only `Accepted` produces a later terminal; `Duplicate`
-/// means an identical read is already queued or in flight.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// Read admission. Only `Accepted` produces a later terminal for this
+/// request. `Duplicate(existing)` means an identical read is already queued
+/// or in flight: its single terminal, correlated to `existing`, answers both
+/// requests, so the App must re-key its pending request to that context
+/// (a newer room-view context is not starved, it waits on the first one).
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum ReadAdmission {
     Accepted,
-    Duplicate,
+    Duplicate(RequestContext),
     Full,
     Closed,
     InvalidRequest,
@@ -149,9 +152,17 @@ impl CommandMailbox {
         if !mailbox.open {
             return ReadAdmission::Closed;
         }
-        let duplicate = |queued: &RequestEnvelope| queued.intent == request.intent;
-        if mailbox.reads.iter().any(duplicate) || mailbox.reading.as_ref().is_some_and(duplicate) {
-            return ReadAdmission::Duplicate;
+        // A stale `reading` left by a dropped handle_read keeps identical reads
+        // Duplicate until its Interrupted terminal is delivered by the next
+        // handle_read or shutdown.
+        let existing = mailbox
+            .reading
+            .iter()
+            .chain(mailbox.reads.iter())
+            .find(|queued| queued.intent == request.intent)
+            .map(|queued| queued.context.clone());
+        if let Some(existing) = existing {
+            return ReadAdmission::Duplicate(existing);
         }
         if !mailbox.credits.try_acquire(READ_CAPACITY) {
             return ReadAdmission::Full;

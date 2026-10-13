@@ -743,8 +743,14 @@ mod reads {
             f.mailbox.try_read(room_read("")),
             ReadAdmission::InvalidRequest
         );
-        assert_eq!(f.mailbox.try_read(rooms()), ReadAdmission::Accepted);
-        assert_eq!(f.mailbox.try_read(rooms()), ReadAdmission::Duplicate);
+        let first = rooms();
+        let first_context = first.context.clone();
+        assert_eq!(f.mailbox.try_read(first), ReadAdmission::Accepted);
+        // The duplicate names the existing request whose terminal answers it.
+        assert_eq!(
+            f.mailbox.try_read(rooms()),
+            ReadAdmission::Duplicate(first_context)
+        );
         for index in 1..READ_CAPACITY {
             assert_eq!(
                 f.mailbox.try_read(room_read(&format!("room-{index}"))),
@@ -834,7 +840,11 @@ mod reads {
             assert!(poll_once(handle.as_mut()).is_pending());
         } // dropped mid-await by its owner
           // In flight: an identical request is still coalesced, not re-sent.
-        assert_eq!(f.mailbox.try_read(rooms()), ReadAdmission::Duplicate);
+          // ...and stays so until the Interrupted terminal is delivered.
+        assert_eq!(
+            f.mailbox.try_read(rooms()),
+            ReadAdmission::Duplicate(context.clone())
+        );
         assert!(reads_of(f.endpoint.drain(usize::MAX)).is_empty());
         f.reader.pending.store(false, Ordering::SeqCst);
         assert!(!f.worker.handle_read().await);
