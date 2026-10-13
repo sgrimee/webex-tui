@@ -619,7 +619,7 @@ async fn stale_snapshot_generation_refuses_even_after_same_subscription_ready_ag
     install(&mut f.worker).await;
     assert_eq!(f.worker.controller.subscription(), Some(sub));
     assert_eq!(f.worker.controller.phase(), SessionPhase::Active);
-    assert!(old != f.worker.controller.write_admission_stamp());
+    assert!(!old.same_admission(f.worker.controller.write_admission_stamp()));
     assert!(f.worker.handle_one().await);
     assert!(
         matches!(f.endpoint.drain(), Some(SubmissionTerminal::NotDispatched { context, reason: NotDispatchedReason::NotReady }) if context == r.context)
@@ -1106,7 +1106,7 @@ async fn worker_lifecycle_methods_republish_actual_admission_after_each_mutation
     assert!(!published_ready(&f.worker));
     install(&mut f.worker).await;
     assert!(published_ready(&f.worker));
-    assert!(lock(&f.worker.shared).published != first);
+    assert!(!lock(&f.worker.shared).published.same_admission(first));
 
     // A renewal tick that is not due must not revoke admission spuriously.
     assert!(!f.worker.renew_if_due("fake-paired-secret").await.unwrap());
@@ -1198,6 +1198,51 @@ async fn in_place_renewal_republishes_the_extended_admission_deadline() {
         CommandAdmission::Accepted
     );
     assert_eq!(f.worker.host().snapshots, 1, "no re-snapshot");
+}
+
+/// REVIEW-14 LOW-1: a write queued just before an in-place renewal is still
+/// dispatched; the moved lease deadline is not part of admission identity.
+#[tokio::test]
+async fn a_write_queued_before_an_in_place_renewal_is_still_dispatched() {
+    let mut f = fixture();
+    active(&mut f).await;
+    f.clock.advance(85);
+    let r = request();
+    assert_eq!(
+        f.endpoint
+            .try_submit_at(copy(&r), SessionClock::now(&f.clock)),
+        CommandAdmission::Accepted
+    );
+    assert_eq!(
+        f.worker.renew_in_place_if_due().await,
+        crate::bridge::session::RenewStep::Renewed
+    );
+    send_reply(&mut f, Ok(message(&targets()[0])));
+    assert!(f.worker.handle_one().await);
+    assert_eq!(count(&f.control), 1, "dispatched, not refused NotReady");
+    assert!(matches!(
+        f.endpoint.drain(),
+        Some(SubmissionTerminal::Result(envelope)) if envelope.context == r.context
+    ));
+    // A real identity change (new snapshot generation) still refuses it.
+    let sub = f.worker.subscription().unwrap();
+    let r = request();
+    assert_eq!(
+        f.endpoint
+            .try_submit_at(copy(&r), SessionClock::now(&f.clock)),
+        CommandAdmission::Accepted
+    );
+    f.worker.controller.frame(sub, lag()).unwrap();
+    install(&mut f.worker).await;
+    assert!(f.worker.handle_one().await);
+    assert!(matches!(
+        f.endpoint.drain(),
+        Some(SubmissionTerminal::NotDispatched {
+            reason: NotDispatchedReason::NotReady,
+            ..
+        })
+    ));
+    assert_eq!(count(&f.control), 1);
 }
 
 #[tokio::test]

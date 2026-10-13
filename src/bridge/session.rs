@@ -352,7 +352,9 @@ pub(crate) struct SessionLifecycle<B: SessionBackend, C: SessionClock> {
 
 /// Private admission fence, not a client/capability or a reconnect promise.
 /// Snapshot generations are subscription-local and readiness is lease-aware.
-#[derive(Clone, Copy, Eq, PartialEq)]
+/// Deliberately not `PartialEq`: compare identities with `same_admission`,
+/// which ignores the lease deadline (an in-place renewal moves it).
+#[derive(Clone, Copy)]
 pub(super) struct WriteAdmissionStamp {
     subscription: Option<SubscriptionId>,
     snapshot_generation: Option<u64>,
@@ -365,6 +367,18 @@ pub(super) struct WriteAdmissionStamp {
 impl WriteAdmissionStamp {
     pub(super) fn ready(self) -> bool {
         self.ready
+    }
+
+    /// Same admission identity: subscription, snapshot generation and
+    /// readiness. The lease deadline is not part of it: an in-place renewal
+    /// extends the same session, so a write queued just before it must still
+    /// be dispatched. Lease validity is checked separately at dequeue (the
+    /// actual stamp's readiness is lease-aware and `dispatch_write` checks
+    /// the lease again).
+    pub(super) fn same_admission(self, other: Self) -> bool {
+        self.subscription == other.subscription
+            && self.snapshot_generation == other.snapshot_generation
+            && self.ready == other.ready
     }
 
     /// Ready and not past its lease deadline at `now` (same clock domain as

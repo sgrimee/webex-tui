@@ -432,7 +432,7 @@ impl<B: SessionBackend, C: SessionClock, H: PresentationHost> CommandWorker<B, C
         // Check the actual lease-aware state, not just the published hint. Even
         // if a later generation is ready, an old command must refuse immediately.
         let actual = self.controller.write_admission_stamp();
-        if command.stamp != actual
+        if !command.stamp.same_admission(actual)
             || !actual.ready()
             || !self.controller.host().snapshot_acknowledged()
         {
