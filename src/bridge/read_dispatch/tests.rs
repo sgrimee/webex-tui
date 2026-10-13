@@ -33,17 +33,20 @@ impl<T, E> Refused<E> for Result<T, E> {
 #[derive(Default)]
 struct Fake {
     calls: Mutex<Vec<String>>,
-    fail: Mutex<Option<u16>>,
+    fail: Mutex<Option<(u16, &'static str)>>,
 }
 
 impl Fake {
     fn record(&self, call: String) -> Option<ClientError> {
         self.calls.lock().unwrap().push(call);
-        self.fail.lock().unwrap().map(|status| ClientError::Api {
-            status: status.try_into().unwrap(),
-            code: "synthetic".into(),
-            message: "synthetic backend detail".into(),
-        })
+        self.fail
+            .lock()
+            .unwrap()
+            .map(|(status, code)| ClientError::Api {
+                status: status.try_into().unwrap(),
+                code: code.into(),
+                message: "synthetic backend detail".into(),
+            })
     }
     fn calls(&self) -> Vec<String> {
         self.calls.lock().unwrap().clone()
@@ -250,7 +253,7 @@ async fn all_nine_reads_call_exactly_one_matching_method_and_correlate() {
 async fn backend_errors_become_typed_rejections_without_retry_or_detail() {
     for (intent, _) in reads() {
         let fake = Arc::new(Fake::default());
-        *fake.fail.lock().unwrap() = Some(503);
+        *fake.fail.lock().unwrap() = Some((503, "synthetic"));
         let initialize = intent == FrontendIntent::Initialize;
         let envelope = dispatch_read(&fake, request(intent)).await.unwrap();
         assert_eq!(fake.calls().len(), 1, "no retry");
@@ -475,4 +478,45 @@ async fn session_reads_only_while_active_and_proves_zero_io_otherwise() {
         ["rooms"],
         "only the Active read performed I/O"
     );
+}
+
+#[tokio::test]
+async fn session_level_auth_rejections_fail_the_session_like_a_stream_failure() {
+    for (status, code, failure) in [
+        (401, "auth_required", Some(SessionFailure::AuthRequired)),
+        (403, "forbidden_session", Some(SessionFailure::Forbidden)),
+        (403, "forbidden_scope", Some(SessionFailure::Forbidden)),
+        (403, "forbidden_peer", Some(SessionFailure::Forbidden)),
+        (403, "write_not_allowed", None), // resource-level, not the session
+        (503, "bridge_unavailable", None),
+    ] {
+        let fake = Arc::new(Fake::default());
+        let clock = Clock(Arc::new(Mutex::new(Instant::now())));
+        let mut session = SessionLifecycle::new(Backend(Arc::clone(&fake)), clock);
+        let sub = session.connect("synthetic-secret").await.unwrap();
+        session
+            .observe(
+                sub,
+                UiLifecycleFrame::Control(LifecycleControl::Ready(marker())),
+            )
+            .unwrap();
+        let ticket = session.begin_snapshot().await.unwrap();
+        session.finish_snapshot(ticket).unwrap();
+        *fake.fail.lock().unwrap() = Some((status, code));
+        let envelope = session
+            .dispatch_read(request(FrontendIntent::ListAllRooms))
+            .await
+            .unwrap();
+        assert!(matches!(
+            envelope.result,
+            FrontendResult::ListAllRooms(ReadOutcome::Rejected(_))
+        ));
+        match failure {
+            Some(failure) => {
+                assert_eq!(session.phase(), SessionPhase::Failed(failure), "{code}");
+                assert_eq!(session.subscription(), None);
+            }
+            None => assert_eq!(session.phase(), SessionPhase::Active, "{code}"),
+        }
+    }
 }

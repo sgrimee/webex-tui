@@ -8,7 +8,7 @@
 use super::{
     events::project_continuity,
     projection::valid_id,
-    read_dispatch::{dispatch_read, ReadDispatchError, UiReadBackend},
+    read_dispatch::{dispatch_read_observed, ReadDispatchError, UiReadBackend},
     write_dispatch::{BridgeUiWriteBackend, DispatchError, UiWriteBackend, WriteDispatcher},
 };
 use crate::frontend::{
@@ -399,11 +399,19 @@ impl<B: SessionBackend, C: SessionClock> SessionLifecycle<B, C> {
             SessionPhase::Failed(_) => return Err(SessionReadError::Failed),
             _ => return Err(SessionReadError::NotReady),
         }
-        let active = self.active.as_ref().ok_or(SessionReadError::NotReady)?;
-        let reader = B::snapshot_reader(&active.client);
-        dispatch_read(&reader, request)
-            .await
-            .map_err(SessionReadError::Dispatch)
+        let (envelope, failure) = {
+            let active = self.active.as_ref().ok_or(SessionReadError::NotReady)?;
+            let reader = B::snapshot_reader(&active.client);
+            dispatch_read_observed(&reader, request)
+                .await
+                .map_err(SessionReadError::Dispatch)?
+        };
+        // A rejected token ends this session exactly like a stream failure;
+        // the typed rejection is still returned to its requester.
+        if let Some(failure) = failure {
+            self.fail(failure);
+        }
+        Ok(envelope)
     }
 
     pub(crate) fn subscription(&self) -> Option<SubscriptionId> {

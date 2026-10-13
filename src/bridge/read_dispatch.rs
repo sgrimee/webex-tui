@@ -6,7 +6,7 @@
 
 use super::{
     projection::{project_response, ClientResponse},
-    session::UiSnapshotReader,
+    session::{SessionFailure, UiSnapshotReader},
 };
 use crate::frontend::{
     data::PageCursor,
@@ -213,6 +213,19 @@ pub(crate) async fn dispatch_read<R: UiReadBackend>(
     reader: &R,
     request: RequestEnvelope,
 ) -> Result<ResultEnvelope, ReadDispatchError> {
+    dispatch_read_observed(reader, request)
+        .await
+        .map(|(envelope, _)| envelope)
+}
+
+/// As `dispatch_read`, also reporting a session-level authorization failure
+/// (401 `auth_required`, or 403 `forbidden_scope|peer|session`). The result
+/// is still a typed rejection; the session owner must fail the lease exactly
+/// as for a stream failure. Resource-level 403s (e.g. allowlist) are not.
+pub(crate) async fn dispatch_read_observed<R: UiReadBackend>(
+    reader: &R,
+    request: RequestEnvelope,
+) -> Result<(ResultEnvelope, Option<SessionFailure>), ReadDispatchError> {
     validate(&request)?;
     let response = match &request.intent {
         FrontendIntent::Initialize => ClientResponse::Initialize(reader.me().await),
@@ -244,9 +257,38 @@ pub(crate) async fn dispatch_read<R: UiReadBackend>(
         ),
         _ => return Err(ReadDispatchError::WrongIntent),
     };
+    let failure = session_failure(&response);
     // Same operation is guaranteed above, so a kind mismatch is unreachable;
     // treat it conservatively as a local correlation error rather than panic.
-    project_response(request, response).map_err(|_| ReadDispatchError::WrongIntent)
+    project_response(request, response)
+        .map(|envelope| (envelope, failure))
+        .map_err(|_| ReadDispatchError::WrongIntent)
+}
+
+fn session_failure(response: &ClientResponse) -> Option<SessionFailure> {
+    fn of<T>(reply: &Reply<T>) -> Option<SessionFailure> {
+        match reply {
+            Err(ClientError::Api { status, code, .. }) => match (status.as_u16(), code.as_str()) {
+                (401, _) => Some(SessionFailure::AuthRequired),
+                (403, "forbidden_scope" | "forbidden_peer" | "forbidden_session") => {
+                    Some(SessionFailure::Forbidden)
+                }
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+    match response {
+        ClientResponse::Initialize(reply) | ClientResponse::WhoAmI(reply) => of(reply),
+        ClientResponse::ListAllRooms(reply) => of(reply),
+        ClientResponse::UpdateRoom(reply) => of(reply),
+        ClientResponse::UpdateTeam(reply) => of(reply),
+        ClientResponse::UpdatePerson(reply) => of(reply),
+        ClientResponse::ListMessagesInRoom(reply) => of(reply),
+        ClientResponse::UpdateMessage(reply) => of(reply),
+        ClientResponse::UpdateChildrenMessages(reply) => of(reply),
+        _ => None, // write responses never reach the read path
+    }
 }
 
 fn cursor(page: &PageRequest) -> Option<&str> {
