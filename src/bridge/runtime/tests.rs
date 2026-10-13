@@ -614,3 +614,35 @@ fn fake_runtime_future_is_send() {
     let run = runtime.run();
     assert_send(&run);
 }
+
+#[tokio::test]
+async fn reads_are_served_in_order_and_stream_errors_reconnect() {
+    let (runtime, f) = fixture();
+    let driver = async {
+        connect_and_install(&f, 1).await;
+        let read = read_request();
+        let context = read.context.clone();
+        assert_eq!(f.mailbox.try_read(read), ReadAdmission::Accepted);
+        f.control.wake();
+        let mut terminals = Vec::new();
+        until("read terminal", || {
+            terminals.extend(read_terminals(&f));
+            !terminals.is_empty()
+        })
+        .await;
+        assert_eq!(terminals[0].context(), &context);
+        // The inert snapshot reader rejects, but the read is a typed result
+        // of the current install, not a session failure.
+        assert!(matches!(terminals[0], ReadTerminal::Result(_)));
+        // A transport error on SSE ends the subscription and reconnects.
+        f.shared.push(Some(Err(SessionFailure::Transport)));
+        until("reconnect after stream error", || {
+            f.shared.subscribes.load(Ordering::SeqCst) == 2
+        })
+        .await;
+        assert_eq!(f.secrets.loads.load(Ordering::SeqCst), 2);
+        f.control.shutdown();
+    };
+    let (exit, ()) = tokio::join!(runtime.run(), driver);
+    assert_eq!(exit, RuntimeExit::Shutdown);
+}
