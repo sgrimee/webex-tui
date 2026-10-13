@@ -13,6 +13,11 @@
 //!   for exactly one call (`connect_deadline`) and dropping it immediately;
 //! - App wakeups (submission, snapshot ack, shutdown) via `RuntimeControl`.
 //!
+//! Renewal is currently a full reconnect: new subscription, Ready, snapshot
+//! and install/ack, about every 8 minutes with the 600 s UI lease (renewal
+//! at 80%). Expect that churn, and re-snapshots after long writes/snapshots,
+//! until the bridge offers a lighter UI session renew.
+//!
 //! Writes and snapshot preparation borrow the worker, so SSE is not polled
 //! meanwhile; the session buffers or signals lag and the loop resyncs. Exit,
 //! shutdown and drop settle every admitted read and write exactly once through
