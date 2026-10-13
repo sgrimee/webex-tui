@@ -500,3 +500,19 @@ fn reinsert_after_resync_clear_is_restored_not_inserted() {
     assert_eq!(outcome.inserted, 1);
     assert_eq!(ids(&v), ["a", "b"]);
 }
+
+#[test]
+fn deleted_snapshot_for_fenced_unloaded_root_rebuilds_placeholder() {
+    let mut v = view();
+    // ID-only delete before the root was ever loaded, then a surviving reply.
+    v.tombstone(&MessageId::new("root"), None).unwrap();
+    v.upsert(&msg("reply", Some("root"), at(2), 0)).unwrap();
+    assert_eq!(ids(&v), ["missing:root", "reply"]);
+    // The canonical deleted snapshot arrives later (e.g. thread parent read).
+    assert_eq!(
+        v.upsert(&deleted("root", None, at(1), 3)),
+        Ok(UpsertOutcome::Tombstoned)
+    );
+    assert_eq!(ids(&v), ["deleted:root", "reply"]);
+    assert!(v.get(&MessageId::new("root")).unwrap().body.is_none());
+}

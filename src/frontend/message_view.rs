@@ -328,14 +328,13 @@ impl RoomMessageView {
                 UpsertOutcome::Tombstoned
             }
             None => {
-                let newly = self.tombstones.insert(snapshot.id.clone());
                 // Retain identity/parent so replies can show a deleted root.
+                // The map changed even for an already-fenced (ID-only) delete,
+                // so rows must rebuild: a missing-root placeholder becomes a
+                // deleted-root placeholder. Tombstoned is never unread.
+                self.tombstones.insert(snapshot.id.clone());
                 self.messages.insert(snapshot.id.clone(), tombstone);
-                if newly {
-                    UpsertOutcome::Tombstoned
-                } else {
-                    UpsertOutcome::Unchanged
-                }
+                UpsertOutcome::Tombstoned
             }
         }
     }
