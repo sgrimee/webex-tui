@@ -176,6 +176,11 @@ pub(crate) trait SessionBackend: Send {
         &mut self,
         client: &Self::Client,
     ) -> impl Future<Output = Result<u64, RenewFailure>> + Send;
+    /// End the session on the daemon (revoke this token). Best effort: the
+    /// result is ignored and an older daemon without the route is fine.
+    fn logout(&mut self, _client: &Self::Client) -> impl Future<Output = ()> + Send {
+        async {}
+    }
     fn lease_ttl(client: &Self::Client) -> u64;
     fn writer(client: &Self::Client) -> Self::Writer;
     fn snapshot_reader(client: &Self::Client) -> Self::SnapshotReader;
@@ -286,6 +291,10 @@ impl SessionBackend for BridgeSessionBackend {
     }
     async fn renew(&mut self, client: &UiClient) -> Result<u64, RenewFailure> {
         client.renew().await.map_err(renew_failure)
+    }
+    async fn logout(&mut self, client: &UiClient) {
+        // 204, 401 (already gone) and 404/405 (older daemon) are all fine.
+        let _ = client.logout().await;
     }
     fn lease_ttl(client: &UiClient) -> u64 {
         client.lease_ttl()
@@ -599,6 +608,16 @@ impl<B: SessionBackend, C: SessionClock> SessionLifecycle<B, C> {
     pub(crate) fn disconnect(&mut self) {
         self.active = None;
         self.phase = SessionPhase::Disconnected;
+    }
+
+    /// Disconnect and ask the daemon to revoke the token. The session is
+    /// dropped before the call, so cancelling it leaves nothing usable.
+    pub(crate) async fn logout(&mut self) {
+        let active = self.active.take();
+        self.phase = SessionPhase::Disconnected;
+        if let Some(active) = active {
+            self.backend.logout(&active.client).await;
+        }
     }
 
     /// Start an explicit initial-connect or reconnect attempt. Old handles are

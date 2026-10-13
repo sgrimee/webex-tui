@@ -173,6 +173,9 @@ enum Woke {
     Idle,
 }
 
+/// Bound for the best-effort logout on a normal quit.
+const LOGOUT_DEADLINE: Duration = Duration::from_secs(2);
+
 /// Queued writes/reads handled back to back before SSE, App wakeups and
 /// ticks are polled again, so a full read queue cannot starve them.
 const MAX_BURST: usize = 4;
@@ -263,6 +266,15 @@ where
         let exit = self.run_inner().await;
         log::info!("bridge runtime exit: {exit:?}");
         self.worker.shutdown();
+        // A normal quit ends this session on the daemon instead of leaving
+        // it until its lease expires. Bounded and best effort.
+        if exit == RuntimeExit::Shutdown
+            && tokio::time::timeout(LOGOUT_DEADLINE, self.worker.logout())
+                .await
+                .is_err()
+        {
+            log::info!("bridge logout timed out");
+        }
         self.worker.disconnect();
         exit
     }

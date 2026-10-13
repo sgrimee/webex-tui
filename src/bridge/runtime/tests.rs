@@ -50,6 +50,8 @@ struct Shared {
     /// Scripted in-place renewal replies; empty means success (100 s lease).
     renew_replies: Mutex<VecDeque<Result<u64, RenewFailure>>>,
     renew_pending: AtomicBool,
+    logouts: AtomicUsize,
+    logout_pending: AtomicBool,
 }
 
 impl Shared {
@@ -150,6 +152,12 @@ impl SessionBackend for Backend {
             .unwrap()
             .pop_front()
             .unwrap_or(Ok(100))
+    }
+    async fn logout(&mut self, _: &Arc<Shared>) {
+        self.0.logouts.fetch_add(1, Ordering::SeqCst);
+        if self.0.logout_pending.load(Ordering::SeqCst) {
+            std::future::pending::<()>().await;
+        }
     }
     fn lease_ttl(_: &Arc<Shared>) -> u64 {
         100
@@ -407,6 +415,33 @@ async fn connects_installs_behind_ack_dispatches_one_write_and_shuts_down() {
 }
 
 #[tokio::test]
+async fn a_normal_quit_logs_the_session_out_once() {
+    let (runtime, f) = fixture();
+    let driver = async {
+        connect_and_install(&f, 1).await;
+        f.control.shutdown();
+    };
+    let (exit, ()) = tokio::join!(runtime.run(), driver);
+    assert_eq!(exit, RuntimeExit::Shutdown);
+    assert_eq!(f.shared.logouts.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn a_hung_logout_never_holds_the_quit_past_its_bound() {
+    let (runtime, f) = fixture();
+    f.shared.logout_pending.store(true, Ordering::SeqCst);
+    let driver = async {
+        connect_and_install(&f, 1).await;
+        f.control.shutdown();
+    };
+    let started = tokio::time::Instant::now();
+    let (exit, ()) = tokio::join!(runtime.run(), driver);
+    assert_eq!(exit, RuntimeExit::Shutdown);
+    assert_eq!(f.shared.logouts.load(Ordering::SeqCst), 1);
+    assert!(started.elapsed() < LOGOUT_DEADLINE + Duration::from_secs(2));
+}
+
+#[tokio::test]
 async fn renewal_at_the_cap_reborrows_the_secret_and_resnapshots() {
     let (runtime, f) = fixture();
     let driver = async {
@@ -644,6 +679,8 @@ async fn refused_secret_exits_pairing_required_and_settles_reads() {
         exit,
         RuntimeExit::PairingRequired(SessionFailure::NotPaired)
     );
+    // Only a normal quit logs out.
+    assert_eq!(f.shared.logouts.load(Ordering::SeqCst), 0);
     let terminals = read_terminals(&f);
     assert_eq!(terminals.len(), 1);
     assert_eq!(terminals[0].context(), &context);

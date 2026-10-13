@@ -362,6 +362,12 @@ impl<B: SessionBackend, C: SessionClock, H: PresentationHost> CommandWorker<B, C
         self.publish();
     }
 
+    /// Best-effort daemon logout after shutdown settled all admitted work.
+    pub(crate) async fn logout(&mut self) {
+        self.controller.logout().await;
+        self.publish();
+    }
+
     pub(crate) fn bridge_event(
         &mut self,
         subscription: SubscriptionId,

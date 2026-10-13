@@ -238,6 +238,11 @@ impl<B: SessionBackend, C: SessionClock, H: PresentationHost> HostController<B, 
         self.phase_changed();
     }
 
+    pub(crate) async fn logout(&mut self) {
+        self.session.logout().await;
+        self.phase_changed();
+    }
+
     /// Borrow a non-cloneable, backend-defined read facade only for the exact
     /// snapshot ticket currently being prepared. The raw `UiClient` and its
     /// write-capable bearer never cross this controller boundary.
