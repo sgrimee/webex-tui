@@ -73,8 +73,11 @@ pub(crate) fn write_success_matches(intent: &FrontendIntent, result: &FrontendRe
     }
 }
 
+/// A canonical daemon result carries a valid ID and a revision; a
+/// revision-less snapshot is refused by the canonical message view, so the
+/// ledger must not record it as a confirmed success either.
 fn canonical(message: &MessageSnapshot) -> bool {
-    valid_opaque_id(message.id.as_str())
+    valid_opaque_id(message.id.as_str()) && message.revision.is_some()
 }
 
 #[cfg(test)]
@@ -183,6 +186,9 @@ mod tests {
             &root,
             &ok(snapshot("", "room/a?opaque", None))
         ));
+        let mut legacy = snapshot("n", "room/a?opaque", None);
+        legacy.revision = None;
+        assert!(!write_success_matches(&root, &ok(legacy)));
         assert!(write_success_matches(
             &reply,
             &ok(snapshot("n", "room/a?opaque", Some("p")))
