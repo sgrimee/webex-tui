@@ -1,15 +1,32 @@
 #!/usr/bin/env bash
-# Fail if webex-tui's normal dependency graph contains Webex transport, OAuth,
-# HTTP-to-Webex, WebSocket, SQLite or TLS crates. webex-tui is a client of the
-# webex-bridge daemon (UDS only); those belong to the daemon.
+# Fail if webex-tui's normal dependency graph, for any target, contains Webex
+# transport, OAuth, HTTP-to-Webex, WebSocket, SQLite or TLS crates. webex-tui
+# is a client of the webex-bridge daemon (UDS only); those belong to the
+# daemon. Exit 0: clean; 1: forbidden crates found; 2: the check itself failed.
 set -euo pipefail
 cd "$(dirname -- "${BASH_SOURCE[0]}")/.."
 
-forbidden='^(webex|oauth2|reqwest|tungstenite|tokio-tungstenite|rusqlite|libsqlite3-sys|webbrowser|rustls|hyper-rustls|native-tls|openssl|axum|gethostname)$'
-crates=$(cargo tree -e normal --prefix none | sed -E 's/ v[0-9].*//' | sort -u)
-if hits=$(grep -E "$forbidden" <<<"$crates"); then
-    echo "client-only graph check failed; forbidden crates:" >&2
-    echo "$hits" >&2
-    exit 1
+forbidden='^(webex|oauth2|reqwest|tungstenite|tokio-tungstenite|async-tungstenite|rusqlite|libsqlite3-sys|webbrowser|rustls|hyper-rustls|hyper-tls|tokio-rustls|tokio-native-tls|native-tls|openssl|openssl-sys|ring|aws-lc-rs|aws-lc-sys|axum)$'
+
+if ! tree=$(cargo tree -e normal --locked --target all --prefix none); then
+    echo "client-only graph check failed: cargo tree did not run" >&2
+    exit 2
 fi
-echo "client-only graph OK ($(wc -l <<<"$crates" | tr -d ' ') crates)"
+crates=$(sed -E 's/ v[0-9].*//' <<<"$tree" | sort -u)
+
+set +e
+hits=$(grep -E "$forbidden" <<<"$crates")
+status=$?
+set -e
+case $status in
+    0)
+        echo "client-only graph check failed; forbidden crates:" >&2
+        echo "$hits" >&2
+        exit 1
+        ;;
+    1) echo "client-only graph OK ($(wc -l <<<"$crates" | tr -d ' ') crates, all targets)" ;;
+    *)
+        echo "client-only graph check failed: grep error $status" >&2
+        exit 2
+        ;;
+esac
