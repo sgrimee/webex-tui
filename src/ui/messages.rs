@@ -163,7 +163,7 @@ fn row_for_message<'a>(
     text.extend(Text::from(fill(&content, options)));
 
     // Indicate the presence of attachments, without exposing attachment URLs.
-    if let Some(count) = msg.attachment_count {
+    if let Some(count) = msg.attachment_count.filter(|count| *count > 0) {
         text.extend(Text::from(format!(
             "-- {} attachment{}",
             count,
@@ -408,13 +408,14 @@ mod tests {
     }
 
     #[test]
-    fn neutral_row_distinguishes_no_body_and_known_zero_attachments() {
+    fn neutral_row_shows_no_content_and_hides_a_zero_attachment_count() {
+        // Legacy parity: the old projection had no count without files.
         let text = rendered_row(MessagePresentation {
             attachment_count: Some(0),
             ..Default::default()
         });
         assert!(text.contains("Unknown"));
         assert!(text.contains("No content"));
-        assert!(text.contains("-- 0 attachment"));
+        assert!(!text.contains("attachment"));
     }
 }
