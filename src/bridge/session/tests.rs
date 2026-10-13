@@ -548,8 +548,10 @@ fn bridge_renewal_errors_are_classified_by_code() {
         renew_failure(api(403, "forbidden_peer")),
         RenewFailure::Session(SessionFailure::Forbidden)
     );
+    // An older daemon has no renew route: its 404 has an empty body, which
+    // the client reports with the fallback code `bridge_error`.
     assert_eq!(
-        renew_failure(api(404, "not_found")),
+        renew_failure(api(404, "bridge_error")),
         RenewFailure::Unsupported
     );
     for (status, code) in [
