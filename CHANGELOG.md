@@ -6,9 +6,29 @@ This project tries to follow semantic versioning.
 
 ## [Unreleased]
 
+### Breaking changes
+
+- **webex-bridge client**: webex-tui no longer connects to Webex itself. It is
+  a client of the local webex-bridge daemon (macOS), which owns the Webex
+  login, real-time events and an encrypted mirror. Install and log in the
+  daemon once (`webex-bridge install-service`, `webex-bridge login`); the
+  first webex-tui start pairs with it through a daemon dialog, and the
+  pairing secret is kept in the login Keychain.
+- **No OAuth integration**: `client.yml` (client ID/secret, OAuth port), the
+  browser login and the token cache are gone. Old files are ignored, never
+  read or deleted; see the Readme for optional cleanup.
+- **`--messages`** is limited to 1-100 and now really overrides
+  `messages_to_load` in `config.yml` (before, the CLI default always won).
+
 ### Features
 
-- **Token caching**: OAuth tokens are now cached between sessions for faster startup
+- Mirrored rooms stay browsable while Webex is offline; writes are disabled
+  rather than queued.
+- Writes report their outcome (sent, rejected, delivery unknown); a failed
+  draft is kept for review (`x` dismisses it). Quitting finishes a write in
+  progress (up to 35 s) and prints a content-free summary.
+- Older history and threads load on demand; a reply whose thread start is not
+  loaded shows `[start of thread not loaded]`, a deleted one `[message deleted]`.
 - **Multi-room selection**: Enable multi-room selection with visual indicators
 - **Batch operations**: Implement batch leave via LeaveRoom command for selected rooms
 - **Native text selection**: Enable native terminal text selection and clipboard copy by disabling mouse capture

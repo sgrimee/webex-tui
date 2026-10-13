@@ -1,20 +1,11 @@
 # Configuration Guide
 
-webex-tui uses a dual configuration system that separates authentication credentials from user preferences.
+webex-tui has one configuration file, for user preferences. It holds no Webex
+credentials: the [webex-bridge](https://github.com/sgrimee/webex-bridge) daemon
+owns the Webex login and connection (see the [Readme](Readme.md#getting-started)).
 
-## Configuration Files
+## User Configuration (`config.yml`)
 
-### 1. Client Configuration (`client.yml`)
-**Location**: `~/.config/webex-tui/client.yml`  
-**Purpose**: Authentication credentials and OAuth settings (managed by sops/secrets)  
-**Contents**:
-```yaml
-client_id: "your-webex-integration-client-id"
-client_secret: "your-webex-integration-client-secret"
-port: 8080  # OAuth2 redirect port (optional, defaults to 8080)
-```
-
-### 2. User Configuration (`config.yml`)
 **Location**: `~/.config/webex-tui/config.yml`
 **Purpose**: User preferences and UI settings
 **Auto-creation**: If this file doesn't exist on first run, it will be automatically created with default values, and all bundled theme files will be copied to `~/.config/webex-tui/themes/`
@@ -23,12 +14,16 @@ port: 8080  # OAuth2 redirect port (optional, defaults to 8080)
 # Theme to use (default: "default")
 theme: "default"
 
-# Messages to load per room (default: 10)
+# Messages per room page, 1-100 (default: 10). Values outside the range are
+# clamped with a warning. --messages overrides it.
 messages_to_load: 10
 
 # Enable debug logging (default: false)
 debug: false
 ```
+
+A `client.yml` from older, standalone versions is ignored (see
+[Upgrading](Readme.md#upgrading-from-the-standalone-oauth-version)).
 
 ## Configuration Methods
 
@@ -103,7 +98,7 @@ For NixOS or home-manager users, use the provided nix module:
 
 Configuration values are resolved in this order (highest to lowest priority):
 
-1. **Command Line Arguments** (e.g., `--debug`, `--messages 25`)
+1. **Command Line Arguments** (e.g., `--debug`, `--messages 25`; `--messages` accepts 1-100)
 2. **Environment Variable Config** (`WEBEX_TUI_CONFIG`)  
 3. **Standard User Config** (`~/.config/webex-tui/config.yml`)
 4. **Built-in Defaults**
@@ -136,51 +131,6 @@ Themes defined in nix are automatically written to the correct location.
 ### Reproducible Environments
 Your webex-tui configuration is version-controlled and reproducible across systems.
 
-### Integration with Secrets Management
-Keep credentials separate while managing preferences declaratively:
-
-```nix
-# Authentication handled by sops-nix or similar
-sops.secrets."webex/client-id" = {};
-sops.secrets."webex/client-secret" = {};
-
-# Preferences managed declaratively
-programs.webex-tui = {
-  enable = true;
-  theme = "dracula";
-};
-```
-
-## Migration from Legacy Config
-
-If you have a `client.yml` with user preferences, they will continue to work with deprecation warnings. To migrate:
-
-1. **Move user preferences** from `client.yml` to `config.yml`
-2. **Keep only credentials** in `client.yml`
-3. **Consider using nix** for declarative management
-
-Example migration:
-
-**Old `client.yml`** (if it had user preferences mixed in):
-```yaml
-client_id: "abc123..."
-client_secret: "def456..."
-port: 8080
-theme: "dracula"
-```
-
-**New `client.yml`** (authentication and OAuth only):
-```yaml
-client_id: "abc123..."
-client_secret: "def456..."
-port: 8080  # OAuth redirect port (keep here as it's tied to integration setup)
-```
-
-**New `config.yml`** (user preferences only):
-```yaml
-theme: "dracula"
-```
-
 ## Troubleshooting
 
 ### Config Not Loading
@@ -206,9 +156,28 @@ cat $(nix-build --no-out-link -A config.home.sessionVariables.WEBEX_TUI_CONFIG)
 ls ~/.config/webex-tui/themes/
 ```
 
+## Keychain and Code Signing
+
+webex-tui keeps one secret, its pairing secret for the daemon, in the login
+Keychain (service `com.cisco.webex-tui.ui-pairing`, account `ui-secret-v1`).
+macOS lets the binary that created the item read it without asking. Run a
+binary signed with a persistent identity (`just build-signed`, `just run`),
+never `cargo run`, whose ad-hoc signature changes on every build. Without a
+signing certificate that has a Team ID, each rebuilt binary still asks once
+("webex-tui wants to use your confidential information…"): choose
+**Always Allow**.
+
+If the item is damaged, webex-tui says so and never replaces it. Remove it and
+start again to pair once more:
+
+```bash
+security delete-generic-password -s com.cisco.webex-tui.ui-pairing -a ui-secret-v1
+```
+
 ## Security Considerations
 
-- **Client credentials**: Store securely using sops, age, or similar
+- **No Webex credentials**: webex-tui stores no Webex token or integration secret; the daemon does.
+- **Pairing secret**: only in the Keychain item above; never logged or printed.
+- **Logs**: the bridge layer logs metadata only (phases, renewals, counts), never message bodies or secrets.
 - **Config files**: User preferences are safe to version control
-- **File permissions**: Config files use standard user permissions (600)
 - **Environment variables**: Be cautious with config paths in shared environments
