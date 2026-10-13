@@ -3,7 +3,7 @@
 use super::*;
 use crate::{
     bridge::{
-        commands::{CommandAdmission, CommandMailbox, ReadAdmission},
+        commands::{CommandAdmission, CommandMailbox, ReadAdmission, READ_CAPACITY},
         pairing::UiSecret,
         presentation::{pump, PresentationEndpoint, PumpEvent, PumpHost},
         read_dispatch::{ReadTerminal, ReadUnavailable},
@@ -820,4 +820,82 @@ async fn denied_secret_at_renewal_exits() {
     };
     let (exit, ()) = tokio::join!(runtime.run(), driver);
     assert_eq!(exit, RuntimeExit::SecretUnavailable);
+}
+
+#[tokio::test]
+async fn reads_wait_for_active_instead_of_failing_not_ready() {
+    let (runtime, f) = fixture();
+    let driver = async {
+        until("subscription", || {
+            f.shared.subscribes.load(Ordering::SeqCst) == 1
+        })
+        .await;
+        // AwaitingReady: the read is held, not answered NotReady.
+        let read = read_request();
+        let context = read.context.clone();
+        assert_eq!(f.mailbox.try_read(read), ReadAdmission::Accepted);
+        f.control.wake();
+        for _ in 0..20 {
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        }
+        assert!(read_terminals(&f).is_empty());
+        f.shared.push(ready());
+        let mut terminals = Vec::new();
+        until("held read served", || {
+            terminals.extend(read_terminals(&f));
+            !terminals.is_empty()
+        })
+        .await;
+        assert_eq!(terminals[0].context(), &context);
+        assert!(matches!(terminals[0], ReadTerminal::Result(_)));
+        f.control.shutdown();
+    };
+    let (exit, ()) = tokio::join!(runtime.run(), driver);
+    assert_eq!(exit, RuntimeExit::Shutdown);
+}
+
+#[tokio::test]
+async fn a_full_read_queue_does_not_starve_sse() {
+    let (runtime, f) = fixture();
+    let driver = async {
+        connect_and_install(&f, 1).await;
+        for index in 0..READ_CAPACITY {
+            let request = RequestSequence::default()
+                .begin(
+                    FrontendIntent::UpdateRoom(RoomId::new(format!("room-{index}"))),
+                    None,
+                )
+                .unwrap();
+            assert_eq!(f.mailbox.try_read(request), ReadAdmission::Accepted);
+        }
+        f.shared.push(Some(Ok(BridgeEvent {
+            name: "room.updated".into(),
+            data: json!({
+                "roomId": "room/a?opaque",
+                "continuity": {"instanceId": "synthetic-instance", "watermark": 1},
+            }),
+        })));
+        f.control.wake();
+        let mut kinds = Vec::new();
+        until("all reads served", || {
+            for event in f.endpoint.drain(usize::MAX) {
+                kinds.push(match event {
+                    PumpEvent::Read { .. } => "read",
+                    PumpEvent::Lifecycle { .. } => "lifecycle",
+                    _ => "other",
+                });
+            }
+            kinds.iter().filter(|kind| **kind == "read").count() == READ_CAPACITY
+        })
+        .await;
+        let event_at = kinds.iter().rposition(|kind| *kind == "lifecycle").unwrap();
+        let last_read = kinds.iter().rposition(|kind| *kind == "read").unwrap();
+        assert!(
+            event_at < last_read,
+            "SSE waited behind every read: {kinds:?}"
+        );
+        f.control.shutdown();
+    };
+    let (exit, ()) = tokio::join!(runtime.run(), driver);
+    assert_eq!(exit, RuntimeExit::Shutdown);
 }

@@ -146,7 +146,10 @@ impl CommandMailbox {
 
     /// Queue one paired-UI read. Reads are not readiness-gated here: a read
     /// dequeued while the session is not Active yields an Unavailable terminal
-    /// with zero I/O. Identical queued/in-flight reads are coalesced.
+    /// with zero I/O (the runtime loop only dequeues reads while Active, so an
+    /// App driven by it sees NotReady only on worker-level misuse; retry such
+    /// a read only after a phase change). Identical queued/in-flight reads are
+    /// coalesced.
     pub(crate) fn try_read(&self, request: RequestEnvelope) -> ReadAdmission {
         if validate_read(&request).is_err() {
             return ReadAdmission::InvalidRequest;

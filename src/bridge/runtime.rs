@@ -152,7 +152,13 @@ enum Woke {
     App,
     Event(SubscriptionId, Option<Result<BridgeEvent, SessionFailure>>),
     Tick,
+    /// Nothing ready while queued work is waiting: resume the work.
+    Idle,
 }
+
+/// Queued writes/reads handled back to back before SSE, App wakeups and
+/// ticks are polled again, so a full read queue cannot starve them.
+const MAX_BURST: usize = 4;
 
 pub(crate) struct Runtime<B, C, H, K, P>
 where
@@ -176,6 +182,7 @@ where
     /// after staying Active for `backoff_max`, so a session that fails right
     /// after becoming Active (crash loop, rejected stream) keeps backing off.
     active_since: Option<Instant>,
+    burst: usize,
 }
 
 impl<B, C, H, K, P> Runtime<B, C, H, K, P>
@@ -216,6 +223,7 @@ where
                 reconnect_at: None,
                 next_tick: Instant::now(),
                 active_since: None,
+                burst: 0,
             },
             control,
         )
@@ -266,27 +274,38 @@ where
                     }
                 }
             }
-            // Admitted work is never held for a later session: the worker
-            // settles it immediately if the session is not ready.
-            if self.worker.has_queued_write() {
-                self.worker.handle_one().await;
+            // Writes are never held for a later session: the worker settles
+            // them immediately if the session is not ready. Reads are
+            // idempotent and are held until the session is Active (they hold
+            // read credits meanwhile and are settled on shutdown), so the App
+            // never spins on NotReady right after an install.
+            let active = self.worker.phase() == SessionPhase::Active;
+            let write = self.worker.has_queued_write();
+            let read = active && self.worker.has_queued_read();
+            if (write || read) && self.burst < MAX_BURST {
+                self.burst += 1;
+                if write {
+                    self.worker.handle_one().await;
+                } else {
+                    self.worker.handle_read().await;
+                }
                 continue;
             }
-            if self.worker.has_queued_read() {
-                self.worker.handle_read().await;
-                continue;
-            }
-            let woke = self.wait().await;
+            self.burst = 0;
+            let woke = self.wait(write || read).await;
             match woke {
                 Woke::App => self.worker.refresh_admission(),
                 Woke::Event(subscription, event) => self.on_event(subscription, event),
                 // The tick itself runs at the top of the next iteration.
-                Woke::Tick => {}
+                Woke::Tick | Woke::Idle => {}
             }
         }
     }
 
-    async fn wait(&mut self) -> Woke {
+    /// Wait for an App wakeup, an SSE event or the next tick. With
+    /// `poll_only` (queued work waiting) this only polls and returns `Idle`
+    /// when nothing is ready.
+    async fn wait(&mut self, poll_only: bool) -> Woke {
         let wake = Arc::clone(&self.wake);
         let deadline = match self.reconnect_at {
             Some(at) => at.min(self.next_tick),
@@ -304,6 +323,7 @@ where
                 }
             } => Woke::Event(event.0, event.1),
             () = tokio::time::sleep_until(deadline) => Woke::Tick,
+            () = std::future::ready(()), if poll_only => Woke::Idle,
         }
     }
 
