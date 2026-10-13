@@ -556,15 +556,13 @@ impl App<'_> {
             .active_room()
             .ok_or(eyre!("Cannot dump room content to file, no room selected."))?;
         let filename = format!("room_{}.json", room.id);
-        let file = std::fs::File::create(filename)?;
         let messages: Vec<_> = self
             .state
             .cache
             .messages_in_room(&room.id)
             .map(crate::app::dump::MessageDumpView::from)
             .collect();
-        serde_json::to_writer_pretty(file, &messages)?;
-        Ok(())
+        crate::app::dump::write_dump(std::path::Path::new(&filename), &messages)
     }
 
     /// Delete all selected rooms by leaving them
