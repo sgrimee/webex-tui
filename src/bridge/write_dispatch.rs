@@ -1,5 +1,8 @@
 //! Private, unconnected paired-UI send capability.
-use super::projection::{project_edited_write_message, project_sent_write_message, write_failure};
+use super::{
+    projection::{project_edited_write_message, project_sent_write_message, write_failure},
+    session::{session_auth_failure, SessionFailure},
+};
 use crate::frontend::{
     data::{ComposedBody, MessageId, MessageSnapshot, RoomId},
     envelopes::{FrontendError, FrontendIntent, FrontendResult, WriteOutcome},
@@ -116,21 +119,40 @@ impl<B: UiWriteBackend> WriteDispatcher<B> {
         &mut self,
         intent: FrontendIntent,
     ) -> Result<FrontendResult, DispatchError> {
-        Ok(match intent {
+        self.dispatch_observed(intent)
+            .await
+            .map(|(result, _)| result)
+    }
+
+    /// As `dispatch`, also reporting a session-level authorization rejection
+    /// so the session owner can fail the lease. Exactly one backend call; the
+    /// typed outcome is unchanged and never retried.
+    pub(crate) async fn dispatch_observed(
+        &mut self,
+        intent: FrontendIntent,
+    ) -> Result<(FrontendResult, Option<SessionFailure>), DispatchError> {
+        let mut failure = None;
+        let mut observe = |error: Option<&ClientError>| {
+            failure = error.and_then(session_auth_failure);
+        };
+        let result = match intent {
             FrontendIntent::SendMessage {
                 room_id,
                 parent_id,
                 body,
             } => {
                 let input = input(body);
+                let reply = self
+                    .backend
+                    .send(
+                        room_id.as_str(),
+                        parent_id.as_ref().map(MessageId::as_str),
+                        &input,
+                    )
+                    .await;
+                observe(reply.as_ref().err());
                 FrontendResult::SendMessage(sent_outcome(
-                    self.backend
-                        .send(
-                            room_id.as_str(),
-                            parent_id.as_ref().map(MessageId::as_str),
-                            &input,
-                        )
-                        .await,
+                    reply,
                     room_id.as_str(),
                     parent_id.as_ref(),
                 ))
@@ -141,29 +163,29 @@ impl<B: UiWriteBackend> WriteDispatcher<B> {
                 body,
             } => {
                 let input = input(body);
-                FrontendResult::EditMessage(edited_outcome(
-                    self.backend
-                        .edit(message_id.as_str(), room_id.as_str(), &input)
-                        .await,
-                    room_id.as_str(),
-                    &message_id,
-                ))
+                let reply = self
+                    .backend
+                    .edit(message_id.as_str(), room_id.as_str(), &input)
+                    .await;
+                observe(reply.as_ref().err());
+                FrontendResult::EditMessage(edited_outcome(reply, room_id.as_str(), &message_id))
             }
             FrontendIntent::DeleteMessage {
                 message_id,
                 room_id,
-            } => FrontendResult::DeleteMessage(unit_outcome(
-                self.backend.delete(message_id.as_str()).await,
-                message_id,
-                room_id,
-            )),
-            FrontendIntent::LeaveRoom(room_id) => FrontendResult::LeaveRoom(unit_outcome(
-                self.backend.leave(room_id.as_str()).await,
-                room_id.clone(),
-                room_id,
-            )),
+            } => {
+                let reply = self.backend.delete(message_id.as_str()).await;
+                observe(reply.as_ref().err());
+                FrontendResult::DeleteMessage(unit_outcome(reply, message_id, room_id))
+            }
+            FrontendIntent::LeaveRoom(room_id) => {
+                let reply = self.backend.leave(room_id.as_str()).await;
+                observe(reply.as_ref().err());
+                FrontendResult::LeaveRoom(unit_outcome(reply, room_id.clone(), room_id))
+            }
             _ => return Err(DispatchError::WrongIntent),
-        })
+        };
+        Ok((result, failure))
     }
 }
 fn input(body: ComposedBody) -> dto::MessageBodyInput {

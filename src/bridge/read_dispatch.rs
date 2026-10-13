@@ -6,7 +6,7 @@
 
 use super::{
     projection::{project_response, ClientResponse},
-    session::{SessionFailure, UiSnapshotReader},
+    session::{session_auth_failure, SessionFailure, UiSnapshotReader},
 };
 use crate::frontend::{
     data::PageCursor,
@@ -267,16 +267,7 @@ pub(crate) async fn dispatch_read_observed<R: UiReadBackend>(
 
 fn session_failure(response: &ClientResponse) -> Option<SessionFailure> {
     fn of<T>(reply: &Reply<T>) -> Option<SessionFailure> {
-        match reply {
-            Err(ClientError::Api { status, code, .. }) => match (status.as_u16(), code.as_str()) {
-                (401, _) => Some(SessionFailure::AuthRequired),
-                (403, "forbidden_scope" | "forbidden_peer" | "forbidden_session") => {
-                    Some(SessionFailure::Forbidden)
-                }
-                _ => None,
-            },
-            _ => None,
-        }
+        reply.as_ref().err().and_then(session_auth_failure)
     }
     match response {
         ClientResponse::Initialize(reply) | ClientResponse::WhoAmI(reply) => of(reply),

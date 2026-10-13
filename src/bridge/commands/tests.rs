@@ -1252,3 +1252,57 @@ async fn stuck_write_hits_hard_deadline_as_uncertain_and_is_never_replayed() {
     assert!(!f.worker.handle_one().await, "no replay");
     assert_eq!(count(&f.control), 1);
 }
+
+#[tokio::test]
+async fn session_level_write_auth_rejection_fails_session_but_settles_once() {
+    for (status, code, failure) in [
+        (401_u16, "auth_required", Some(SessionFailure::AuthRequired)),
+        (403, "forbidden_session", Some(SessionFailure::Forbidden)),
+        (403, "forbidden_scope", Some(SessionFailure::Forbidden)),
+        (403, "forbidden_peer", Some(SessionFailure::Forbidden)),
+        (403, "write_not_allowed", None), // resource-level: session stays
+        (503, "bridge_unavailable", None),
+    ] {
+        let mut f = fixture();
+        active(&mut f).await;
+        let mut ledger = EditorSubmission::default();
+        let draft = plain();
+        let r = admitted(&f, &mut ledger, &draft);
+        send_reply(
+            &mut f,
+            Err(ClientError::Api {
+                status: status.try_into().unwrap(),
+                code: code.into(),
+                message: "synthetic backend detail".into(),
+            }),
+        );
+        assert!(f.worker.handle_one().await);
+        assert_eq!(count(&f.control), 1, "{code}: exactly one attempt");
+        let terminal = f.endpoint.drain().unwrap();
+        let SubmissionTerminal::Result(envelope) = &terminal else {
+            panic!("{code}: typed outcome")
+        };
+        assert_eq!(envelope.context, r.context);
+        let settled = ledger.reduce(terminal, Some(&draft.stamp));
+        assert!(settled.settled.is_some(), "{code}: settles exactly once");
+        match failure {
+            Some(failure) => {
+                assert_eq!(f.worker.phase(), SessionPhase::Failed(failure), "{code}");
+                assert_eq!(f.worker.subscription(), None);
+                assert!(!published_ready(&f.worker), "{code}: admission revoked");
+                assert_eq!(
+                    f.endpoint
+                        .try_submit_at(request(), SessionClock::now(&f.clock)),
+                    CommandAdmission::NotReady
+                );
+            }
+            None => {
+                assert_eq!(f.worker.phase(), SessionPhase::Active, "{code}");
+                assert!(published_ready(&f.worker));
+            }
+        }
+        // Never replayed, whatever the session outcome.
+        assert!(!f.worker.handle_one().await);
+        assert_eq!(count(&f.control), 1);
+    }
+}

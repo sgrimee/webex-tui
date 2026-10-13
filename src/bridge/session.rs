@@ -45,6 +45,22 @@ pub(crate) enum SessionFailure {
     CounterExhausted,
 }
 
+/// Session-level authorization rejection on an ordinary read or write: 401
+/// `auth_required`, or 403 `forbidden_scope|peer|session`. Resource-level
+/// 403s (e.g. `write_not_allowed`) and other errors do not end the session.
+pub(super) fn session_auth_failure(error: &ClientError) -> Option<SessionFailure> {
+    match error {
+        ClientError::Api { status, code, .. } => match (status.as_u16(), code.as_str()) {
+            (401, _) => Some(SessionFailure::AuthRequired),
+            (403, "forbidden_scope" | "forbidden_peer" | "forbidden_session") => {
+                Some(SessionFailure::Forbidden)
+            }
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
 fn io_failure(error: ClientError) -> SessionFailure {
     match error {
         ClientError::Transport(_) => SessionFailure::Transport,
@@ -376,13 +392,20 @@ impl<B: SessionBackend, C: SessionClock> SessionLifecycle<B, C> {
             SessionPhase::Failed(_) => return Err(SessionWriteError::Failed),
             _ => return Err(SessionWriteError::NotReady),
         }
-        self.active
+        let (result, failure) = self
+            .active
             .as_mut()
             .ok_or(SessionWriteError::NotReady)?
             ._writer
-            .dispatch(intent)
+            .dispatch_observed(intent)
             .await
-            .map_err(SessionWriteError::Dispatch)
+            .map_err(SessionWriteError::Dispatch)?;
+        // A rejected token ends this session like a stream failure. The write
+        // still settles with its typed outcome and is never replayed.
+        if let Some(failure) = failure {
+            self.fail(failure);
+        }
+        Ok(result)
     }
 
     /// Ordinary page/history/point read for an Active session only. During
