@@ -191,10 +191,16 @@ impl AppState<'_> {
                     ]);
                 }
                 if self.messages_list.has_selection() {
-                    actions.push(Action::CopyMessage);
-                    actions.push(Action::RespondMessage);
+                    // A tombstone or placeholder row is selectable, but no
+                    // message action may target it.
+                    if self.selected_actionable_message().is_ok() {
+                        actions.push(Action::CopyMessage);
+                        actions.push(Action::RespondMessage);
+                    }
                     actions.push(Action::UnselectMessage);
-                    if self.selected_message_is_from_me().unwrap_or_default() {
+                    if self.selected_actionable_message().is_ok()
+                        && self.selected_message_is_from_me().unwrap_or_default()
+                    {
                         actions.push(Action::EditSelectedMessage);
                         actions.push(Action::DeleteMessage);
                     }
@@ -442,6 +448,77 @@ fn actionable(message: &MessageSnapshot) -> Result<&MessageSnapshot> {
 mod tests {
     use super::*;
     use crate::frontend::data::{MessageId, MessageStatus, RoomId};
+
+    #[test]
+    fn action_hints_are_not_offered_for_tombstone_or_placeholder_rows() {
+        use crate::frontend::data::{
+            OwnedMessageBody, PersonId, PersonSnapshot, RoomKind, RoomSnapshot,
+        };
+        let mut state = AppState::default();
+        let room_id: super::RoomId = "room".into();
+        let room = Room::from_bridge_snapshot(&RoomSnapshot {
+            id: crate::frontend::data::RoomId::new("room"),
+            title: Some("synthetic".into()),
+            kind: RoomKind::Group,
+            team_id: None,
+            last_activity: None,
+            is_member: true,
+            is_locked: None,
+        })
+        .unwrap();
+        state.cache.rooms.update_with_room(&room);
+        state.cache.set_me(PersonSnapshot {
+            id: PersonId::new("me"),
+            display_name: None,
+            emails: None,
+        });
+        let snapshot = |id: &str, parent: Option<&str>, minute: u32| MessageSnapshot {
+            id: MessageId::new(id),
+            room_id: RoomId::new("room"),
+            revision: Some(1),
+            parent_id: parent.map(MessageId::new),
+            sender_id: Some(PersonId::new("me")),
+            sender_email: None,
+            created_at: Some(format!("2026-01-01T00:0{minute}:00Z")),
+            updated_at: None,
+            status: MessageStatus::Active,
+            body: Some(OwnedMessageBody::Forms {
+                text: Some(id.into()),
+                markdown: None,
+                html: None,
+            }),
+            attachment_count: None,
+        };
+        let view = state.cache.canonical_view_mut(&room_id).unwrap();
+        view.upsert(&snapshot("root", None, 1)).unwrap();
+        view.upsert(&snapshot("reply", Some("root"), 2)).unwrap();
+        view.upsert(&snapshot("orphan", Some("unloaded"), 3))
+            .unwrap();
+        view.tombstone(&RoomId::new("room"), &MessageId::new("root"), None)
+            .unwrap();
+        // Rows: deleted root, reply, missing-root placeholder, orphan.
+        state.rooms_list.set_active_room_id(Some(room_id.clone()));
+        state.update_room_selection_with_active_room();
+        state
+            .messages_list
+            .set_nb_messages(state.num_messages_active_room());
+        let hints = |state: &mut AppState, index: usize| {
+            state.messages_list.select_index(index);
+            state.update_actions(Some(ActivePane::Messages));
+            let actions = state.actions.actions();
+            [
+                Action::CopyMessage,
+                Action::RespondMessage,
+                Action::EditSelectedMessage,
+                Action::DeleteMessage,
+            ]
+            .map(|action| actions.contains(&action))
+        };
+        assert_eq!(hints(&mut state, 0), [false; 4], "deleted root");
+        assert_eq!(hints(&mut state, 1), [true; 4], "own live reply");
+        assert_eq!(hints(&mut state, 2), [false; 4], "missing-root placeholder");
+        assert!(state.actions.actions().contains(&Action::UnselectMessage));
+    }
 
     #[test]
     fn tombstones_are_not_action_targets() {
