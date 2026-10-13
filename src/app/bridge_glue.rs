@@ -62,6 +62,7 @@ use crate::{
         events::{ChangeScope, ConnectionState, MessageKey},
         lifecycle::{LifecycleProjection, ProjectionEffects, RefreshTarget},
         message_view::RoomMessageView,
+        threads::ThreadParent,
     },
 };
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -437,6 +438,7 @@ impl BridgeGlue {
             if let Some(view) = loaded_view(state, &room) {
                 let _ = view.upsert(message);
             }
+            self.request_senders(state, message.sender_id.clone());
         }
         if let Some(stamp) = &effects.clear_current {
             // Only the exact submitted composition is cleared, never newer text.
@@ -802,6 +804,7 @@ impl BridgeGlue {
                     if let Some(view) = loaded_view(state, &room) {
                         let _ = view.upsert(&message);
                     }
+                    self.request_senders(state, message.sender_id.clone());
                     let from_me = state
                         .cache
                         .is_me(&message.sender_id.as_ref().map(|id| id.as_str().to_owned()));
@@ -819,6 +822,19 @@ impl BridgeGlue {
                     if let Some(view) = loaded_view(state, &room) {
                         let _ = view.apply_thread_page(&page);
                     }
+                    let parent = match page.parent() {
+                        ThreadParent::Active(root) | ThreadParent::Deleted(root) => {
+                            root.sender_id.clone()
+                        }
+                        ThreadParent::Missing(_) | ThreadParent::Unavailable(_) => None,
+                    };
+                    let replies = page
+                        .replies()
+                        .messages
+                        .iter()
+                        .filter_map(|message| message.sender_id.clone());
+                    let senders: Vec<PersonId> = parent.into_iter().chain(replies).collect();
+                    self.request_senders(state, senders);
                 }
             }
             _ => {} // operation mismatch cannot happen for our own requests
@@ -844,12 +860,22 @@ impl BridgeGlue {
             .iter()
             .filter_map(|message| message.sender_id.clone())
             .collect();
+        self.request_senders(state, senders);
         // The oldest loaded cursor moves only with explicit older pages, or is
         // initialised by the first newest page.
         let first = !self.cursors.contains_key(room);
         if first || matches!(purpose, Purpose::OlderPage { .. }) {
             self.cursors.insert(room.clone(), page.next_cursor.clone());
         }
+    }
+
+    /// Request each not-yet-known sender once, so rows show a display name
+    /// (pages, single messages, thread pages and confirmed writes alike).
+    fn request_senders(
+        &mut self,
+        state: &mut AppState,
+        senders: impl IntoIterator<Item = PersonId>,
+    ) {
         for sender in senders {
             let id = sender.as_str().to_owned();
             if !state.cache.persons.exists_or_requested(&id) {

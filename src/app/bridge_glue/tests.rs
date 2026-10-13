@@ -771,6 +771,59 @@ async fn submit(glue: &mut BridgeGlue, state: &mut AppState<'_>) {
 }
 
 #[tokio::test]
+async fn senders_of_created_messages_threads_and_confirmed_writes_are_requested() {
+    let (runtime, mut glue, control, shared) = fixture(None);
+    let mut state = AppState::default();
+    let known = |state: &AppState, id: &str| state.cache.persons.get(id).is_some();
+    let driver = async {
+        active_room_loaded(&mut glue, &mut state, &shared).await;
+        settle("page senders", &mut glue, &mut state, |_, state| {
+            known(state, "alice") && known(state, "me")
+        })
+        .await;
+        let after_page = shared.person_reads.load(Ordering::SeqCst);
+        // A new participant's live message.
+        shared
+            .messages
+            .lock()
+            .unwrap()
+            .insert("a3".into(), message("a3", ROOM_A, "carol", 5, 1));
+        shared.push(
+            "message.created",
+            json!({"roomId": ROOM_A, "messageId": "a3", "revision": 1}),
+        );
+        settle("created sender", &mut glue, &mut state, |_, state| {
+            known(state, "carol")
+        })
+        .await;
+        // A thread page: root and reply senders.
+        let mut reply = message("t-reply", ROOM_A, "erin", 7, 1);
+        reply.parent_id = Some("t-root".into());
+        shared.threads.lock().unwrap().insert(
+            "t-root".into(),
+            (message("t-root", ROOM_A, "dave", 6, 1), vec![reply]),
+        );
+        glue.load_thread(&ROOM_A.to_owned(), &data::MessageId::new("t-root"));
+        settle("thread senders", &mut glue, &mut state, |_, state| {
+            known(state, "dave") && known(state, "erin")
+        })
+        .await;
+        assert_eq!(shared.person_reads.load(Ordering::SeqCst), after_page + 3);
+        // A confirmed write installs a message whose sender is looked up too.
+        state.cache.persons = Default::default();
+        state.message_editor.reset_with_text("hello".into());
+        submit(&mut glue, &mut state).await;
+        settle("write sender", &mut glue, &mut state, |_, state| {
+            known(state, "me")
+        })
+        .await;
+        control.shutdown();
+    };
+    let (exit, ()) = tokio::join!(runtime.run(), driver);
+    assert_eq!(exit, RuntimeExit::Shutdown);
+}
+
+#[tokio::test]
 async fn send_success_installs_the_canonical_message_and_clears_that_draft() {
     let (runtime, mut glue, control, shared) = fixture(None);
     let mut state = AppState::default();
