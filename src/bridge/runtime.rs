@@ -108,6 +108,7 @@ pub(crate) enum RuntimeExit {
 pub(crate) struct RuntimeControl {
     wake: Arc<Notify>,
     stop: Arc<AtomicBool>,
+    stop_notify: Arc<Notify>,
 }
 
 impl RuntimeControl {
@@ -118,15 +119,31 @@ impl RuntimeControl {
         Self {
             wake: Arc::new(Notify::new()),
             stop: Arc::new(AtomicBool::new(false)),
+            stop_notify: Arc::new(Notify::new()),
         }
     }
 
     pub(crate) fn wake(&self) {
         self.wake.notify_one();
     }
+    /// Request shutdown. An in-flight connect, renewal or snapshot is
+    /// abandoned promptly (each is fenced); an attempted write is never
+    /// cancelled, so quitting may wait up to `WRITE_DEADLINE` (30 s) for it.
     pub(crate) fn shutdown(&self) {
         self.stop.store(true, Ordering::SeqCst);
         self.wake.notify_one();
+        self.stop_notify.notify_one();
+    }
+}
+
+/// Resolves once shutdown has been requested.
+async fn stopped(stop: Arc<AtomicBool>, notify: Arc<Notify>) {
+    loop {
+        let notified = notify.notified();
+        if stop.load(Ordering::SeqCst) {
+            return;
+        }
+        notified.await;
     }
 }
 
@@ -148,6 +165,7 @@ where
     config: RuntimeConfig,
     wake: Arc<Notify>,
     stop: Arc<AtomicBool>,
+    stop_notify: Arc<Notify>,
     attempts: u32,
     reconnect_at: Option<Instant>,
     /// Persistent lease-tick schedule. Checked at the top of every loop
@@ -178,9 +196,11 @@ where
     ) -> (Self, RuntimeControl) {
         let wake = Arc::new(Notify::new());
         let stop = Arc::new(AtomicBool::new(false));
+        let stop_notify = Arc::new(Notify::new());
         let control = RuntimeControl {
             wake: Arc::clone(&wake),
             stop: Arc::clone(&stop),
+            stop_notify: Arc::clone(&stop_notify),
         };
         (
             Self {
@@ -190,6 +210,7 @@ where
                 config,
                 wake,
                 stop,
+                stop_notify,
                 attempts: 0,
                 reconnect_at: None,
                 next_tick: Instant::now(),
@@ -315,11 +336,15 @@ where
                 return Some(RuntimeExit::SecretUnavailable)
             }
         };
-        let renewed = tokio::time::timeout(
-            self.config.connect_deadline,
-            self.worker.renew_if_due(secret.as_str()),
-        )
-        .await;
+        let stop = stopped(Arc::clone(&self.stop), Arc::clone(&self.stop_notify));
+        let renewed = tokio::select! {
+            biased;
+            () = stop => return Some(RuntimeExit::Shutdown),
+            renewed = tokio::time::timeout(
+                self.config.connect_deadline,
+                self.worker.renew_if_due(secret.as_str()),
+            ) => renewed,
+        };
         drop(secret);
         match renewed {
             Ok(Err(failure @ (SessionFailure::AuthRequired | SessionFailure::Forbidden))) => {
@@ -352,11 +377,15 @@ where
                 return Some(RuntimeExit::SecretUnavailable)
             }
         };
-        let connected = tokio::time::timeout(
-            self.config.connect_deadline,
-            self.worker.connect(secret.as_str()),
-        )
-        .await;
+        let stop = stopped(Arc::clone(&self.stop), Arc::clone(&self.stop_notify));
+        let connected = tokio::select! {
+            biased;
+            () = stop => return Some(RuntimeExit::Shutdown),
+            connected = tokio::time::timeout(
+                self.config.connect_deadline,
+                self.worker.connect(secret.as_str()),
+            ) => connected,
+        };
         drop(secret);
         match connected {
             Ok(Err(failure @ (SessionFailure::AuthRequired | SessionFailure::Forbidden))) => {
@@ -381,21 +410,26 @@ where
         let Some(subscription) = self.worker.subscription() else {
             return;
         };
+        let stop = stopped(Arc::clone(&self.stop), Arc::clone(&self.stop_notify));
         let Self {
             worker,
             snapshots,
             config,
             ..
         } = self;
-        let prepared = tokio::time::timeout(config.snapshot_deadline, async {
-            let ticket = worker.begin_snapshot().await?;
-            let snapshot = {
-                let reader = worker.snapshot_reader(&ticket)?;
-                snapshots.build(&reader).await?
-            };
-            worker.commit_snapshot(ticket, snapshot).map(|_| ())
-        })
-        .await;
+        let prepared = tokio::select! {
+            biased;
+            // An abandoned snapshot is ticket-fenced: nothing is installed.
+            () = stop => return,
+            prepared = tokio::time::timeout(config.snapshot_deadline, async {
+                let ticket = worker.begin_snapshot().await?;
+                let snapshot = {
+                    let reader = worker.snapshot_reader(&ticket)?;
+                    snapshots.build(&reader).await?
+                };
+                worker.commit_snapshot(ticket, snapshot).map(|_| ())
+            }) => prepared,
+        };
         let failure = match prepared {
             Ok(Ok(())) => return,
             Ok(Err(failure)) => failure,

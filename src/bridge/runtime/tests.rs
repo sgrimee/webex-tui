@@ -43,6 +43,7 @@ struct Shared {
     issue_failures: Mutex<VecDeque<SessionFailure>>,
     stream: Mutex<Option<mpsc::UnboundedSender<Item>>>,
     writer_pending: AtomicBool,
+    issue_pending: AtomicBool,
 }
 
 impl Shared {
@@ -109,6 +110,9 @@ impl SessionBackend for Backend {
     async fn issue(&mut self, secret: &str) -> Result<Arc<Shared>, SessionFailure> {
         assert!(!secret.is_empty());
         self.0.issues.fetch_add(1, Ordering::SeqCst);
+        if self.0.issue_pending.load(Ordering::SeqCst) {
+            std::future::pending::<()>().await;
+        }
         match self.0.issue_failures.lock().unwrap().pop_front() {
             Some(failure) => Err(failure),
             None => Ok(Arc::clone(&self.0)),
@@ -169,6 +173,7 @@ impl UiSecretStore for Secrets {
 
 #[derive(Clone, Default)]
 struct Snapshots {
+    pending: Arc<AtomicBool>,
     builds: Arc<AtomicUsize>,
     failures: Arc<Mutex<VecDeque<SessionFailure>>>,
 }
@@ -176,6 +181,9 @@ impl SnapshotSource<Backend> for Snapshots {
     type Snapshot = &'static str;
     async fn build(&mut self, _: &()) -> Result<&'static str, SessionFailure> {
         self.builds.fetch_add(1, Ordering::SeqCst);
+        if self.pending.load(Ordering::SeqCst) {
+            std::future::pending::<()>().await;
+        }
         match self.failures.lock().unwrap().pop_front() {
             Some(failure) => Err(failure),
             None => Ok("snapshot"),
@@ -708,4 +716,55 @@ async fn backoff_resets_after_staying_active_for_backoff_max() {
     };
     let (exit, ()) = tokio::join!(runtime.run(), driver);
     assert_eq!(exit, RuntimeExit::Shutdown);
+}
+
+#[tokio::test]
+async fn shutdown_abandons_a_pending_connect_or_snapshot_promptly() {
+    for stage in ["connect", "snapshot"] {
+        let (runtime, f) = fixture();
+        if stage == "connect" {
+            f.shared.issue_pending.store(true, Ordering::SeqCst);
+        } else {
+            f.snapshots.pending.store(true, Ordering::SeqCst);
+        }
+        let read = read_request();
+        assert_eq!(f.mailbox.try_read(read), ReadAdmission::Accepted);
+        let driver = async {
+            if stage == "connect" {
+                until("pending issue", || {
+                    f.shared.issues.load(Ordering::SeqCst) == 1
+                })
+                .await;
+            } else {
+                until("subscription", || {
+                    f.shared.subscribes.load(Ordering::SeqCst) == 1
+                })
+                .await;
+                f.shared.push(ready());
+                until("pending build", || {
+                    f.snapshots.builds.load(Ordering::SeqCst) == 1
+                })
+                .await;
+            }
+            let requested = tokio::time::Instant::now();
+            f.control.shutdown();
+            requested
+        };
+        let (exit, requested) = tokio::join!(runtime.run(), driver);
+        assert_eq!(exit, RuntimeExit::Shutdown, "{stage}");
+        assert!(
+            requested.elapsed() < Duration::from_millis(100),
+            "{stage}: shutdown waited for the deadline"
+        );
+        // Admitted reads are still settled exactly once.
+        let terminals = read_terminals(&f);
+        assert_eq!(terminals.len(), 1, "{stage}");
+        // Nothing was installed by an abandoned snapshot.
+        let installed = f
+            .endpoint
+            .drain(usize::MAX)
+            .into_iter()
+            .any(|event| matches!(event, PumpEvent::Snapshot { .. }));
+        assert!(!installed, "{stage}");
+    }
 }
