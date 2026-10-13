@@ -80,6 +80,7 @@ struct LifecycleEntry {
     projection: LifecycleProjection,
     effects: ProjectionEffects,
     redacted: HashSet<MessageKey>,
+    created: HashSet<MessageKey>,
 }
 
 impl LifecycleEntry {
@@ -96,6 +97,7 @@ impl LifecycleEntry {
                 ..Default::default()
             },
             redacted: HashSet::new(),
+            created: HashSet::new(),
         };
         merge(&mut entry, effects);
         entry
@@ -104,7 +106,7 @@ impl LifecycleEntry {
 
 enum Entry<S> {
     Phase(SessionPhase),
-    Lifecycle(LifecycleEntry),
+    Lifecycle(Box<LifecycleEntry>),
     Snapshot {
         install: InstallId,
         snapshot: S,
@@ -119,11 +121,14 @@ impl<S> Entry<S> {
     fn into_event(self) -> PumpEvent<S> {
         match self {
             Self::Phase(phase) => PumpEvent::Phase(phase),
-            Self::Lifecycle(entry) => PumpEvent::Lifecycle {
-                install: entry.install,
-                projection: entry.projection,
-                effects: entry.effects,
-            },
+            Self::Lifecycle(entry) => {
+                let entry = *entry;
+                PumpEvent::Lifecycle {
+                    install: entry.install,
+                    projection: entry.projection,
+                    effects: entry.effects,
+                }
+            }
             Self::Snapshot { install, snapshot } => PumpEvent::Snapshot { install, snapshot },
             Self::Read { install, terminal } => PumpEvent::Read { install, terminal },
         }
@@ -198,11 +203,12 @@ impl<S> PresentationHost for PumpHost<S> {
         }
         if pump.lifecycle < LIFECYCLE_CAP {
             pump.lifecycle += 1;
-            pump.queue.push_back(Entry::Lifecycle(LifecycleEntry::new(
-                install,
-                projection.clone(),
-                effects,
-            )));
+            pump.queue
+                .push_back(Entry::Lifecycle(Box::new(LifecycleEntry::new(
+                    install,
+                    projection.clone(),
+                    effects,
+                ))));
             return;
         }
         // Overflow: never drop hints silently. Merge into the newest queued
@@ -228,7 +234,7 @@ impl<S> PresentationHost for PumpHost<S> {
                 let mut entry = LifecycleEntry::new(install, projection.clone(), effects);
                 lag_resync(&mut entry.effects);
                 pump.lifecycle += 1;
-                pump.queue.push_back(Entry::Lifecycle(entry));
+                pump.queue.push_back(Entry::Lifecycle(Box::new(entry)));
             }
         }
     }
@@ -372,6 +378,13 @@ fn merge(entry: &mut LifecycleEntry, next: ProjectionEffects) {
     for key in next.redact {
         if entry.redacted.insert(key.clone()) {
             entry.effects.redact.push(key);
+        }
+    }
+    // Created keys are the unread signal: deduplicated like redactions and
+    // kept through whole-mirror collapse (the refetch cannot recover them).
+    for key in next.created {
+        if entry.created.insert(key.clone()) {
+            entry.effects.created.push(key);
         }
     }
     let queued = &mut entry.effects;

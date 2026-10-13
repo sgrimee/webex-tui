@@ -33,6 +33,9 @@ pub(crate) struct ProjectionEffects {
     /// Only an explicit committed message-delete event permits immediate body
     /// redaction. Room reconciliation must fetch canonical tombstones instead.
     pub(crate) redact: Vec<MessageKey>,
+    /// Committed `message.created` events: the only activity signal for
+    /// session-local unread. Edits, deletes, pages and resyncs never add here.
+    pub(crate) created: Vec<MessageKey>,
     pub(crate) membership: Option<MembershipChange>,
     pub(crate) resync: Option<(ChangeScope, ResyncReason)>,
 }
@@ -129,6 +132,11 @@ impl LifecycleProjection {
                 } else {
                     Vec::new()
                 };
+                let created = if change == MessageChange::Created {
+                    vec![key.clone()]
+                } else {
+                    Vec::new()
+                };
                 ProjectionEffects {
                     refresh: vec![
                         RefreshTarget::Message {
@@ -138,6 +146,7 @@ impl LifecycleProjection {
                         RefreshTarget::Room(key.room_id),
                     ],
                     redact,
+                    created,
                     ..Default::default()
                 }
             }
@@ -268,6 +277,14 @@ mod tests {
                 ]
             );
             assert!(effects.redact.is_empty());
+            assert_eq!(
+                effects.created,
+                if change == MessageChange::Created {
+                    vec![key()]
+                } else {
+                    Vec::new()
+                }
+            );
             assert!(!effects.affects_room(&RoomId::new("other-room")));
         }
     }

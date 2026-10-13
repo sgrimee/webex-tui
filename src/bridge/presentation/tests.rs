@@ -475,6 +475,32 @@ fn overflow_never_merges_post_install_hints_into_an_older_install() {
     );
 }
 
+#[test]
+fn created_keys_dedupe_and_survive_whole_mirror_collapse() {
+    let (mut host, endpoint) = pump::<()>();
+    let projection = LifecycleProjection::default();
+    for index in 0..REFRESH_CAP * 2 {
+        host.lifecycle(
+            &projection,
+            ProjectionEffects {
+                refresh: vec![RefreshTarget::Message {
+                    key: key(&format!("m{index}")),
+                    min_revision: None,
+                }],
+                created: vec![key(&format!("m{index}")), key("m0")],
+                ..Default::default()
+            },
+        );
+    }
+    let effects = only_lifecycle(endpoint.drain(usize::MAX));
+    assert_eq!(
+        effects.resync,
+        Some((ChangeScope::WholeMirror, ResyncReason::EventLag))
+    );
+    assert_eq!(effects.created.len(), REFRESH_CAP * 2);
+    assert_eq!(effects.created[0], key("m0"));
+}
+
 // ---- Integration with the worker's write admission ------------------------
 
 #[derive(Clone)]
