@@ -552,6 +552,31 @@ async fn timed_out_page_is_recorded_and_never_retried_automatically() {
 }
 
 #[tokio::test]
+async fn assembled_stack_connects_and_installs_without_extra_wiring() {
+    let shared = Arc::new(Shared::default());
+    *shared.rooms.lock().unwrap() = vec![room(ROOM_A)];
+    let (runtime, mut glue) = BridgeGlue::assemble(
+        SessionLifecycle::new(Backend(Arc::clone(&shared)), Clock(Instant::now())),
+        Secrets,
+        RuntimeConfig {
+            tick: Duration::from_millis(5),
+            ..RuntimeConfig::default()
+        },
+        500, // clamped to the UI API maximum of 100
+    );
+    assert_eq!(glue.page_size, 100);
+    let control = glue.control.clone();
+    let mut state = AppState::default();
+    let driver = async {
+        wait_subscribed(&shared, 1).await;
+        ready(&mut glue, &mut state, &shared).await;
+        control.shutdown();
+    };
+    let (exit, ()) = tokio::join!(runtime.run(), driver);
+    assert_eq!(exit, RuntimeExit::Shutdown);
+}
+
+#[tokio::test]
 async fn runtime_exit_marks_the_glue_closed_and_forgets_outstanding_reads() {
     let (runtime, mut glue, control, shared) = fixture(None);
     let mut state = AppState::default();

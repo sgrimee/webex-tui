@@ -30,12 +30,13 @@ use super::{
 };
 use crate::{
     bridge::{
-        commands::{CommandMailbox, ReadAdmission},
-        presentation::{PresentationEndpoint, PumpEvent},
+        commands::{CommandMailbox, CommandWorker, ReadAdmission},
+        pairing::UiSecretStore,
+        presentation::{pump, PresentationEndpoint, PumpEvent, PumpHost},
         read_dispatch::{ReadTerminal, ReadUnavailable},
-        runtime::RuntimeControl,
-        session::SessionPhase,
-        snapshot::BridgeSnapshot,
+        runtime::{EventSource, Runtime, RuntimeConfig, RuntimeControl},
+        session::{SessionBackend, SessionClock, SessionLifecycle, SessionPhase},
+        snapshot::{BridgeSnapshot, BridgeSnapshotSource},
     },
     frontend::{
         data::{self, MessageId, MessagePage, PageCursor, PersonId, RoomSnapshot},
@@ -121,7 +122,33 @@ pub(crate) struct BridgeGlue {
     status: GlueStatus,
 }
 
+/// The assembled, not-yet-running bridge stack for one connected session.
+pub(crate) type BridgeRuntime<B, C, K> =
+    Runtime<B, C, PumpHost<BridgeSnapshot>, K, BridgeSnapshotSource>;
+
 impl BridgeGlue {
+    /// Wire one session (typically just connected by the pairing bootstrap)
+    /// into a runtime plus its App-side glue. Nothing is spawned or started:
+    /// the caller decides when to run the returned runtime future.
+    pub(crate) fn assemble<B, C, K>(
+        session: SessionLifecycle<B, C>,
+        secrets: K,
+        config: RuntimeConfig,
+        page_size: u32,
+    ) -> (BridgeRuntime<B, C, K>, Self)
+    where
+        B: SessionBackend,
+        B::Stream: EventSource,
+        C: SessionClock,
+        K: UiSecretStore,
+    {
+        let (host, endpoint) = pump();
+        let (mailbox, worker) = CommandWorker::new(session, host);
+        let (runtime, control) =
+            Runtime::new(worker, secrets, BridgeSnapshotSource::default(), config);
+        (runtime, Self::new(endpoint, mailbox, control, page_size))
+    }
+
     pub(crate) fn new(
         endpoint: PresentationEndpoint<BridgeSnapshot>,
         mailbox: CommandMailbox,
