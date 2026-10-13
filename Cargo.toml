@@ -34,7 +34,7 @@ serde_json = "1"
 serde_yaml = "0.9"
 textwrap = "0.16"
 thiserror = "2.0"
-tokio = { version = "1.43.1", features = ["rt", "macros"] }
+tokio = { version = "1.43.1", features = ["rt", "macros", "time"] }
 webbrowser = "1.0.1"
 # webex = "0.10.1"
 # webex = { git = "https://github.com/sgrimee/webex-rust.git", branch = "master" }

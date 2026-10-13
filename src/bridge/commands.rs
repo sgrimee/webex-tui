@@ -6,9 +6,12 @@
 //!
 //! A future runtime MUST retain/pin handle_one across ordinary UI/lifecycle select
 //! branches, rather than recreating it each tick. Its mutable controller borrow
-//! serializes lifecycle work; the runtime must bound writes and service lifecycle
-//! afterward. Only an explicit interruption/deadline may drop an attempted future,
-//! which leaves Uncertain in the slot. No timeout value or scheduling policy here.
+//! serializes lifecycle work (SSE, lease checks and renewal cannot run during a
+//! write), so every attempted write has a hard deadline (`WRITE_DEADLINE`, well
+//! below the 600 s UI lease and its 80% renewal point). On timeout the gate
+//! future is dropped and the slot holds Uncertain/AttemptInterrupted, never a
+//! retry. Expect SSE lag → resync after a long write. Only this deadline or an
+//! explicit owner interruption may drop an attempted future.
 //! Known terminal results are stored synchronously before returning and survive
 //! backpressure, UI endpoint drop and shutdown. Volatile process death is not
 //! recoverable, and a new mailbox cannot recover or replay an old command.
@@ -30,8 +33,13 @@ use crate::frontend::{
 };
 use std::{
     sync::{Arc, Mutex, MutexGuard},
-    time::Instant,
+    time::{Duration, Instant},
 };
+
+/// Hard per-write deadline. The UI lease is 600 s with renewal at 80%, and
+/// the UDS client has no deadline of its own, so a stuck write must not keep
+/// the controller (and therefore lease renewal and SSE) borrowed for longer.
+pub(crate) const WRITE_DEADLINE: Duration = Duration::from_secs(30);
 use webex_bridge::client::events::BridgeEvent;
 
 /// Conclusive pre-ownership decisions only. This is the ledger's own report
@@ -148,6 +156,7 @@ impl<H: PresentationHost> PresentationHost for AdmissionHost<H> {
 pub(crate) struct CommandWorker<B: SessionBackend, C: SessionClock, H: PresentationHost> {
     controller: HostController<B, C, AdmissionHost<H>>,
     shared: Shared,
+    write_deadline: Duration,
 }
 
 impl<B: SessionBackend, C: SessionClock, H: PresentationHost> CommandWorker<B, C, H> {
@@ -169,8 +178,16 @@ impl<B: SessionBackend, C: SessionClock, H: PresentationHost> CommandWorker<B, C
             Self {
                 controller: HostController::new(session, host),
                 shared,
+                write_deadline: WRITE_DEADLINE,
             },
         )
+    }
+
+    /// Shorter deadline for deterministic fake tests; never longer than the
+    /// production bound.
+    #[cfg(test)]
+    pub(crate) fn set_write_deadline(&mut self, deadline: Duration) {
+        self.write_deadline = deadline.min(WRITE_DEADLINE);
     }
 
     /// Worker-side publication after lifecycle/snapshot work. This is only a
@@ -300,8 +317,21 @@ impl<B: SessionBackend, C: SessionClock, H: PresentationHost> CommandWorker<B, C
             self.publish();
             return true;
         }
-        let terminal =
-            dispatch_envelope(&mut self.controller, command.request, &mut reservation).await;
+        let context = command.request.context.clone();
+        let terminal = match tokio::time::timeout(
+            self.write_deadline,
+            dispatch_envelope(&mut self.controller, command.request, &mut reservation),
+        )
+        .await
+        {
+            Ok(terminal) => terminal,
+            // The gate future has been dropped after its attempt boundary: the
+            // daemon may or may not have sent it. Never Unavailable, never retry.
+            Err(_) => SubmissionTerminal::Uncertain {
+                context,
+                reason: UncertainReason::AttemptInterrupted,
+            },
+        };
         reservation.finish(terminal);
         self.publish();
         true

@@ -1213,3 +1213,38 @@ async fn dropped_pending_connect_and_due_renewal_leave_admission_revoked() {
         assert_eq!(count(&f.control), 0);
     }
 }
+
+#[test]
+fn write_deadline_stays_well_below_the_ui_lease_renewal_point() {
+    // UI lease 600 s, renewal at 80% (480 s); review bound is 45 s.
+    assert!(WRITE_DEADLINE <= Duration::from_secs(45));
+    assert!(WRITE_DEADLINE > Duration::ZERO);
+}
+
+#[tokio::test]
+async fn stuck_write_hits_hard_deadline_as_uncertain_and_is_never_replayed() {
+    let mut f = fixture();
+    active(&mut f).await;
+    f.worker.set_write_deadline(Duration::from_millis(20));
+    let mut ledger = EditorSubmission::default();
+    let draft = plain();
+    let r = admitted(&f, &mut ledger, &draft);
+    // The fake reply is never sent: the daemon neither confirms nor rejects.
+    assert!(f.worker.handle_one().await);
+    assert_eq!(count(&f.control), 1, "exactly one attempt");
+    assert_eq!(f.control.future_drops.load(Ordering::SeqCst), 1);
+    let terminal = f.endpoint.drain().unwrap();
+    assert!(matches!(
+        &terminal,
+        SubmissionTerminal::Uncertain { context, reason: UncertainReason::AttemptInterrupted }
+            if context == &r.context
+    ));
+    let effects = ledger.reduce(terminal, Some(&draft.stamp));
+    assert_eq!(effects.status, Some(EditorWriteStatus::DeliveryUnknown));
+    assert!(effects.clear_current.is_none());
+    assert!(ledger.review().unwrap().draft == draft);
+    // The controller is free again for lifecycle work after the deadline.
+    assert_eq!(f.worker.check_lease(), LeaseAction::None);
+    assert!(!f.worker.handle_one().await, "no replay");
+    assert_eq!(count(&f.control), 1);
+}
