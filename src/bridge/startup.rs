@@ -471,7 +471,8 @@ pub(crate) fn exit_message(exit: super::runtime::RuntimeExit) -> Option<String> 
     match exit {
         RuntimeExit::Shutdown => None,
         RuntimeExit::PairingRequired(_) => Some(
-            "webex-bridge no longer accepts this webex-tui: its pairing was removed              (for example with `webex-bridge ui unpair`) or the daemon's pairing data was reset.\n\
+            "webex-bridge no longer accepts this webex-tui: its pairing was removed \
+             (for example with `webex-bridge ui unpair`) or the daemon's pairing data was reset.\n\
              Start webex-tui again to pair once more; the daemon will ask you to approve."
                 .into(),
         ),

@@ -477,5 +477,6 @@ fn runtime_exits_map_to_actionable_secret_free_messages() {
     ));
     for message in [repair, keychain, corrupt] {
         assert!(!message.contains(SECRET));
+        assert!(!message.contains("   "), "stray spacing in {message:?}");
     }
 }
