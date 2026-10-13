@@ -1,6 +1,6 @@
 // app/mod.rs
 
-//! Controller used to handle user input and interaction with the `Teams` thread.
+//! Controller: handles user input and routes Webex reads/writes to the bridge glue.
 
 pub(crate) mod actions;
 // Attached by `main` since the S4 startup switch; some helpers are test-only
@@ -9,8 +9,9 @@ pub(crate) mod actions;
 mod bridge_app;
 #[allow(dead_code)]
 pub(crate) mod bridge_glue;
+// The legacy (Teams-fed) cache half is removed in E2.
+#[allow(dead_code)]
 pub(crate) mod cache;
-pub(crate) mod callbacks;
 mod legacy_projection;
 pub(crate) mod message_editor;
 pub(crate) mod messages_list;
@@ -23,7 +24,6 @@ use crate::app::rooms_list::SearchState;
 use crate::app::state::ActivePane;
 use crate::frontend::models::MessagePresentation;
 use crate::inputs::key::Key;
-use crate::teams::app_handler::AppCmdEvent;
 use crate::theme::Theme;
 use cache::room::RoomId;
 
@@ -40,18 +40,10 @@ pub(crate) enum AppReturn {
     Continue,
 }
 
-/// Priority level for events from the app to the webex thread
-pub(crate) enum Priority {
-    Low,
-    High,
-}
-
-/// `App` contains the state of the application and a tx channel to the `Teams` thread.
+/// `App` holds the UI state and the bridge glue.
 pub(crate) struct App<'a> {
-    app_to_teams_tx_low: tokio::sync::mpsc::UnboundedSender<AppCmdEvent>,
-    app_to_teams_tx_high: tokio::sync::mpsc::UnboundedSender<AppCmdEvent>,
     pub(crate) state: AppState<'a>,
-    /// Bridge backend; `None` keeps the legacy Teams paths (see bridge_app).
+    /// Bridge backend (see bridge_app); `None` only before `attach_bridge`.
     bridge: Option<bridge_glue::BridgeGlue>,
     /// Leaves waiting for the single bridge write slot.
     pending_leaves: std::collections::VecDeque<RoomId>,
@@ -60,24 +52,11 @@ pub(crate) struct App<'a> {
 }
 
 impl App<'_> {
-    /// Returns an app with default state and the given channel to the `Teams` thread.
-    ///
-    /// # Arguments
-    ///
-    /// * `app_to_teams_tx` - An unbounded channel used to send commands to the `Teams` thread
-    pub(crate) fn new(
-        app_to_teams_tx_low: tokio::sync::mpsc::UnboundedSender<AppCmdEvent>,
-        app_to_teams_tx_high: tokio::sync::mpsc::UnboundedSender<AppCmdEvent>,
-        debug: bool,
-        messages_to_load: u32,
-        theme: Theme,
-    ) -> Self {
+    /// Returns an app with default state and no bridge attached yet.
+    pub(crate) fn new(debug: bool, theme: Theme) -> Self {
         Self {
-            app_to_teams_tx_low,
-            app_to_teams_tx_high,
             state: AppState {
                 debug,
-                messages_to_load,
                 theme,
                 ..Default::default()
             },
@@ -434,51 +413,9 @@ impl App<'_> {
         AppReturn::Continue
     }
 
-    /// Send a message with the text contained in the editor
-    /// to the active person or room.
+    /// Submit the editor's composition (send, reply or edit) to the bridge.
     fn send_message_buffer(&mut self) -> Result<()> {
-        if self.has_bridge() {
-            return self.bridge_send();
-        }
-        if self.state.message_editor.is_empty() {
-            return Err(eyre!("An empty message cannot be sent."));
-        };
-        let room = self
-            .state
-            .active_room()
-            .ok_or(eyre!("Cannot send message, no room selected."))?;
-        let lines = self.state.message_editor.lines().to_vec();
-        if let Some(msg_to_edit) = self.state.message_editor.editing_of() {
-            // Editing a message
-            let msg_id = msg_to_edit.id.as_str().to_owned();
-            let intent = crate::frontend::envelopes::FrontendIntent::EditMessage {
-                message_id: crate::frontend::data::MessageId::new(msg_id),
-                room_id: crate::frontend::data::RoomId::new(room.id.clone()),
-                // Same format as the pre-filled source (see `start_editing`).
-                body: if self.state.message_editor.edits_markdown() {
-                    crate::frontend::data::ComposedBody::Markdown(lines.join("\n"))
-                } else {
-                    crate::frontend::data::ComposedBody::PlainText(lines.join("\n"))
-                },
-            };
-            self.dispatch_to_teams(AppCmdEvent::EditMessage(intent), &Priority::High);
-        } else {
-            let intent = crate::frontend::envelopes::FrontendIntent::SendMessage {
-                room_id: crate::frontend::data::RoomId::new(room.id.clone()),
-                parent_id: self
-                    .state
-                    .message_editor
-                    .response_to()
-                    .map(|message| message.id.clone()),
-                body: crate::frontend::data::ComposedBody::PlainText(lines.join("\n")),
-            };
-            self.dispatch_to_teams(AppCmdEvent::SendMessage(intent), &Priority::High);
-        }
-        debug!("Sending message to room {:?}", room.title);
-        self.state.cache.rooms.mark_read(&room.id.clone());
-        self.state.message_editor.reset();
-        self.state.messages_list.deselect();
-        Ok(())
+        self.bridge_send()
     }
 
     /// Deletes the selected message, if there is one and it was authored by self.
@@ -496,24 +433,9 @@ impl App<'_> {
             return Err(eyre!("Cannot delete message, it was not authored by self"));
         }
 
-        if self.has_bridge() {
-            // Only a confirmed delete tombstones it; selection stays put.
-            let id = message.id.clone();
-            return self.bridge_delete(&room_id, &id);
-        }
-        let msg_id = message.id.as_str().to_owned();
-
-        // Dispatch a delete event and remove the message from the store
-        self.state.messages_list.select_previous_message();
-        self.dispatch_to_teams(
-            AppCmdEvent::DeleteMessage(crate::frontend::envelopes::FrontendIntent::DeleteMessage {
-                message_id: crate::frontend::data::MessageId::new(msg_id),
-                room_id: crate::frontend::data::RoomId::new(room_id),
-            }),
-            &Priority::High,
-        );
-        // Keep cache content until the existing legacy confirmation/event path updates it.
-        Ok(())
+        // Only a confirmed delete tombstones it; selection stays put.
+        let id = message.id.clone();
+        self.bridge_delete(&room_id, &id)
     }
 
     /// Copies the selected message content to clipboard
@@ -577,46 +499,14 @@ impl App<'_> {
         self.state.message_editor.start_editing(message)
     }
 
-    /// Retrieves the latest messages in the room, only if it is empty
+    /// Loads the newest page of the room once (bridge).
     fn get_messages_if_room_empty(&mut self, id: &RoomId) {
-        if self.has_bridge() {
-            return self.bridge_open_room(id);
-        }
-        if self.state.cache.room_is_empty(id) {
-            self.dispatch_to_teams(
-                AppCmdEvent::ListMessagesInRoom(id.clone(), None, self.state.messages_to_load),
-                &Priority::High,
-            );
-        }
+        self.bridge_open_room(id);
     }
 
-    /// Retrieves messages before the first message in the room
+    /// Loads the page before the oldest loaded message (bridge).
     fn get_messages_before_first(&mut self, id: &RoomId) {
-        if self.has_bridge() {
-            return self.bridge_load_older(id);
-        }
-        if let Some(first_message) = self.state.cache.messages_in_room(id).next() {
-            self.dispatch_to_teams(
-                AppCmdEvent::ListMessagesInRoom(
-                    id.clone(),
-                    Some(first_message.id.as_str().to_owned()),
-                    self.state.messages_to_load,
-                ),
-                &Priority::High,
-            );
-        }
-    }
-
-    /// Send a command to the teams thread
-    /// Does not block
-    pub(crate) fn dispatch_to_teams(&self, action: AppCmdEvent, priority: &Priority) {
-        let tx = match priority {
-            Priority::High => &self.app_to_teams_tx_high,
-            Priority::Low => &self.app_to_teams_tx_low,
-        };
-        if let Err(e) = tx.send(action) {
-            error!("Error from dispatch {e}");
-        };
+        self.bridge_load_older(id);
     }
 
     /// Sets the active room to that highlighted by the list selection
@@ -693,36 +583,10 @@ impl App<'_> {
             return Err(eyre!("No rooms selected for deletion"));
         }
 
-        if self.has_bridge() {
-            let count = selected_room_ids.len();
-            self.bridge_leave_rooms(selected_room_ids);
-            self.state.rooms_list.clear_room_selections();
-            debug!("Queued {count} bridge leave(s)");
-            return Ok(());
-        }
-        // Send leave room commands for all selected rooms
-        for room_id in selected_room_ids.clone() {
-            debug!("Sending leave room command for room: {room_id}");
-            // Also log the room title if available
-            if let Some(room) = self.state.cache.rooms.room_with_id(&room_id) {
-                if let Some(title) = &room.title {
-                    debug!("Room title: {title}");
-                }
-            }
-            self.dispatch_to_teams(
-                AppCmdEvent::LeaveRoom(crate::frontend::envelopes::FrontendIntent::LeaveRoom(
-                    crate::frontend::data::RoomId::new(room_id),
-                )),
-                &Priority::High,
-            );
-        }
-
-        // Clear selections after sending the commands
+        let count = selected_room_ids.len();
+        self.bridge_leave_rooms(selected_room_ids);
         self.state.rooms_list.clear_room_selections();
-        debug!(
-            "Cleared room selections, sent {} leave commands",
-            selected_room_ids.len()
-        );
+        debug!("Queued {count} bridge leave(s)");
         Ok(())
     }
 }

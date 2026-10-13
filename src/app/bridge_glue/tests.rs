@@ -1342,8 +1342,8 @@ mod manual {
     }
 }
 
-/// Step S3: App routing with an attached glue. The legacy Teams channels
-/// must stay silent: every read and write goes through the bridge.
+/// Step S3: App routing with an attached glue: every read and write goes
+/// through the bridge.
 mod app_routing {
     use super::*;
     use crate::app::{state::ActivePane, App};
@@ -1351,33 +1351,12 @@ mod app_routing {
 
     struct Harness {
         app: App<'static>,
-        teams_low: tokio::sync::mpsc::UnboundedReceiver<crate::teams::app_handler::AppCmdEvent>,
-        teams_high: tokio::sync::mpsc::UnboundedReceiver<crate::teams::app_handler::AppCmdEvent>,
-    }
-
-    impl Harness {
-        fn assert_no_teams_traffic(&mut self) {
-            assert!(
-                self.teams_low.try_recv().is_err(),
-                "legacy low channel used"
-            );
-            assert!(
-                self.teams_high.try_recv().is_err(),
-                "legacy high channel used"
-            );
-        }
     }
 
     fn harness(glue: BridgeGlue) -> Harness {
-        let (low, teams_low) = tokio::sync::mpsc::unbounded_channel();
-        let (high, teams_high) = tokio::sync::mpsc::unbounded_channel();
-        let mut app = App::new(low, high, false, 10, crate::theme::Theme::default());
+        let mut app = App::new(false, crate::theme::Theme::default());
         app.attach_bridge(glue);
-        Harness {
-            app,
-            teams_low,
-            teams_high,
-        }
+        Harness { app }
     }
 
     /// Tick the App (which drains the glue) until `condition` holds.
@@ -1507,7 +1486,6 @@ mod app_routing {
             // Someone else's message cannot be deleted.
             select(&mut h, "a1");
             assert!(h.app.delete_selected_message().is_err());
-            h.assert_no_teams_traffic();
             control.shutdown();
         };
         let (exit, ()) = tokio::join!(runtime.run(), driver);
@@ -1558,7 +1536,6 @@ mod app_routing {
                 .actions
                 .actions()
                 .contains(&crate::app::actions::Action::DismissWriteReview));
-            h.assert_no_teams_traffic();
             control.shutdown();
         };
         let (exit, ()) = tokio::join!(runtime.run(), driver);
@@ -1594,7 +1571,6 @@ mod app_routing {
             })
             .await;
             assert!(h.app.pending_leaves.is_empty());
-            h.assert_no_teams_traffic();
             control.shutdown();
         };
         let (exit, ()) = tokio::join!(runtime.run(), driver);
@@ -1653,7 +1629,6 @@ mod app_routing {
             // The selection stayed on the (now real) root row.
             let selected = h.app.state.selected_message().unwrap();
             assert_eq!(selected.id.as_str(), "root");
-            h.assert_no_teams_traffic();
             control.shutdown();
         };
         let (exit, ()) = tokio::join!(runtime.run(), driver);
@@ -1841,9 +1816,7 @@ mod app_routing {
 
         #[test]
         fn nothing_to_report_without_a_bridge() {
-            let (low, _) = tokio::sync::mpsc::unbounded_channel();
-            let (high, _) = tokio::sync::mpsc::unbounded_channel();
-            let mut app = App::new(low, high, false, 10, crate::theme::Theme::default());
+            let mut app = App::new(false, crate::theme::Theme::default());
             assert!(app.begin_quit().is_none());
         }
     }

@@ -1,7 +1,7 @@
 //! App routing to the bridge glue (cutover step S3).
 //!
-//! `main` attaches the glue at startup (S4). With a glue attached, every
-//! Webex read and write goes through it instead of `dispatch_to_teams`:
+//! `main` attaches the glue at startup (S4); every Webex read and write goes
+//! through it:
 //! - send/reply/edit submit the editor's explicit `DraftSnapshot`; the editor
 //!   is cleared only by a confirmed success of that exact composition;
 //! - delete and leave are explicit single-slot actions; a multi-room leave is

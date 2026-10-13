@@ -27,7 +27,6 @@ pub(crate) struct AppState<'a> {
     pub(crate) actions: Actions,
     pub(crate) debug: bool,
     pub(crate) is_loading: bool,
-    pub(crate) messages_to_load: u32,
 
     // Webex
     pub(crate) cache: Cache,
@@ -463,7 +462,6 @@ impl Default for AppState<'_> {
             is_loading: false,
             last_frame_size: Rect::new(0, 0, 0, 0),
             log_state,
-            messages_to_load: 10,
             message_editor: MessageEditor::default(),
             messages_list: MessagesList::new(),
             rooms_list: RoomsList::default(),

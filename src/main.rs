@@ -10,9 +10,6 @@ mod frontend;
 mod host;
 mod inputs;
 mod logger;
-// Legacy direct-Webex backend: no longer started (S4); removed in 5E.
-#[allow(dead_code)]
-mod teams;
 mod theme;
 mod tui;
 mod ui;
@@ -136,11 +133,7 @@ async fn run(debug: bool, messages_to_load: u32, theme: theme::Theme) -> Result<
         log::info!("{}", notice.message());
     }
 
-    // The legacy Teams channels exist only because App still owns them;
-    // nothing listens, and with a bridge attached nothing sends.
-    let (teams_low, _) = tokio::sync::mpsc::unbounded_channel();
-    let (teams_high, _) = tokio::sync::mpsc::unbounded_channel();
-    let mut app = App::new(teams_low, teams_high, debug, messages_to_load, theme);
+    let mut app = App::new(debug, theme);
     app.attach_bridge(started.glue);
     let mut runtime = tokio::spawn(started.runtime.run());
 
