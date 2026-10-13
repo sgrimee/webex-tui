@@ -70,6 +70,22 @@ pub(crate) struct DraftStamp {
     pub(crate) revision: DraftRevision,
 }
 
+impl DraftStamp {
+    /// Whether `current` is still the exact composition this stamp was taken
+    /// from. The editor revision advances on every text, reply-target and
+    /// edit-target change, so it identifies the composition. A plain send's
+    /// room is the App's active room, not editor state: switching rooms while
+    /// a send is in flight must not keep the sent text (Enter in the new room
+    /// would send it again), so Send matches on the revision alone.
+    pub(crate) fn same_composition(&self, current: &DraftStamp) -> bool {
+        self.revision == current.revision
+            && match (&self.target, &current.target) {
+                (DraftTarget::Send { .. }, DraftTarget::Send { .. }) => true,
+                (submitted, current) => submitted == current,
+            }
+    }
+}
+
 #[derive(Clone, Eq, PartialEq)]
 pub(crate) struct DraftSnapshot {
     pub(crate) stamp: DraftStamp,
@@ -370,12 +386,13 @@ impl EditorSubmission {
         canonical: Option<MessageSnapshot>,
         current: Option<&DraftStamp>,
     ) -> SubmissionEffects {
-        let clear_current =
-            if status == EditorWriteStatus::Ready && current == Some(&pending.draft.stamp) {
-                Some(pending.draft.stamp.clone())
-            } else {
-                None
-            };
+        let clear_current = if status == EditorWriteStatus::Ready
+            && current.is_some_and(|current| pending.draft.stamp.same_composition(current))
+        {
+            Some(pending.draft.stamp.clone())
+        } else {
+            None
+        };
         let context = pending.request.context;
         if status != EditorWriteStatus::Ready {
             self.review = Some(ReviewSnapshot {
@@ -825,7 +842,7 @@ mod tests {
     #[test]
     fn new_revision_target_cancel_and_focus_do_not_lose_completion() {
         let draft = plain_draft();
-        for change in 0..4 {
+        for change in 0..5 {
             let mut ledger = EditorSubmission::default();
             let request = accepted(&mut ledger, &draft);
             let mut current = draft.stamp.clone();
@@ -834,6 +851,13 @@ mod tests {
             }
             if change == 1 {
                 current.target = targets()[1].clone();
+            }
+            if change == 4 {
+                // REVIEW-13 LOW-3: the active room changed under a plain
+                // send; the composition (revision) is the same, so it clears.
+                current.target = DraftTarget::Send {
+                    room_id: RoomId::new("room-b"),
+                };
             }
             let current = if change == 2 { None } else { Some(&current) };
             let mut focus = RoomViewRequests::default();
@@ -851,7 +875,7 @@ mod tests {
             let effects = ledger.reduce(SubmissionTerminal::result(envelope), current);
             assert!(effects.canonical.as_ref() == Some(&canonical));
             assert_eq!(effects.status, Some(EditorWriteStatus::Ready));
-            assert_eq!(effects.clear_current.is_some(), change == 3);
+            assert_eq!(effects.clear_current.is_some(), change >= 3);
             assert!(focus.is_current(&room_b));
             assert!(ledger.pending_context().is_none());
         }

@@ -393,7 +393,7 @@ impl BridgeGlue {
         }
         if let Some(stamp) = &effects.clear_current {
             // Only the exact submitted composition is cleared, never newer text.
-            if current_stamp(state).as_ref() == Some(stamp) {
+            if current_stamp(state).is_some_and(|current| stamp.same_composition(&current)) {
                 state.message_editor.reset();
             }
         }

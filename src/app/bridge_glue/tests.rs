@@ -762,6 +762,36 @@ async fn newer_text_typed_while_pending_survives_the_success() {
     assert_eq!(exit, RuntimeExit::Shutdown);
 }
 
+/// REVIEW-13 LOW-3: switching rooms while a send is in flight still clears
+/// the sent text, so Enter in the new room cannot send it again.
+#[tokio::test]
+async fn a_room_switch_during_a_send_still_clears_the_sent_draft() {
+    let (runtime, mut glue, control, shared) = fixture(None);
+    let mut state = AppState::default();
+    let driver = async {
+        active_room_loaded(&mut glue, &mut state, &shared).await;
+        state.message_editor.reset_with_text("for room A".into());
+        submit(&mut glue, &mut state).await;
+        state.rooms_list.set_active_room_id(Some(ROOM_B.into()));
+        settle("sent", &mut glue, &mut state, |glue, _| {
+            glue.editor().status() == EditorWriteStatus::Ready
+        })
+        .await;
+        assert!(state.message_editor.is_empty(), "sent text cleared");
+        assert!(ids(&state, ROOM_A).contains(&"sent-1".to_owned()));
+        assert!(state
+            .message_editor
+            .draft(Some(&data::RoomId::new(ROOM_B)))
+            .is_some_and(
+                |draft| draft.body == crate::frontend::data::ComposedBody::PlainText(String::new())
+            ));
+        control.shutdown();
+    };
+    let (exit, ()) = tokio::join!(runtime.run(), driver);
+    assert_eq!(exit, RuntimeExit::Shutdown);
+    assert_eq!(shared.writes.load(Ordering::SeqCst), 1);
+}
+
 #[tokio::test]
 async fn rejected_and_unknown_sends_keep_a_review_and_are_never_replayed() {
     for (reply, status) in [
