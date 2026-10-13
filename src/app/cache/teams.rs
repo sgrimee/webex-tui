@@ -4,7 +4,7 @@ use crate::frontend::data::TeamSnapshot;
 
 pub(crate) type TeamId = String;
 
-/// Frontend-neutral team cache; legacy transport values are projected in `bridge`.
+/// Frontend-neutral team cache, filled by the bridge glue (team names).
 #[derive(Default)]
 pub(crate) struct Teams {
     teams_by_id: HashMap<TeamId, TeamSnapshot>,

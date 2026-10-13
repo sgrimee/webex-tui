@@ -9,10 +9,8 @@ pub(crate) mod actions;
 mod bridge_app;
 #[allow(dead_code)]
 pub(crate) mod bridge_glue;
-// The legacy (Teams-fed) cache half is removed in E2.
-#[allow(dead_code)]
 pub(crate) mod cache;
-mod legacy_projection;
+mod dump;
 pub(crate) mod message_editor;
 pub(crate) mod messages_list;
 pub(crate) mod rooms_list;
@@ -567,7 +565,7 @@ impl App<'_> {
             .state
             .cache
             .messages_in_room(&room.id)
-            .map(crate::app::legacy_projection::MessageDumpView::from)
+            .map(crate::app::dump::MessageDumpView::from)
             .collect();
         serde_json::to_writer_pretty(file, &messages)?;
         Ok(())

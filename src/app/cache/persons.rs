@@ -4,7 +4,7 @@ use crate::frontend::data::PersonSnapshot;
 
 pub(crate) type PersonId = String;
 
-/// Frontend-neutral person cache; legacy transport values are projected in `bridge`.
+/// Frontend-neutral person cache, filled by the bridge glue (senders).
 #[derive(Default)]
 pub(crate) struct Persons {
     by_id: HashMap<PersonId, PersonSnapshot>,

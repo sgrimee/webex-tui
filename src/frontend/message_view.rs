@@ -1,7 +1,6 @@
 //! Canonical, disposable per-room message view for the bridge-backed frontend.
 //!
-//! Dormant: nothing in App/main installs bridge data here yet, and the legacy
-//! `app::cache` (with its legacy-only parent repair) is untouched until cutover.
+//! `app::cache` holds one per loaded room; the bridge glue fills it.
 //!
 //! Rules, all enforced before any mutation so a refused input changes nothing:
 //! - Every snapshot must belong to this room, carry valid opaque IDs and a

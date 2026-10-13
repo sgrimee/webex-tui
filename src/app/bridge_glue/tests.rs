@@ -1276,7 +1276,7 @@ mod manual {
     async fn a_reply_to_a_deleted_thread_root_is_refused_without_sending() {
         let mut m = manual();
         let room = ROOM_A.to_owned();
-        let view = m.state.cache.canonical_view_mut(&room).unwrap();
+        let view = m.state.cache.canonical_view_mut(&room);
         view.tombstone(&data::RoomId::new(ROOM_A), &MessageId::new("root"), None)
             .unwrap();
         let reply = data::MessageSnapshot {

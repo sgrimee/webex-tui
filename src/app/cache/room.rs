@@ -64,11 +64,6 @@ impl Room {
     pub(crate) fn has_activity_since(&self, duration: Duration) -> bool {
         self.last_activity > Utc::now() - duration
     }
-    pub(crate) fn update_last_activity(&mut self, time: DateTime<Utc>) {
-        if time > self.last_activity {
-            self.last_activity = time
-        }
-    }
 }
 #[cfg(test)]
 mod tests {

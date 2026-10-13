@@ -527,7 +527,7 @@ mod tests {
             }),
             attachment_count: None,
         };
-        let view = state.cache.canonical_view_mut(&room_id).unwrap();
+        let view = state.cache.canonical_view_mut(&room_id);
         view.upsert(&snapshot("root", None, 1)).unwrap();
         view.upsert(&snapshot("reply", Some("root"), 2)).unwrap();
         view.upsert(&snapshot("orphan", Some("unloaded"), 3))

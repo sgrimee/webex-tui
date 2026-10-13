@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use super::room::{Room, RoomId};
 use super::room_list_filter::RoomsListFilter;
 
@@ -9,24 +7,12 @@ use log::*;
 pub(crate) struct Rooms {
     /// RoomInfo sorted by last activity.
     sorted_rooms: Vec<Room>,
-    /// Set of rooms for which we requested room info.
-    requested_rooms: HashSet<RoomId>,
 }
 
 impl Rooms {
-    /// Returns a mutable reference to the room for given id, if found.
-    pub(crate) fn room_with_id_mut(&mut self, id: &RoomId) -> Option<&mut Room> {
-        self.sorted_rooms.iter_mut().find(|room| room.id == *id)
-    }
-
     /// Returns a reference to the room for given id, if found.
     pub(crate) fn room_with_id(&self, id: &RoomId) -> Option<&Room> {
         self.sorted_rooms.iter().find(|room| room.id == *id)
-    }
-
-    /// Adds a `RoomId` to the set of requested room
-    pub(crate) fn add_requested(&mut self, room_id: RoomId) {
-        self.requested_rooms.insert(room_id);
     }
 
     /// Adds or updates a `Room` in the store. If the room already exists, it is updated.
@@ -40,8 +26,6 @@ impl Rooms {
             // Remove the room from the store
             self.sorted_rooms.remove(index);
         }
-        // The room is being added, remove it from the requested list
-        self.requested_rooms.remove(&room.id);
         // Add it (back) at the correct position
         self.add_room_sorted(room);
     }
@@ -53,19 +37,6 @@ impl Rooms {
             .sorted_rooms
             .partition_point(|r| r.last_activity > room.last_activity);
         self.sorted_rooms.insert(pos, room);
-    }
-
-    /// Adjusts the position of the room in the list based in timestamp
-    pub(crate) fn reposition_room(&mut self, room_id: &str) {
-        if let Some(index) = self.sorted_rooms.iter().position(|r| r.id == room_id) {
-            let room = self.sorted_rooms.remove(index);
-            self.add_room_sorted(room);
-        }
-    }
-
-    /// Returns whether the room is already present, or if it has already been requested.
-    pub(crate) fn room_exists_or_requested(&self, id: &RoomId) -> bool {
-        self.sorted_rooms.iter().any(|room| room.id == *id) || self.requested_rooms.contains(id)
     }
 
     /// Mark a room as unread.
@@ -114,7 +85,6 @@ impl Rooms {
     pub(crate) fn remove_room(&mut self, id: &RoomId) {
         debug!("Removing room {id}");
         self.sorted_rooms.retain(|room| room.id != *id);
-        self.requested_rooms.remove(id);
     }
 
     /// Returns a reference to the sorted rooms list
@@ -199,20 +169,6 @@ mod tests {
     }
 
     #[test]
-    fn test_room_exists_or_requested() {
-        let mut rooms = Rooms::default();
-        let room1 = Room {
-            id: String::from("1") as RoomId,
-            ..Default::default()
-        };
-        rooms.update_with_room(&room1);
-        rooms.add_requested(String::from("2") as RoomId);
-        assert!(rooms.room_exists_or_requested(&String::from("1") as &RoomId));
-        assert!(rooms.room_exists_or_requested(&String::from("2") as &RoomId));
-        assert!(!rooms.room_exists_or_requested(&String::from("3") as &RoomId));
-    }
-
-    #[test]
     fn test_remove_room() {
         let mut rooms = Rooms::default();
         let room1 = Room {
@@ -220,15 +176,12 @@ mod tests {
             ..Default::default()
         };
         rooms.update_with_room(&room1);
-        rooms.add_requested(String::from("2") as RoomId);
         assert_eq!(rooms.sorted_rooms.len(), 1);
-        assert_eq!(rooms.requested_rooms.len(), 1);
         rooms.remove_room(&String::from("1") as &RoomId);
         assert_eq!(rooms.sorted_rooms.len(), 0);
-        assert_eq!(rooms.requested_rooms.len(), 1);
+        // Removing an unknown room is a no-op.
         rooms.remove_room(&String::from("2") as &RoomId);
         assert_eq!(rooms.sorted_rooms.len(), 0);
-        assert_eq!(rooms.requested_rooms.len(), 0);
     }
 
     #[test]

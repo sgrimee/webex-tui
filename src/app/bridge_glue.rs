@@ -460,9 +460,8 @@ impl BridgeGlue {
         if state.cache.canonical_view(room).is_some() {
             return;
         }
-        if state.cache.canonical_view_mut(room).is_some() {
-            self.request_newest(room);
-        }
+        state.cache.canonical_view_mut(room);
+        self.request_newest(room);
     }
 
     /// Explicit user action: load the page before the oldest loaded one.
@@ -551,9 +550,10 @@ impl BridgeGlue {
     fn install_snapshot(&mut self, state: &mut AppState, snapshot: BridgeSnapshot) {
         log::info!("bridge snapshot installed ({} rooms)", snapshot.rooms.len());
         for room in state.cache.canonical_rooms() {
-            if let Some(view) = state.cache.canonical_view_mut(&room) {
-                view.reset_for_new_instance();
-            }
+            state
+                .cache
+                .canonical_view_mut(&room)
+                .reset_for_new_instance();
             *self.generations.entry(room.clone()).or_insert(0) += 1;
             self.cursors.remove(&room);
         }
@@ -907,8 +907,7 @@ fn current_stamp(state: &AppState) -> Option<DraftStamp> {
 }
 
 fn loaded_view<'a>(state: &'a mut AppState, room: &RoomId) -> Option<&'a mut RoomMessageView> {
-    state.cache.canonical_view(room)?;
-    state.cache.canonical_view_mut(room)
+    state.cache.loaded_view_mut(room)
 }
 
 fn page_room(purpose: &Purpose) -> Option<&RoomId> {

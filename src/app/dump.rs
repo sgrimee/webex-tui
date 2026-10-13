@@ -1,7 +1,5 @@
-//! Read-only views of frontend-owned cache snapshots.
-//!
-//! The former direct-Webex adapter has moved to `bridge::legacy`; this module
-//! keeps existing app rendering call sites on a neutral presentation view.
+//! Read-only views of cache snapshots: the rendering presentation and the
+//! neutral JSON dump of a room (the `D` action).
 
 use crate::frontend::{
     data::{MessageSnapshot, MessageStatus, OwnedMessageBody},
@@ -14,7 +12,7 @@ impl<'a> From<&'a MessageSnapshot> for MessagePresentation<'a> {
     }
 }
 
-/// Neutral JSON-shaped dump view retained while the legacy UI action exists.
+/// Neutral JSON dump of one message (metadata and body forms only).
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct MessageDumpView<'a> {
