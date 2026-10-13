@@ -96,7 +96,7 @@ fn invalid_room_identity_or_revision_is_refused_without_mutation() {
         assert!(state(&v) == before);
     }
     assert_eq!(
-        v.tombstone(&MessageId::new("bad\u{7}"), None),
+        v.tombstone(&RoomId::new(ROOM), &MessageId::new("bad\u{7}"), None),
         Err(ViewError::Identity)
     );
     assert!(state(&v) == before);
@@ -178,7 +178,7 @@ fn tombstone_beats_late_success_stale_page_and_higher_active_revision() {
     let mut v = view();
     v.upsert(&msg("a", None, at(1), 4)).unwrap();
     assert_eq!(
-        v.tombstone(&MessageId::new("a"), Some(2)),
+        v.tombstone(&RoomId::new(ROOM), &MessageId::new("a"), Some(2)),
         Ok(UpsertOutcome::Tombstoned)
     );
     let stored = v.get(&MessageId::new("a")).unwrap();
@@ -194,7 +194,7 @@ fn tombstone_beats_late_success_stale_page_and_higher_active_revision() {
     assert!(text(&v, "a").is_none());
     assert!(v.is_empty()); // deleted leaf is hidden
     assert_eq!(
-        v.tombstone(&MessageId::new("a"), None),
+        v.tombstone(&RoomId::new(ROOM), &MessageId::new("a"), None),
         Ok(UpsertOutcome::Unchanged)
     );
 }
@@ -238,7 +238,7 @@ fn deleted_snapshot_purges_body_and_keeps_max_revision() {
 fn unknown_id_tombstone_fences_later_inserts_and_survives_resync_clear() {
     let mut v = view();
     assert_eq!(
-        v.tombstone(&MessageId::new("ghost"), None),
+        v.tombstone(&RoomId::new(ROOM), &MessageId::new("ghost"), None),
         Ok(UpsertOutcome::Tombstoned)
     );
     assert!(v.get(&MessageId::new("ghost")).is_none()); // nothing fabricated
@@ -266,13 +266,15 @@ fn deleted_root_placeholder_only_while_replies_survive() {
     v.upsert(&msg("root", None, at(1), 0)).unwrap();
     v.upsert(&msg("r1", Some("root"), at(2), 0)).unwrap();
     v.upsert(&msg("r2", Some("root"), at(3), 0)).unwrap();
-    v.tombstone(&MessageId::new("root"), None).unwrap();
+    v.tombstone(&RoomId::new(ROOM), &MessageId::new("root"), None)
+        .unwrap();
     assert_eq!(ids(&v), ["deleted:root", "r1", "r2"]);
     let Some(ViewRow::DeletedRoot(root)) = v.row(0) else {
         panic!("deleted root placeholder")
     };
     assert!(root.presentation().body.text.is_none());
-    v.tombstone(&MessageId::new("r1"), None).unwrap();
+    v.tombstone(&RoomId::new(ROOM), &MessageId::new("r1"), None)
+        .unwrap();
     assert_eq!(ids(&v), ["deleted:root", "r2"]);
     v.upsert(&deleted("r2", Some("root"), at(3), 1)).unwrap();
     assert!(v.is_empty());
@@ -505,7 +507,8 @@ fn reinsert_after_resync_clear_is_restored_not_inserted() {
 fn deleted_snapshot_for_fenced_unloaded_root_rebuilds_placeholder() {
     let mut v = view();
     // ID-only delete before the root was ever loaded, then a surviving reply.
-    v.tombstone(&MessageId::new("root"), None).unwrap();
+    v.tombstone(&RoomId::new(ROOM), &MessageId::new("root"), None)
+        .unwrap();
     v.upsert(&msg("reply", Some("root"), at(2), 0)).unwrap();
     assert_eq!(ids(&v), ["missing:root", "reply"]);
     // The canonical deleted snapshot arrives later (e.g. thread parent read).
@@ -615,4 +618,18 @@ fn thread_page_parent_must_be_a_root_and_replies_must_name_it() {
     };
     assert_eq!(v.apply_thread_page(&wrong_reply), Err(ViewError::Identity));
     assert!(v.is_empty() && v.messages.is_empty());
+}
+
+#[test]
+fn id_only_tombstone_for_another_room_is_refused_without_mutation() {
+    let mut v = view();
+    v.upsert(&msg("a", None, at(1), 0)).unwrap();
+    let before = state(&v);
+    assert_eq!(
+        v.tombstone(&RoomId::new("room/b"), &MessageId::new("a"), Some(9)),
+        Err(ViewError::Room)
+    );
+    assert!(state(&v) == before);
+    assert!(!v.is_tombstoned(&MessageId::new("a")));
+    assert_eq!(text(&v, "a").as_deref(), Some("a r0"));
 }

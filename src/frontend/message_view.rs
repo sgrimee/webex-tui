@@ -178,13 +178,19 @@ impl RoomMessageView {
         Ok(outcome)
     }
 
-    /// ID-only tombstone (confirmed delete or metadata-only delete event).
-    /// An unknown ID is still fenced; nothing is fabricated for display.
+    /// ID-only tombstone (confirmed delete or metadata-only delete event,
+    /// whose payload carries the room). An unknown ID is still fenced;
+    /// nothing is fabricated for display. A delete for another room is
+    /// refused without mutation.
     pub(crate) fn tombstone(
         &mut self,
+        room_id: &RoomId,
         id: &MessageId,
         revision: Option<u64>,
     ) -> Result<UpsertOutcome, ViewError> {
+        if *room_id != self.room_id {
+            return Err(ViewError::Room);
+        }
         if !valid_opaque_id(id.as_str()) {
             return Err(ViewError::Identity);
         }
