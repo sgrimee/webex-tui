@@ -490,12 +490,11 @@ impl<B: SessionBackend, C: SessionClock, H: PresentationHost> CommandWorker<B, C
     fn settle_interrupted_read(&mut self) {
         let interrupted = lock(&self.shared).reading.take();
         if let Some(request) = interrupted {
-            self.controller
-                .host_mut()
-                .deliver_read(ReadTerminal::Unavailable {
-                    context: request.context,
-                    reason: ReadUnavailable::Interrupted,
-                });
+            // Through self.deliver_read so its credit is released as well.
+            self.deliver_read(ReadTerminal::Unavailable {
+                context: request.context,
+                reason: ReadUnavailable::Interrupted,
+            });
         }
     }
 
@@ -514,12 +513,10 @@ impl<B: SessionBackend, C: SessionClock, H: PresentationHost> CommandWorker<B, C
         self.settle_interrupted_read();
         let unstarted: Vec<_> = lock(&self.shared).reads.drain(..).collect();
         for request in unstarted {
-            self.controller
-                .host_mut()
-                .deliver_read(ReadTerminal::Unavailable {
-                    context: request.context,
-                    reason: ReadUnavailable::Shutdown,
-                });
+            self.deliver_read(ReadTerminal::Unavailable {
+                context: request.context,
+                reason: ReadUnavailable::Shutdown,
+            });
         }
     }
 }

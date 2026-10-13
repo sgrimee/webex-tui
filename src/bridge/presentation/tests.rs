@@ -675,6 +675,9 @@ mod reads {
         }
         async fn room(&self, _: &str) -> Reply<dto::Room> {
             self.calls.fetch_add(1, Ordering::SeqCst);
+            if self.pending.load(Ordering::SeqCst) {
+                std::future::pending::<()>().await;
+            }
             inert()
         }
         async fn team(&self, _: &str) -> Reply<dto::Team> {
@@ -986,5 +989,59 @@ mod reads {
         assert_eq!(terminals[1].context(), &queued_context);
         assert_eq!(unavailable(&terminals[1]), Some(ReadUnavailable::Shutdown));
         assert_eq!(mailbox.try_read(room_read("late")), ReadAdmission::Closed);
+    }
+
+    /// Host that consumes terminals on delivery (no shared credits).
+    struct ImmediateHost(PumpHost<&'static str>);
+    impl PresentationHost for ImmediateHost {
+        type Snapshot = &'static str;
+        fn session_phase(&mut self, phase: SessionPhase) {
+            self.0.session_phase(phase);
+        }
+        fn lifecycle(&mut self, projection: &LifecycleProjection, effects: ProjectionEffects) {
+            self.0.lifecycle(projection, effects);
+        }
+        fn install_snapshot(&mut self, snapshot: &'static str) {
+            self.0.install_snapshot(snapshot);
+        }
+        fn deliver_read(&mut self, terminal: ReadTerminal) {
+            self.0.deliver_read(terminal);
+        }
+        fn snapshot_acknowledged(&self) -> bool {
+            self.0.snapshot_acknowledged()
+        }
+    }
+
+    #[tokio::test]
+    async fn interrupted_reads_release_credits_on_delivery_hosts() {
+        let reader = Reader::default();
+        let (host, _endpoint) = pump();
+        let (mailbox, mut worker) = CommandWorker::new(
+            SessionLifecycle::new(ReadBackend(reader.clone()), Clock(Instant::now())),
+            ImmediateHost(host),
+        );
+        let sub = worker.connect("synthetic-secret").await.unwrap();
+        worker
+            .frame(
+                sub,
+                UiLifecycleFrame::Control(LifecycleControl::Ready(marker())),
+            )
+            .unwrap();
+        let ticket = worker.begin_snapshot().await.unwrap();
+        worker.commit_snapshot(ticket, "snapshot").unwrap();
+        reader.pending.store(true, Ordering::SeqCst);
+        // 17 > READ_CAPACITY reads, each dropped mid-dispatch and settled as
+        // Interrupted by the next handle_read: no credit may leak.
+        for index in 0..=READ_CAPACITY {
+            assert_eq!(
+                mailbox.try_read(room_read(&format!("room-{index}"))),
+                ReadAdmission::Accepted,
+                "read {index}"
+            );
+            let mut handle = Box::pin(worker.handle_read());
+            assert!(poll_once(handle.as_mut()).is_pending());
+        }
+        worker.shutdown(); // settles the last interrupted read
+        assert_eq!(mailbox.try_read(room_read("after")), ReadAdmission::Closed);
     }
 }
