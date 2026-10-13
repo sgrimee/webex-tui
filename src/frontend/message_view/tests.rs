@@ -256,7 +256,7 @@ fn unknown_id_tombstone_fences_later_inserts_and_survives_resync_clear() {
     );
     assert_eq!(
         v.upsert(&msg("live", None, at(2), 0)),
-        Ok(UpsertOutcome::Inserted)
+        Ok(UpsertOutcome::Restored)
     );
 }
 
@@ -361,6 +361,7 @@ fn pages_validate_atomically_and_count_outcomes() {
         outcome,
         PageOutcome {
             inserted: 1,
+            restored: 0,
             revised: 1,
             tombstoned: 1,
             ignored: 1,
@@ -472,4 +473,30 @@ fn thread_pages_validate_atomically() {
         Err(ViewError::Identity)
     );
     assert!(other.is_empty() && other.tombstones.is_empty());
+}
+
+#[test]
+fn reinsert_after_resync_clear_is_restored_not_inserted() {
+    let mut v = view();
+    assert_eq!(
+        v.upsert(&msg("a", None, at(1), 1)),
+        Ok(UpsertOutcome::Inserted)
+    );
+    assert_eq!(v.clear_messages(), 1);
+    assert!(v.is_empty());
+    assert_eq!(
+        v.upsert(&msg("a", None, at(1), 1)),
+        Ok(UpsertOutcome::Restored)
+    );
+    assert_eq!(ids(&v), ["a"]);
+    v.clear_messages();
+    let outcome = v
+        .apply_page(&page(vec![
+            msg("a", None, at(1), 2),
+            msg("b", None, at(2), 0),
+        ]))
+        .unwrap();
+    assert_eq!(outcome.restored, 1);
+    assert_eq!(outcome.inserted, 1);
+    assert_eq!(ids(&v), ["a", "b"]);
 }

@@ -6,6 +6,9 @@
 //! Rules, all enforced before any mutation so a refused input changes nothing:
 //! - Every snapshot must belong to this room, carry valid opaque IDs and a
 //!   canonical daemon revision. Legacy (`revision: None`) data is refused.
+//! - Revisions are opaque, strictly increasing per message within one mirror
+//!   instance (bridge mirror-wide counter): only compare them; never assume 0
+//!   means created or +1 steps. Use `updated_at` for "edited".
 //! - Messages are keyed by ID. An older revision never replaces a newer one;
 //!   an equal revision is an idempotent duplicate (API result, write echo or
 //!   SSE refetch). A newer revision replaces the stored snapshot wholesale,
@@ -33,12 +36,17 @@ use super::{
 use std::collections::{HashMap, HashSet};
 use webex_bridge::threads::{group, ThreadMessage};
 
-/// Result of applying one canonical snapshot. Only `Inserted` of an active
-/// message is new activity; callers must not mark unread for anything else.
+/// Result of applying one canonical snapshot. No outcome is an activity or
+/// unread signal by itself: history and thread pages are never activity, and
+/// unread must come only from SSE `message.created` compared with a read
+/// watermark. `Inserted` vs `Restored` only says whether this view has seen
+/// the ID before (across resync clears).
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum UpsertOutcome {
-    /// First active snapshot for this ID.
+    /// First active snapshot this view has ever held for this ID.
     Inserted,
+    /// Active snapshot for an ID previously held and cleared by a resync.
+    Restored,
     /// Newer active revision replaced the stored snapshot.
     Revised,
     /// Message is now (or was first seen as) a tombstone.
@@ -65,6 +73,7 @@ pub(crate) enum ViewError {
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(crate) struct PageOutcome {
     pub(crate) inserted: usize,
+    pub(crate) restored: usize,
     pub(crate) revised: usize,
     pub(crate) tombstoned: usize,
     pub(crate) ignored: usize,
@@ -101,6 +110,9 @@ pub(crate) struct RoomMessageView {
     /// Deleted IDs, including ones never loaded, so no late active snapshot
     /// can resurrect them. Survives `clear_messages` for room resync.
     tombstones: HashSet<MessageId>,
+    /// Every ID ever held active; also survives `clear_messages`, so a
+    /// re-fetch after resync is `Restored`, not `Inserted`.
+    seen: HashSet<MessageId>,
     rows: Vec<RowKey>,
 }
 
@@ -110,6 +122,7 @@ impl RoomMessageView {
             room_id,
             messages: HashMap::new(),
             tombstones: HashSet::new(),
+            seen: HashSet::new(),
             rows: Vec::new(),
         }
     }
@@ -224,6 +237,7 @@ impl RoomMessageView {
         for snapshot in snapshots {
             match self.apply(snapshot) {
                 UpsertOutcome::Inserted => outcome.inserted += 1,
+                UpsertOutcome::Restored => outcome.restored += 1,
                 UpsertOutcome::Revised => outcome.revised += 1,
                 UpsertOutcome::Tombstoned => outcome.tombstoned += 1,
                 UpsertOutcome::Unchanged | UpsertOutcome::Stale | UpsertOutcome::Fenced => {
@@ -231,13 +245,17 @@ impl RoomMessageView {
                 }
             }
         }
-        if outcome.inserted + outcome.revised + outcome.tombstoned > 0 {
+        if outcome.inserted + outcome.restored + outcome.revised + outcome.tombstoned > 0 {
             self.rebuild();
         }
         Ok(outcome)
     }
 
-    /// Drop loaded messages for a room resync; tombstone fences are retained.
+    /// Drop loaded messages for a room resync; tombstone fences and the seen
+    /// set are retained. Revisions are only comparable within one daemon
+    /// mirror instance: on ANY continuity instance change the App must use a
+    /// fresh view (or clear and drop pre-clear in-flight pages) before
+    /// applying new data.
     pub(crate) fn clear_messages(&mut self) -> usize {
         let count = self.messages.len();
         self.messages.clear();
@@ -274,7 +292,11 @@ impl RoomMessageView {
         match self.messages.get(&snapshot.id) {
             None => {
                 self.messages.insert(snapshot.id.clone(), snapshot.clone());
-                UpsertOutcome::Inserted
+                if self.seen.insert(snapshot.id.clone()) {
+                    UpsertOutcome::Inserted
+                } else {
+                    UpsertOutcome::Restored
+                }
             }
             Some(stored) => match snapshot.revision.cmp(&stored.revision) {
                 std::cmp::Ordering::Less => UpsertOutcome::Stale,
@@ -387,7 +409,10 @@ impl RoomMessageView {
 fn changed(outcome: UpsertOutcome) -> bool {
     matches!(
         outcome,
-        UpsertOutcome::Inserted | UpsertOutcome::Revised | UpsertOutcome::Tombstoned
+        UpsertOutcome::Inserted
+            | UpsertOutcome::Restored
+            | UpsertOutcome::Revised
+            | UpsertOutcome::Tombstoned
     )
 }
 
