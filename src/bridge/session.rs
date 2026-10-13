@@ -279,7 +279,9 @@ impl SessionBackend for BridgeSessionBackend {
     }
     async fn logout(&mut self, client: &UiClient) {
         // 204, 401 (already gone) and 404/405 (older daemon) are all fine.
-        let _ = client.logout().await;
+        if let Err(error) = client.logout().await {
+            log_logout_refusal(&error);
+        }
     }
     fn lease_ttl(client: &UiClient) -> u64 {
         client.lease_ttl()
@@ -291,6 +293,18 @@ impl SessionBackend for BridgeSessionBackend {
         UiSnapshotReader {
             client: client.clone(),
         }
+    }
+}
+
+/// A 403 on logout (another process's token, an agent bearer) leaves the
+/// token alive until expiry: worth a metadata-only debug line.
+fn log_logout_refusal(error: &ClientError) -> bool {
+    match error {
+        ClientError::Api { status, code, .. } if status.as_u16() == 403 => {
+            log::debug!("bridge logout refused: {} {code}", status.as_u16());
+            true
+        }
+        _ => false,
     }
 }
 

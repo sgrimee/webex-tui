@@ -44,6 +44,8 @@ tui-textarea = "0.7"
 keyring = { version = "3.6.3", features = ["apple-native"] }
 
 [dev-dependencies]
+# Paused-clock tests (tokio::time::pause).
+tokio = { version = "1.43.1", features = ["test-util"] }
 # StatusCode for synthetic bridge ClientError values in tests.
 http = "1"
 rstest = "0.26.1"

@@ -426,19 +426,46 @@ async fn a_normal_quit_logs_the_session_out_once() {
     assert_eq!(f.shared.logouts.load(Ordering::SeqCst), 1);
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_hung_logout_never_holds_the_quit_past_its_bound() {
     let (runtime, f) = fixture();
     f.shared.logout_pending.store(true, Ordering::SeqCst);
+    let mut shutdown_at = None;
     let driver = async {
         connect_and_install(&f, 1).await;
+        shutdown_at = Some(tokio::time::Instant::now());
         f.control.shutdown();
     };
-    let started = tokio::time::Instant::now();
     let (exit, ()) = tokio::join!(runtime.run(), driver);
     assert_eq!(exit, RuntimeExit::Shutdown);
     assert_eq!(f.shared.logouts.load(Ordering::SeqCst), 1);
-    assert!(started.elapsed() < LOGOUT_DEADLINE + Duration::from_secs(2));
+    // Paused clock: the quit waited for exactly the logout bound.
+    let waited = shutdown_at.unwrap().elapsed();
+    assert!(waited >= LOGOUT_DEADLINE, "{waited:?}");
+    assert!(
+        waited < LOGOUT_DEADLINE + Duration::from_millis(100),
+        "{waited:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_terminal_exit_with_an_active_session_makes_no_logout_call() {
+    let (runtime, f) = fixture();
+    let driver = async {
+        connect_and_install(&f, 1).await;
+        f.shared
+            .renew_replies
+            .lock()
+            .unwrap()
+            .push_back(Err(RenewFailure::PairingRemoved));
+        f.clock.advance(85);
+    };
+    let (exit, ()) = tokio::join!(runtime.run(), driver);
+    assert_eq!(
+        exit,
+        RuntimeExit::PairingRequired(SessionFailure::AuthRequired)
+    );
+    assert_eq!(f.shared.logouts.load(Ordering::SeqCst), 0);
 }
 
 #[tokio::test]

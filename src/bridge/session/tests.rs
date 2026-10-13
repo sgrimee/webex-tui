@@ -1054,3 +1054,21 @@ async fn cancelled_connect_reserves_epoch_and_never_leaves_old_handles_exposed()
     let replacement = owner.connect(SECRET).await.unwrap();
     assert_eq!(replacement.0, old.0 + 2);
 }
+
+#[test]
+fn only_a_403_logout_is_worth_a_debug_line() {
+    let api = |status: u16, code: &str| ClientError::Api {
+        status: status.try_into().unwrap(),
+        code: code.into(),
+        message: "synthetic".into(),
+    };
+    assert!(super::log_logout_refusal(&api(403, "forbidden_peer")));
+    assert!(super::log_logout_refusal(&api(403, "forbidden_scope")));
+    for quiet in [
+        api(401, "auth_required"),
+        api(404, "not_found"),
+        api(405, "method_not_allowed"),
+    ] {
+        assert!(!super::log_logout_refusal(&quiet));
+    }
+}
