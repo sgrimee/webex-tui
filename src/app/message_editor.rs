@@ -67,6 +67,29 @@ impl MessageEditor<'_> {
         self.advance();
     }
 
+    /// Start editing `message`: pre-fill the editor with the same source form
+    /// that `draft()` will send. A message with a Markdown form is edited as
+    /// its Markdown source and sent back as Markdown; otherwise its plain copy
+    /// text is edited and sent as plain text. (Pre-filling the rendered text
+    /// of a Markdown message and sending it as Markdown would reinterpret it,
+    /// e.g. `snake_case_name` turning into italics.)
+    pub(crate) fn start_editing(&mut self, message: MessageSnapshot) -> color_eyre::Result<()> {
+        let text = match markdown_source(&message) {
+            Some(markdown) => markdown.to_owned(),
+            None => message.presentation().body.copy_text()?,
+        };
+        self.reset_with_text(text);
+        self.set_editing_of(Some(message));
+        Ok(())
+    }
+
+    /// Whether the current edit is sent as Markdown (see `start_editing`).
+    pub(crate) fn edits_markdown(&self) -> bool {
+        self.editing_of
+            .as_ref()
+            .is_some_and(|edited| markdown_source(edited).is_some())
+    }
+
     #[allow(dead_code)] // dormant bridge write glue
     pub(crate) fn revision(&self) -> DraftRevision {
         self.revision
@@ -88,13 +111,7 @@ impl MessageEditor<'_> {
     pub(crate) fn draft(&self, active_room: Option<&RoomId>) -> Option<DraftSnapshot> {
         let text = self.lines().join("\n");
         let (target, markdown) = if let Some(edited) = &self.editing_of {
-            let markdown = matches!(
-                &edited.body,
-                Some(OwnedMessageBody::Forms {
-                    markdown: Some(_),
-                    ..
-                })
-            );
+            let markdown = self.edits_markdown();
             (
                 DraftTarget::Edit {
                     room_id: edited.room_id.clone(),
@@ -134,6 +151,18 @@ impl MessageEditor<'_> {
         })
     }
 }
+/// Markdown source of an active message, if it has one. Legacy-unknown
+/// bodies never qualify: their provenance cannot prove Markdown.
+fn markdown_source(message: &MessageSnapshot) -> Option<&str> {
+    match &message.body {
+        Some(OwnedMessageBody::Forms {
+            markdown: Some(markdown),
+            ..
+        }) if message.status == crate::frontend::data::MessageStatus::Active => Some(markdown),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -213,16 +242,20 @@ mod tests {
                 }
         );
 
-        // Edits keep a known Markdown format; unknown legacy becomes plain.
+        // Edits keep a known Markdown format and pre-fill its Markdown source,
+        // never the rendered text (REVIEW-13 LOW-2: `snake_case_name` must
+        // not be edited as text and re-sent as Markdown italics).
         let mut edited = message(MessageStatus::Active);
         edited.room_id = RoomId::new("edited-room");
         edited.body = Some(OwnedMessageBody::Forms {
-            text: None,
-            markdown: Some("**old**".into()),
+            text: Some("old snake case name".into()),
+            markdown: Some("**old** `snake_case_name`".into()),
             html: None,
         });
         e.set_response_to(None);
-        e.set_editing_of(Some(edited.clone()));
+        e.start_editing(edited.clone()).unwrap();
+        assert_eq!(e.lines(), ["**old** `snake_case_name`"]);
+        assert!(e.edits_markdown());
         let draft = e.draft(Some(&active)).unwrap();
         assert!(
             draft.stamp.target
@@ -231,9 +264,26 @@ mod tests {
                     message_id: MessageId::new("m"),
                 }
         );
-        assert!(matches!(draft.body, ComposedBody::Markdown(_)));
+        assert!(draft.body == ComposedBody::Markdown("**old** `snake_case_name`".into()));
+
+        // A plain-text message is edited and sent as its plain text.
+        edited.body = Some(OwnedMessageBody::Forms {
+            text: Some("snake_case_name".into()),
+            markdown: None,
+            html: None,
+        });
+        e.start_editing(edited.clone()).unwrap();
+        assert_eq!(e.lines(), ["snake_case_name"]);
+        assert!(!e.edits_markdown());
+        assert!(
+            e.draft(Some(&active)).unwrap().body
+                == ComposedBody::PlainText("snake_case_name".into())
+        );
+
+        // Unknown legacy provenance is edited and sent as plain text.
         edited.body = Some(OwnedMessageBody::LegacyUnknown("old".into()));
-        e.set_editing_of(Some(edited));
+        e.start_editing(edited).unwrap();
+        assert_eq!(e.lines(), ["old"]);
         assert!(matches!(
             e.draft(Some(&active)).unwrap().body,
             ComposedBody::PlainText(_)

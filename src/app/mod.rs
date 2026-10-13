@@ -432,7 +432,12 @@ impl App<'_> {
             let intent = crate::frontend::envelopes::FrontendIntent::EditMessage {
                 message_id: crate::frontend::data::MessageId::new(msg_id),
                 room_id: crate::frontend::data::RoomId::new(room.id.clone()),
-                body: crate::frontend::data::ComposedBody::PlainText(lines.join("\n")),
+                // Same format as the pre-filled source (see `start_editing`).
+                body: if self.state.message_editor.edits_markdown() {
+                    crate::frontend::data::ComposedBody::Markdown(lines.join("\n"))
+                } else {
+                    crate::frontend::data::ComposedBody::PlainText(lines.join("\n"))
+                },
             };
             self.dispatch_to_teams(AppCmdEvent::EditMessage(intent), &Priority::High);
         } else {
@@ -542,10 +547,7 @@ impl App<'_> {
         {
             return Err(eyre!("Cannot edit message, it was not authored by self"));
         }
-        let text = MessagePresentation::from(&message).body.copy_text()?;
-        self.state.message_editor.reset_with_text(text);
-        self.state.message_editor.set_editing_of(Some(message));
-        Ok(())
+        self.state.message_editor.start_editing(message)
     }
 
     /// Retrieves the latest messages in the room, only if it is empty
