@@ -1015,11 +1015,7 @@ async fn corrupt_secret_at_renewal_or_reconnect_exits() {
             }
         };
         let (exit, ()) = tokio::join!(runtime.run(), driver);
-        assert_eq!(
-            exit,
-            RuntimeExit::SecretUnavailable,
-            "reconnect={reconnect}"
-        );
+        assert_eq!(exit, RuntimeExit::SecretCorrupt, "reconnect={reconnect}");
         assert_eq!(f.secrets.loads.load(Ordering::SeqCst), 2, "no retry");
     }
 }

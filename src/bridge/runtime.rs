@@ -110,10 +110,12 @@ pub(crate) enum RuntimeExit {
     /// The daemon refused the pairing secret itself; explicit re-pairing is
     /// a user decision outside this loop.
     PairingRequired(SessionFailure),
-    /// The TUI secret store denied access, no longer holds the secret, or
-    /// holds a malformed (corrupt) one. Transient store unavailability is
-    /// retried with backoff instead.
+    /// The TUI secret store denied access or no longer holds the secret.
+    /// Transient store unavailability is retried with backoff instead.
     SecretUnavailable,
+    /// The stored secret is malformed. Permanent and never overwritten: the
+    /// user removes the Keychain item and re-pairs.
+    SecretCorrupt,
 }
 
 /// App-side control: wake after submit/ack, or request shutdown. Cloneable,
@@ -432,9 +434,10 @@ where
                 self.renew_retry_at = Some(now + backoff(&self.config, self.renew_attempts));
                 return None;
             }
-            Ok(None) | Err(SecretStoreFailure::Denied | SecretStoreFailure::Corrupt) => {
+            Ok(None) | Err(SecretStoreFailure::Denied) => {
                 return Some(RuntimeExit::SecretUnavailable)
             }
+            Err(SecretStoreFailure::Corrupt) => return Some(RuntimeExit::SecretCorrupt),
         };
         let stop = stopped(Arc::clone(&self.stop), Arc::clone(&self.stop_notify));
         let renewed = tokio::select! {
@@ -475,9 +478,10 @@ where
             Ok(Some(secret)) => secret,
             // Transient: the next attempt follows the (already advanced) backoff.
             Err(SecretStoreFailure::Unavailable) => return None,
-            Ok(None) | Err(SecretStoreFailure::Denied | SecretStoreFailure::Corrupt) => {
+            Ok(None) | Err(SecretStoreFailure::Denied) => {
                 return Some(RuntimeExit::SecretUnavailable)
             }
+            Err(SecretStoreFailure::Corrupt) => return Some(RuntimeExit::SecretCorrupt),
         };
         let stop = stopped(Arc::clone(&self.stop), Arc::clone(&self.stop_notify));
         let connected = tokio::select! {
