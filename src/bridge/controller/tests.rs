@@ -128,7 +128,12 @@ struct Host {
 }
 impl PresentationHost for Host {
     type Snapshot = String;
-    fn deliver_read(&mut self, _: crate::bridge::read_dispatch::ReadTerminal) {}
+    fn deliver_read(
+        &mut self,
+        _: crate::bridge::read_dispatch::ReadTerminal,
+        _: Option<crate::bridge::presentation::InstallId>,
+    ) {
+    }
     fn session_phase(&mut self, phase: SessionPhase) {
         self.phases.push(phase);
     }

@@ -6,6 +6,7 @@
 
 use super::{
     events::project_ui_event,
+    presentation::InstallId,
     read_dispatch::{ReadCredits, ReadTerminal},
     session::{
         FrameAction, LeaseAction, SessionBackend, SessionClock, SessionFailure, SessionLifecycle,
@@ -35,9 +36,15 @@ pub(crate) trait PresentationHost {
     fn snapshot_acknowledged(&self) -> bool {
         true
     }
+    /// Generation of the latest installed snapshot, if the host tracks one.
+    /// The worker captures it when a read is dequeued.
+    fn current_install(&self) -> Option<InstallId> {
+        None
+    }
     /// Exactly one terminal per admitted read, in production order with the
-    /// other presentation events. Required: a host must never drop reads.
-    fn deliver_read(&mut self, terminal: ReadTerminal);
+    /// other presentation events, tagged with the install generation captured
+    /// at dequeue. Required: a host must never drop reads.
+    fn deliver_read(&mut self, terminal: ReadTerminal, install: Option<InstallId>);
     /// A host whose consumer drains terminals later returns the shared budget
     /// it releases on drain. `None` means terminals are consumed on delivery.
     fn read_credits(&self) -> Option<ReadCredits> {

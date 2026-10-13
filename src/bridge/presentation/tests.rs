@@ -400,7 +400,8 @@ fn read_from_an_older_install_is_settled_stale_never_applied() {
             Vec::new(),
         )))
         .unwrap();
-    host.deliver_read(ReadTerminal::Result(Box::new(result)));
+    let install = host.current_install();
+    host.deliver_read(ReadTerminal::Result(Box::new(result)), install);
     host.install_snapshot(2); // newer snapshot before the App drained the read
     let events = endpoint.drain(usize::MAX);
     assert_eq!(kinds(&events), ["read", "snapshot"]);
@@ -1004,8 +1005,11 @@ mod reads {
         fn install_snapshot(&mut self, snapshot: &'static str) {
             self.0.install_snapshot(snapshot);
         }
-        fn deliver_read(&mut self, terminal: ReadTerminal) {
-            self.0.deliver_read(terminal);
+        fn current_install(&self) -> Option<InstallId> {
+            self.0.current_install()
+        }
+        fn deliver_read(&mut self, terminal: ReadTerminal, install: Option<InstallId>) {
+            self.0.deliver_read(terminal, install);
         }
         fn snapshot_acknowledged(&self) -> bool {
             self.0.snapshot_acknowledged()
@@ -1043,5 +1047,40 @@ mod reads {
         }
         worker.shutdown(); // settles the last interrupted read
         assert_eq!(mailbox.try_read(room_read("after")), ReadAdmission::Closed);
+    }
+
+    #[tokio::test]
+    async fn read_generation_is_captured_at_dequeue_not_delivery() {
+        let mut f = fixture();
+        active(&mut f).await; // install 1
+        f.reader.pending.store(true, Ordering::SeqCst);
+        let r = rooms();
+        let context = r.context.clone();
+        assert_eq!(f.mailbox.try_read(r), ReadAdmission::Accepted);
+        {
+            let mut handle = Box::pin(f.worker.handle_read());
+            assert!(poll_once(handle.as_mut()).is_pending());
+        } // dequeued under install 1, then interrupted
+          // A lag resync installs snapshot 2 before the read is settled.
+        let sub = f.worker.subscription().unwrap();
+        f.worker
+            .frame(
+                sub,
+                UiLifecycleFrame::Control(LifecycleControl::ResyncRequired {
+                    boundary: marker(),
+                    scope: ChangeScope::WholeMirror,
+                    reason: ResyncReason::EventLag,
+                }),
+            )
+            .unwrap();
+        let ticket = f.worker.begin_snapshot().await.unwrap();
+        f.worker.commit_snapshot(ticket, "second").unwrap();
+        assert!(!f.worker.handle_read().await);
+        // Tagged with install 1 at dequeue, so it drains as Stale rather than
+        // looking current under install 2.
+        let terminals = reads_of(f.endpoint.drain(usize::MAX));
+        assert_eq!(terminals.len(), 1);
+        assert_eq!(terminals[0].context(), &context);
+        assert_eq!(unavailable(&terminals[0]), Some(ReadUnavailable::Stale));
     }
 }

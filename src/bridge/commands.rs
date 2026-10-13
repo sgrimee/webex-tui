@@ -19,6 +19,7 @@
 
 use super::{
     controller::{HostController, PresentationHost},
+    presentation::InstallId,
     read_dispatch::{validate as validate_read, ReadCredits, ReadTerminal, ReadUnavailable},
     session::{
         FrameAction, LeaseAction, SessionBackend, SessionClock, SessionFailure, SessionLifecycle,
@@ -94,6 +95,8 @@ struct Mailbox {
     /// Read currently being dispatched; survives a dropped handle_read so its
     /// terminal can still be delivered as Interrupted.
     reading: Option<RequestEnvelope>,
+    /// Install generation captured when `reading` was dequeued.
+    reading_install: Option<InstallId>,
     /// Outstanding reads: queued + in-flight + delivered but not consumed.
     credits: ReadCredits,
 }
@@ -212,8 +215,11 @@ impl<H: PresentationHost> PresentationHost for AdmissionHost<H> {
     fn snapshot_acknowledged(&self) -> bool {
         self.inner.snapshot_acknowledged()
     }
-    fn deliver_read(&mut self, terminal: ReadTerminal) {
-        self.inner.deliver_read(terminal);
+    fn current_install(&self) -> Option<InstallId> {
+        self.inner.current_install()
+    }
+    fn deliver_read(&mut self, terminal: ReadTerminal, install: Option<InstallId>) {
+        self.inner.deliver_read(terminal, install);
     }
     fn read_credits(&self) -> Option<ReadCredits> {
         self.inner.read_credits()
@@ -245,6 +251,7 @@ impl<B: SessionBackend, C: SessionClock, H: PresentationHost> CommandWorker<B, C
             slot: Slot::Empty,
             reads: VecDeque::new(),
             reading: None,
+            reading_install: None,
             credits,
         }));
         let host = AdmissionHost {
@@ -443,6 +450,9 @@ impl<B: SessionBackend, C: SessionClock, H: PresentationHost> CommandWorker<B, C
     /// Explicit, caller-scheduled; never retried.
     pub(crate) async fn handle_read(&mut self) -> bool {
         self.settle_interrupted_read();
+        // Capture the generation at dequeue: the result belongs to the
+        // snapshot that was current when the read was taken.
+        let install = self.controller.host().current_install();
         let request = {
             let mut mailbox = lock(&self.shared);
             let Some(request) = mailbox.reads.pop_front() else {
@@ -452,6 +462,7 @@ impl<B: SessionBackend, C: SessionClock, H: PresentationHost> CommandWorker<B, C
                 context: request.context.clone(),
                 intent: request.intent.clone(),
             });
+            mailbox.reading_install = install;
             request
         };
         let context = request.context.clone();
@@ -474,27 +485,37 @@ impl<B: SessionBackend, C: SessionClock, H: PresentationHost> CommandWorker<B, C
                     reason: ReadUnavailable::TimedOut,
                 },
             };
-        lock(&self.shared).reading = None;
+        {
+            let mut mailbox = lock(&self.shared);
+            mailbox.reading = None;
+            mailbox.reading_install = None;
+        }
         self.publish();
-        self.deliver_read(terminal);
+        self.deliver_read(terminal, install);
         true
     }
 
-    fn deliver_read(&mut self, terminal: ReadTerminal) {
-        self.controller.host_mut().deliver_read(terminal);
+    fn deliver_read(&mut self, terminal: ReadTerminal, install: Option<InstallId>) {
+        self.controller.host_mut().deliver_read(terminal, install);
         if self.release_on_delivery {
             lock(&self.shared).credits.release();
         }
     }
 
     fn settle_interrupted_read(&mut self) {
-        let interrupted = lock(&self.shared).reading.take();
+        let (interrupted, install) = {
+            let mut mailbox = lock(&self.shared);
+            (mailbox.reading.take(), mailbox.reading_install.take())
+        };
         if let Some(request) = interrupted {
             // Through self.deliver_read so its credit is released as well.
-            self.deliver_read(ReadTerminal::Unavailable {
-                context: request.context,
-                reason: ReadUnavailable::Interrupted,
-            });
+            self.deliver_read(
+                ReadTerminal::Unavailable {
+                    context: request.context,
+                    reason: ReadUnavailable::Interrupted,
+                },
+                install,
+            );
         }
     }
 
@@ -512,11 +533,15 @@ impl<B: SessionBackend, C: SessionClock, H: PresentationHost> CommandWorker<B, C
     fn settle_reads(&mut self) {
         self.settle_interrupted_read();
         let unstarted: Vec<_> = lock(&self.shared).reads.drain(..).collect();
+        let install = self.controller.host().current_install();
         for request in unstarted {
-            self.deliver_read(ReadTerminal::Unavailable {
-                context: request.context,
-                reason: ReadUnavailable::Shutdown,
-            });
+            self.deliver_read(
+                ReadTerminal::Unavailable {
+                    context: request.context,
+                    reason: ReadUnavailable::Shutdown,
+                },
+                install,
+            );
         }
     }
 }

@@ -48,9 +48,10 @@ pub(crate) const REFRESH_CAP: usize = 64;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct InstallId(u64);
 
-/// No Debug: snapshots carry presentation data. `install` on lifecycle and
-/// read events is the latest snapshot install at production/dispatch time
-/// (`None` before the first snapshot).
+/// No Debug: snapshots carry presentation data. `install` on lifecycle events
+/// is the latest snapshot install at production; on read events it is the
+/// install captured when the worker dequeued the read (`None` before the
+/// first snapshot).
 pub(crate) enum PumpEvent<S> {
     Phase(SessionPhase),
     Lifecycle {
@@ -269,10 +270,15 @@ impl<S> PresentationHost for PumpHost<S> {
         pump.queue.push_back(Entry::Snapshot { install, snapshot });
     }
 
-    fn deliver_read(&mut self, terminal: ReadTerminal) {
-        let mut pump = lock(&self.shared);
-        let install = pump.latest;
-        pump.queue.push_back(Entry::Read { install, terminal });
+    fn current_install(&self) -> Option<InstallId> {
+        lock(&self.shared).latest
+    }
+
+    /// `install` was captured by the worker when the read was dequeued.
+    fn deliver_read(&mut self, terminal: ReadTerminal, install: Option<InstallId>) {
+        lock(&self.shared)
+            .queue
+            .push_back(Entry::Read { install, terminal });
     }
 
     /// Reads are consumed when the App drains them, not on delivery.
