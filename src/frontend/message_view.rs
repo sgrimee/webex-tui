@@ -17,8 +17,10 @@
 //! - Tombstones are terminal. Deleting purges body and attachment metadata
 //!   immediately, fences the ID against any later active snapshot (late write
 //!   success, stale page or SSE refetch) and never decreases the revision.
-//! - Timestamps are never fabricated. Untimed messages order after timed ones,
-//!   deterministically by ID, via an internal sort key that is never displayed.
+//! - Timestamps are never fabricated. Ordering parses RFC 3339 to UTC (mixed
+//!   precision/offsets compare chronologically); untimed or unparsable
+//!   messages order after timed ones, deterministically by ID, via an internal
+//!   sort key that is never displayed.
 //!
 //! Grouping reuses the bridge's UI-neutral `webex_bridge::threads::group`, a
 //! pure function over IDs/timestamps (no DTO, transport or credential). On top:
@@ -33,6 +35,7 @@ use super::{
     threads::{ThreadPage, ThreadParent},
     write_rules::valid_opaque_id,
 };
+use chrono::{DateTime, Utc};
 use std::collections::{HashMap, HashSet};
 use webex_bridge::threads::{group, ThreadMessage};
 
@@ -422,11 +425,19 @@ fn purged(mut snapshot: MessageSnapshot) -> MessageSnapshot {
     snapshot
 }
 
-/// Internal ordering only: timed (prefix 0) before untimed (prefix 1); ties
-/// are broken by ID inside `group`. Never stored or displayed as a timestamp.
+/// Internal ordering only, never stored or displayed as a timestamp. RFC 3339
+/// strings are parsed and normalised to UTC with fixed nanosecond precision,
+/// so `.500Z`, `Z` and `+00:00` forms compare chronologically. Timed messages
+/// (prefix 0) order before untimed or unparsable ones (prefix 1); ties are
+/// broken by ID inside `group`.
 fn sort_key(created_at: Option<&str>) -> String {
-    match created_at {
-        Some(timestamp) => format!("0{timestamp}"),
+    match created_at.and_then(|value| DateTime::parse_from_rfc3339(value).ok()) {
+        Some(timestamp) => format!(
+            "0{}",
+            timestamp
+                .with_timezone(&Utc)
+                .format("%Y-%m-%dT%H:%M:%S%.9f")
+        ),
         None => "1".into(),
     }
 }

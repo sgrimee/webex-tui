@@ -516,3 +516,36 @@ fn deleted_snapshot_for_fenced_unloaded_root_rebuilds_placeholder() {
     assert_eq!(ids(&v), ["deleted:root", "reply"]);
     assert!(v.get(&MessageId::new("root")).unwrap().body.is_none());
 }
+
+#[test]
+fn mixed_timestamp_precision_and_offsets_order_chronologically() {
+    let mut v = view();
+    // Lexically "...00Z" > "...00.500Z" and "+00:00" vs "Z" differ, but the
+    // chronological order is: early (00:00:00), half (00:00:00.5), offset
+    // (00:00:01 written in +01:00), late (00:00:02Z).
+    let created = |value: &str| Some(value.to_owned());
+    v.upsert(&msg("late", None, created("2026-01-01T00:00:02Z"), 0))
+        .unwrap();
+    v.upsert(&msg("half", None, created("2026-01-01T00:00:00.500Z"), 0))
+        .unwrap();
+    v.upsert(&msg("early", None, created("2026-01-01T00:00:00Z"), 0))
+        .unwrap();
+    v.upsert(&msg(
+        "offset",
+        None,
+        created("2026-01-01T01:00:01+01:00"),
+        0,
+    ))
+    .unwrap();
+    v.upsert(&msg("garbage", None, created("not a timestamp"), 0))
+        .unwrap();
+    assert_eq!(ids(&v), ["early", "half", "offset", "late", "garbage"]);
+    // Stored values are untouched; only the internal key is normalised.
+    assert_eq!(
+        v.get(&MessageId::new("offset"))
+            .unwrap()
+            .created_at
+            .as_deref(),
+        Some("2026-01-01T01:00:01+01:00")
+    );
+}
