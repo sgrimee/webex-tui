@@ -55,7 +55,30 @@ impl<'a> From<&'a MessageSnapshot> for MessageDumpView<'a> {
     }
 }
 
+/// File name for a room's dump: the opaque room ID is encoded so it can
+/// never introduce a path separator, `..` or a hidden name; an over-long ID
+/// is shortened with a stable hash suffix.
+pub(crate) fn dump_file_name(room_id: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let mut encoded = String::with_capacity(room_id.len());
+    for byte in room_id.bytes() {
+        if byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-' {
+            encoded.push(char::from(byte));
+        } else {
+            encoded.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    if encoded.len() > 200 {
+        let digest = Sha256::digest(room_id.as_bytes());
+        let hex: String = digest[..8].iter().map(|b| format!("{b:02x}")).collect();
+        encoded.truncate(120);
+        encoded = format!("{encoded}-{hex}");
+    }
+    format!("room_{encoded}.json")
+}
+
 /// Write a room dump readable only by the user: it holds plaintext bodies.
+/// A symlink at `path` is refused (O_NOFOLLOW), never written through.
 pub(crate) fn write_dump(
     path: &std::path::Path,
     messages: &[MessageDumpView<'_>],
@@ -66,6 +89,7 @@ pub(crate) fn write_dump(
         .create(true)
         .truncate(true)
         .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW)
         .open(path)?;
     // `mode` applies only on creation; tighten an older, wider file too.
     file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
@@ -150,5 +174,31 @@ mod tests {
         assert_eq!(json[0]["parentId"], "root-a");
         assert_eq!(json[0]["senderId"], "person-a");
         assert_eq!(json[0]["text"], "body");
+    }
+
+    #[test]
+    fn dump_names_cannot_escape_the_directory() {
+        assert_eq!(dump_file_name("Y2lz_c2-9"), "room_Y2lz_c2-9.json");
+        assert_eq!(dump_file_name("../x/y"), "room_%2E%2E%2Fx%2Fy.json");
+        assert_eq!(dump_file_name(".hidden"), "room_%2Ehidden.json");
+        let long = dump_file_name(&"a".repeat(500));
+        assert!(long.len() < 160, "{}", long.len());
+        assert_ne!(
+            long,
+            dump_file_name(&"a".repeat(501)),
+            "hash keeps them distinct"
+        );
+        assert!(!long.contains('/'));
+    }
+
+    #[test]
+    fn a_symlink_at_the_dump_path_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("elsewhere");
+        std::fs::write(&target, "keep").unwrap();
+        let link = dir.path().join("room.json");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(write_dump(&link, &[]).is_err());
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "keep");
     }
 }

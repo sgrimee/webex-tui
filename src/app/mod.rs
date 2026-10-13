@@ -555,7 +555,7 @@ impl App<'_> {
             .state
             .active_room()
             .ok_or(eyre!("Cannot dump room content to file, no room selected."))?;
-        let filename = format!("room_{}.json", room.id);
+        let filename = crate::app::dump::dump_file_name(&room.id);
         let messages: Vec<_> = self
             .state
             .cache

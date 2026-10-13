@@ -24,6 +24,8 @@ enum-iterator = "2"
 fuzzy-matcher = "0.3"
 html2text = "0.16"
 itertools = "0.14"
+# O_NOFOLLOW for the private room dump.
+libc = "0.2"
 log = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
