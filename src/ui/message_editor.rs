@@ -7,11 +7,21 @@ use ratatui::{
 };
 use tui_textarea::TextArea;
 pub(crate) const MSG_INPUT_BLOCK_HEIGHT: u16 = 5;
-fn label(message: &crate::frontend::data::MessageSnapshot) -> String {
-    message
-        .sender_email
-        .clone()
-        .unwrap_or_else(|| "unknown sender".into())
+/// Like the message list: the cached display name, then the sender email.
+/// The account's own message says "your".
+fn label(state: &AppState, message: &crate::frontend::data::MessageSnapshot) -> String {
+    let sender = message.sender_id.as_ref().map(|id| id.as_str().to_owned());
+    if sender.is_some() && state.cache.is_me(&sender) {
+        return "your".into();
+    }
+    let name = sender
+        .as_deref()
+        .and_then(|id| state.cache.persons.get(id))
+        .and_then(|person| person.display_name.clone());
+    let who = name
+        .or_else(|| message.sender_email.clone())
+        .unwrap_or_else(|| "unknown sender".into());
+    format!("{who}'s")
 }
 /// With the bridge, a reply/edit is sent to its message's own room even after
 /// a room switch, so name that room when it is not the active one.
@@ -42,8 +52,8 @@ pub(crate) fn draw_message_editor<'a>(state: &'a AppState<'a>) -> TextArea<'a> {
             vec![
                 Span::styled(
                     format!(
-                        "Responding to {}'s message{}.",
-                        label(message),
+                        "Responding to {} message{}.",
+                        label(state, message),
                         target_room_note(state, message)
                     ),
                     Style::default().fg(state.theme.roles.compose_status()),
@@ -54,8 +64,8 @@ pub(crate) fn draw_message_editor<'a>(state: &'a AppState<'a>) -> TextArea<'a> {
             vec![
                 Span::styled(
                     format!(
-                        "Editing {}'s message{}.",
-                        label(message),
+                        "Editing {} message{}.",
+                        label(state, message),
                         target_room_note(state, message)
                     ),
                     Style::default().fg(state.theme.roles.compose_status()),
@@ -111,7 +121,42 @@ mod tests {
             body: None,
             attachment_count: None,
         };
-        assert_eq!(label(&m), "unknown sender");
+        assert_eq!(label(&AppState::default(), &m), "unknown sender's");
+    }
+
+    #[test]
+    fn own_and_known_senders_are_named_like_the_message_list() {
+        use crate::frontend::data::{PersonId, PersonSnapshot};
+        let mut state = AppState::default();
+        state.cache.set_me(PersonSnapshot {
+            id: PersonId::new("me"),
+            display_name: Some("Synthetic Me".into()),
+            emails: None,
+        });
+        state.cache.persons.insert(PersonSnapshot {
+            id: PersonId::new("other"),
+            display_name: Some("Synthetic Other".into()),
+            emails: None,
+        });
+        let message = |sender: &str| crate::frontend::data::MessageSnapshot {
+            id: MessageId::new("m"),
+            room_id: RoomId::new("r"),
+            revision: Some(1),
+            parent_id: None,
+            sender_id: Some(PersonId::new(sender)),
+            sender_email: Some("synthetic@example.invalid".into()),
+            created_at: None,
+            updated_at: None,
+            status: MessageStatus::Active,
+            body: None,
+            attachment_count: None,
+        };
+        assert_eq!(label(&state, &message("me")), "your");
+        assert_eq!(label(&state, &message("other")), "Synthetic Other's");
+        assert_eq!(
+            label(&state, &message("unknown")),
+            "synthetic@example.invalid's"
+        );
     }
 
     #[test]
