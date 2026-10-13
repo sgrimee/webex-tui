@@ -7,12 +7,20 @@ const CONTENT_INDENT: &str = "  ";
 const CONTENT_RIGHT_MARGIN: u16 = 2;
 const TITLE_INDENT_REPLY: &str = "  | ";
 const TITLE_INDENT: &str = "";
+/// Root known deleted (tombstone) that still has visible replies.
+pub(crate) const DELETED_ROOT_TEXT: &str = "[message deleted]";
+/// Root of visible replies that is not loaded here or is unknown. Distinct
+/// from a tombstone: nothing is known about the root's state.
+pub(crate) const MISSING_ROOT_TEXT: &str = "[start of thread not loaded]";
 pub(crate) const ACTIVE_ROOM_MIN_WIDTH: u16 = 30;
 pub(crate) const ROOM_MIN_HEIGHT: u16 = 8;
 
 use crate::{
     app::state::{ActivePane, AppState},
-    frontend::models::{DisplayBody, MessagePresentation},
+    frontend::{
+        message_view::ViewRow,
+        models::{DisplayBody, MessagePresentation},
+    },
 };
 use base64::Engine;
 use html2text::from_read;
@@ -169,6 +177,43 @@ fn row_for_message<'a>(
     (row, height)
 }
 
+/// Returns a one-line, non-message row for a thread root placeholder. It
+/// carries no sender, timestamp, body or attachment metadata.
+fn row_for_root_placeholder<'a>(state: &AppState, label: &str, id: &str) -> (Row<'a>, usize) {
+    let mut line = Line::default();
+    line.spans.push(TITLE_INDENT.into());
+    line.spans.push(Span::styled(
+        label.to_owned(),
+        Style::default()
+            .fg(state.theme.roles.msg_timestamp())
+            .add_modifier(Modifier::ITALIC),
+    ));
+    if state.debug {
+        add_uuid_to_line(Some(id), &mut line);
+    }
+    let mut text = Text::default();
+    text.extend(Text::from(format!("{CONTENT_INDENT}\n")));
+    text.extend(Text::from(line));
+    let height = text.height();
+    (
+        Row::new(vec![Cell::from(text)]).height(height as u16),
+        height,
+    )
+}
+
+/// Returns the row for one displayed room row and its number of lines.
+fn row_for_view_row<'a>(state: &AppState, row: ViewRow<'_>, width: u16) -> (Row<'a>, usize) {
+    match row {
+        ViewRow::Message(message) => {
+            row_for_message(state, MessagePresentation::from(message), width)
+        }
+        ViewRow::DeletedRoot(message) => {
+            row_for_root_placeholder(state, DELETED_ROOT_TEXT, message.id.as_str())
+        }
+        ViewRow::MissingRoot(id) => row_for_root_placeholder(state, MISSING_ROOT_TEXT, id.as_str()),
+    }
+}
+
 /// Adds the decoded message uuid to the line.
 fn add_uuid_to_line(id: Option<&str>, line: &mut Line<'_>) {
     if let Some(id) = id
@@ -215,10 +260,9 @@ pub(crate) fn draw_msg_table<'a>(state: &AppState, rect: &Rect) -> (Table<'a>, u
         // get the formatted messages for the room
         rows = state
             .cache
-            .messages_in_room(&room.id)
-            .map(|message| {
-                let (row, height) =
-                    row_for_message(state, MessagePresentation::from(message), rect.width - 2);
+            .rows_in_room(&room.id)
+            .map(|view_row| {
+                let (row, height) = row_for_view_row(state, view_row, rect.width - 2);
                 nb_lines += height;
                 row
             })
@@ -294,6 +338,73 @@ mod tests {
         assert!(text.contains(CONTENT_INDENT_REPLY));
         assert!(!text.contains("<p>"));
         assert!(!text.contains("alternate"));
+    }
+
+    fn rendered_rows(view: &crate::frontend::message_view::RoomMessageView) -> Vec<String> {
+        let state = AppState::default();
+        view.rows()
+            .map(|view_row| {
+                let (row, height) = row_for_view_row(&state, view_row, 60);
+                let area = Rect::new(0, 0, 60, height as u16);
+                let mut buffer = Buffer::empty(area);
+                Table::new([row], [Constraint::Percentage(100)]).render(area, &mut buffer);
+                buffer.content.iter().map(|cell| cell.symbol()).collect()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn thread_root_placeholders_are_distinct_and_replaced_when_the_root_arrives() {
+        use crate::frontend::{
+            data::{MessageId, MessageSnapshot, MessageStatus, OwnedMessageBody, PersonId, RoomId},
+            message_view::RoomMessageView,
+        };
+        let snapshot = |id: &str, parent: Option<&str>, minute: u32| MessageSnapshot {
+            id: MessageId::new(id),
+            room_id: RoomId::new("room"),
+            revision: Some(1),
+            parent_id: parent.map(MessageId::new),
+            sender_id: Some(PersonId::new("person")),
+            sender_email: Some("synthetic@example.invalid".into()),
+            created_at: Some(format!("2026-01-01T00:{minute:02}:00Z")),
+            updated_at: None,
+            status: MessageStatus::Active,
+            body: Some(OwnedMessageBody::Forms {
+                text: Some(format!("{id} body")),
+                markdown: None,
+                html: None,
+            }),
+            attachment_count: None,
+        };
+        let mut view = RoomMessageView::new(RoomId::new("room"));
+        view.upsert(&snapshot("reply", Some("root"), 2)).unwrap();
+        let rows = rendered_rows(&view);
+        assert_eq!(rows.len(), 2);
+        assert!(rows[0].contains(MISSING_ROOT_TEXT));
+        assert!(!rows[0].contains(DELETED_ROOT_TEXT));
+        assert!(!rows[0].contains("synthetic@example.invalid"));
+        assert!(!rows[0].contains("No content"));
+        assert!(rows[1].contains("reply body"));
+        assert!(rows[1].contains(CONTENT_INDENT_REPLY));
+
+        // The root arrives: the placeholder row becomes the root message.
+        view.upsert(&snapshot("root", None, 1)).unwrap();
+        let rows = rendered_rows(&view);
+        assert_eq!(rows.len(), 2);
+        assert!(rows[0].contains("root body"));
+        assert!(rows.iter().all(|row| !row.contains(MISSING_ROOT_TEXT)));
+
+        // The root is deleted: a tombstone row, not the missing placeholder,
+        // and no retained sender or body.
+        view.tombstone(&RoomId::new("room"), &MessageId::new("root"), None)
+            .unwrap();
+        let rows = rendered_rows(&view);
+        assert_eq!(rows.len(), 2);
+        assert!(rows[0].contains(DELETED_ROOT_TEXT));
+        assert!(!rows[0].contains(MISSING_ROOT_TEXT));
+        assert!(!rows[0].contains("root body"));
+        assert!(!rows[0].contains("synthetic@example.invalid"));
+        assert!(rows[1].contains("reply body"));
     }
 
     #[test]

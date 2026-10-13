@@ -36,9 +36,20 @@ enum RoomMessages {
 }
 
 impl RoomMessages {
+    /// Displayed rows in order; the selection index addresses these. Legacy
+    /// rooms are messages only (legacy parent repair fetches missing roots).
+    /// Canonical rooms add a deleted-root tombstone row and a missing-root
+    /// placeholder row (a reply whose root is not loaded or is unknown); the
+    /// placeholder is replaced when the root arrives, since the view rebuilds.
+    fn rows(&self) -> Box<dyn Iterator<Item = ViewRow<'_>> + '_> {
+        match self {
+            Self::Legacy(content) => Box::new(content.messages().map(ViewRow::Message)),
+            Self::Canonical(view) => Box::new(view.rows()),
+        }
+    }
     /// Displayed messages in order. Canonical deleted-root placeholders are
     /// included as their (body-purged) tombstone; missing-root placeholders
-    /// have no snapshot and are not listed here.
+    /// have no snapshot and are not listed here, so this is not row-indexed.
     fn messages(&self) -> Box<dyn Iterator<Item = &MessageSnapshot> + '_> {
         match self {
             Self::Legacy(content) => Box::new(content.messages()),
@@ -51,30 +62,41 @@ impl RoomMessages {
     fn len(&self) -> usize {
         match self {
             Self::Legacy(content) => content.len(),
-            Self::Canonical(_) => self.messages().count(),
+            Self::Canonical(view) => view.len(),
         }
     }
     fn is_empty(&self) -> bool {
         match self {
             Self::Legacy(content) => content.is_empty(),
-            Self::Canonical(_) => self.messages().next().is_none(),
+            Self::Canonical(view) => view.is_empty(),
         }
     }
+    /// Message at a row index. A missing-root placeholder has no message to
+    /// act on (reply, edit, copy, delete), so selecting it is an error.
     fn nth(&self, index: usize) -> Result<&MessageSnapshot> {
         match self {
             Self::Legacy(content) => content.nth_message(index),
-            Self::Canonical(_) => self
-                .messages()
-                .nth(index)
-                .ok_or(eyre!("Message {} not found in room", index)),
+            Self::Canonical(view) => match view.row(index) {
+                Some(ViewRow::Message(message) | ViewRow::DeletedRoot(message)) => Ok(message),
+                Some(ViewRow::MissingRoot(_)) => Err(eyre!(
+                    "Row {} is a placeholder for a thread start that is not loaded",
+                    index
+                )),
+                None => Err(eyre!("Message {} not found in room", index)),
+            },
         }
     }
+    /// Row index of a loaded message (active or deleted root). A missing-root
+    /// placeholder is not a loaded message, so its ID is never found here.
     fn index_of(&self, id: &MessageId) -> Option<usize> {
         match self {
             Self::Legacy(content) => content.index_of_message(id),
-            Self::Canonical(_) => self
-                .messages()
-                .position(|message| message.id.as_str() == id),
+            Self::Canonical(_) => self.rows().position(|row| match row {
+                ViewRow::Message(message) | ViewRow::DeletedRoot(message) => {
+                    message.id.as_str() == id
+                }
+                ViewRow::MissingRoot(_) => false,
+            }),
         }
     }
 }
@@ -124,6 +146,13 @@ impl Cache {
         self.rooms_content
             .get(id)
             .map(RoomMessages::messages)
+            .unwrap_or_else(|| Box::new(std::iter::empty()))
+    }
+    /// Displayed rows, in the order the selection index addresses.
+    pub(crate) fn rows_in_room(&self, id: &RoomId) -> Box<dyn Iterator<Item = ViewRow<'_>> + '_> {
+        self.rooms_content
+            .get(id)
+            .map(RoomMessages::rows)
             .unwrap_or_else(|| Box::new(std::iter::empty()))
     }
     pub(crate) fn room_is_empty(&self, id: &RoomId) -> bool {
@@ -429,5 +458,87 @@ mod tests {
             .unwrap();
         assert!(legacy.canonical_view_mut(&room).is_none());
         assert!(legacy.canonical_rooms().is_empty());
+    }
+
+    fn row_labels(cache: &Cache, room: &room::RoomId) -> Vec<String> {
+        cache
+            .rows_in_room(room)
+            .map(|row| match row {
+                ViewRow::Message(m) => m.id.as_str().to_owned(),
+                ViewRow::DeletedRoot(m) => format!("deleted:{}", m.id.as_str()),
+                ViewRow::MissingRoot(id) => format!("missing:{}", id.as_str()),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn missing_root_placeholder_is_a_row_but_not_a_message_and_is_replaced() {
+        let mut cache = Cache::default();
+        let room: String = "room".into();
+        let view = cache.canonical_view_mut(&room).unwrap();
+        view.upsert(&canonical("other", None, "2026-01-01T00:00:00Z", 1))
+            .unwrap();
+        view.upsert(&canonical("reply", Some("root"), "2026-01-01T00:05:00Z", 1))
+            .unwrap();
+        assert_eq!(
+            row_labels(&cache, &room),
+            ["other", "missing:root", "reply"]
+        );
+        // Selection indexes rows, so counts include the placeholder ...
+        assert_eq!(cache.nb_messages_in_room(&room), 3);
+        assert!(!cache.room_is_empty(&room));
+        // ... but it is not a message: nothing to act on, never "exists".
+        assert!(cache.nth_message_in_room(1, "room").is_err());
+        assert_eq!(
+            cache.nth_message_in_room(2, "room").unwrap().id.as_str(),
+            "reply"
+        );
+        assert!(!cache.message_exists_in_room(&"root".into(), &room));
+        assert_eq!(
+            cache.index_of_message_in_room(&"reply".into(), &room),
+            Some(2)
+        );
+        assert_eq!(
+            cache
+                .messages_in_room(&room)
+                .map(|m| m.id.as_str())
+                .collect::<Vec<_>>(),
+            ["other", "reply"]
+        );
+        // The root arrives: the placeholder is replaced in place.
+        let view = cache.canonical_view_mut(&room).unwrap();
+        view.upsert(&canonical("root", None, "2026-01-01T00:01:00Z", 1))
+            .unwrap();
+        assert_eq!(row_labels(&cache, &room), ["other", "root", "reply"]);
+        assert_eq!(
+            cache.nth_message_in_room(1, "room").unwrap().id.as_str(),
+            "root"
+        );
+        assert!(cache.message_exists_in_room(&"root".into(), &room));
+        // A deleted root is a tombstone row, distinct from the placeholder.
+        let view = cache.canonical_view_mut(&room).unwrap();
+        view.tombstone(&RoomId::new("room"), &Id::new("root"), None)
+            .unwrap();
+        assert_eq!(
+            row_labels(&cache, &room),
+            ["other", "deleted:root", "reply"]
+        );
+        assert!(cache.nth_message_in_room(1, "room").is_ok());
+    }
+
+    #[test]
+    fn legacy_rows_are_messages_only() {
+        let mut cache = Cache::default();
+        cache
+            .add_message(&message("reply", Some("root"), "2026-01-01T00:01:00Z"))
+            .unwrap();
+        let room: String = "room".into();
+        assert!(cache
+            .rows_in_room(&room)
+            .all(|row| matches!(row, ViewRow::Message(_))));
+        assert_eq!(
+            cache.rows_in_room(&room).count(),
+            cache.nb_messages_in_room(&room)
+        );
     }
 }
