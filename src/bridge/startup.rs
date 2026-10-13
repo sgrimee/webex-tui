@@ -462,6 +462,30 @@ where
     })
 }
 
+/// What to tell the user when the running bridge runtime ends (§7.2 a, g).
+/// `None` for a normal quit. Each exit restores the terminal first; the TUI
+/// then exits and the next start runs the startup steps again (re-pairing,
+/// if needed, happens there, before the terminal UI opens).
+pub(crate) fn exit_message(exit: super::runtime::RuntimeExit) -> Option<String> {
+    use super::runtime::RuntimeExit;
+    match exit {
+        RuntimeExit::Shutdown => None,
+        RuntimeExit::PairingRequired(_) => Some(
+            "webex-bridge no longer accepts this webex-tui: its pairing was removed              (for example with `webex-bridge ui unpair`) or the daemon's pairing data was reset.\n\
+             Start webex-tui again to pair once more; the daemon will ask you to approve."
+                .into(),
+        ),
+        RuntimeExit::SecretUnavailable => Some(
+            "webex-tui could not read its pairing secret from your Keychain \
+             (access was denied, or the item was removed).\n\
+             Start webex-tui again and choose Allow (Always Allow avoids repeated prompts). \
+             If the item was removed, a new secret is created and paired once."
+                .into(),
+        ),
+        RuntimeExit::SecretCorrupt => Some(StartupError::SecretCorrupt.message()),
+    }
+}
+
 /// The production dependency set (macOS Keychain, protected UDS, system
 /// clock). Building it opens no Keychain item and contacts no daemon; only
 /// `start` does, and nothing calls it until the consented `main` switch.

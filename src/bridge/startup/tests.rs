@@ -461,3 +461,21 @@ fn the_production_dependency_set_is_compile_checked_only() {
     // Never called here: building it would construct Keychain entries.
     let _: fn(u32) -> Result<MacosStartupDeps, StartupError> = macos_deps;
 }
+
+#[test]
+fn runtime_exits_map_to_actionable_secret_free_messages() {
+    use crate::bridge::runtime::RuntimeExit;
+    assert_eq!(exit_message(RuntimeExit::Shutdown), None);
+    let repair = exit_message(RuntimeExit::PairingRequired(SessionFailure::NotPaired)).unwrap();
+    assert!(repair.contains("pair once more"));
+    assert!(repair.contains("ui unpair"));
+    let keychain = exit_message(RuntimeExit::SecretUnavailable).unwrap();
+    assert!(keychain.contains("choose Allow"));
+    let corrupt = exit_message(RuntimeExit::SecretCorrupt).unwrap();
+    assert!(corrupt.contains(
+        "security delete-generic-password -s com.cisco.webex-tui.ui-pairing -a ui-secret-v1"
+    ));
+    for message in [repair, keychain, corrupt] {
+        assert!(!message.contains(SECRET));
+    }
+}
