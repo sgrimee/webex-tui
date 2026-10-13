@@ -261,6 +261,7 @@ where
     /// safe: the worker's guards settle in-flight and queued work.
     pub(crate) async fn run(mut self) -> RuntimeExit {
         let exit = self.run_inner().await;
+        log::info!("bridge runtime exit: {exit:?}");
         self.worker.shutdown();
         self.worker.disconnect();
         exit
@@ -365,9 +366,11 @@ where
                 let _ = self.worker.bridge_event(subscription, &event);
             }
             Some(Err(failure)) => {
+                log::info!("bridge event stream failed: {failure:?}");
                 self.worker.stream_failed(subscription, failure);
             }
             None => {
+                log::info!("bridge event stream ended");
                 self.worker
                     .stream_failed(subscription, SessionFailure::StreamEnded);
             }
@@ -398,6 +401,12 @@ where
                     self.worker.renew_in_place_if_due(),
                 ) => step,
             };
+            match &step {
+                Ok(RenewStep::Renewed) => log::info!("bridge UI session renewed in place"),
+                Ok(RenewStep::NotDue) => {}
+                Ok(other) => log::info!("bridge UI session renewal: {other:?}"),
+                Err(_) => log::info!("bridge UI session renewal timed out"),
+            }
             match step {
                 Ok(RenewStep::Renewed | RenewStep::NotDue) => {
                     self.renew_attempts = 0;
@@ -426,6 +435,7 @@ where
             }
         }
         // 2. New session (cap reached): re-borrow the secret for one call.
+        log::info!("bridge UI session: creating a new session (renewal cap)");
         let secret = match self.secrets.load().await {
             Ok(Some(secret)) => {
                 self.renew_attempts = 0;
@@ -485,6 +495,11 @@ where
         }
         self.reconnect_at = None;
         self.attempts = self.attempts.saturating_add(1);
+        log::info!(
+            "bridge reconnect attempt {} (phase {:?})",
+            self.attempts,
+            self.worker.phase()
+        );
         let secret = match self.secrets.load().await {
             Ok(Some(secret)) => secret,
             // Transient: the next attempt follows the (already advanced) backoff.
@@ -546,7 +561,10 @@ where
             }) => prepared,
         };
         let failure = match prepared {
-            Ok(Ok(())) => return,
+            Ok(Ok(())) => {
+                log::info!("bridge snapshot prepared");
+                return;
+            }
             Ok(Err(failure)) => failure,
             Err(_) => SessionFailure::Transport,
         };

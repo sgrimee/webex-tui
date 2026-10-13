@@ -529,6 +529,7 @@ impl BridgeGlue {
     }
 
     fn install_snapshot(&mut self, state: &mut AppState, snapshot: BridgeSnapshot) {
+        log::info!("bridge snapshot installed ({} rooms)", snapshot.rooms.len());
         for room in state.cache.canonical_rooms() {
             if let Some(view) = state.cache.canonical_view_mut(&room) {
                 view.reset_for_new_instance();
