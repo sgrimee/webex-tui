@@ -22,18 +22,21 @@ daemon. macOS only.
 
 ## Getting started
 
-1. Install and log in the daemon (once), from the webex-bridge checkout or release:
+1. Install, start and log in the daemon (once), from a webex-bridge checkout
+   next to this one. `mise run service:start` builds and signs it, copies the
+   signed binaries into its private directory and installs the LaunchAgent:
 
    ```shell
-   webex-bridge install-service
-   webex-bridge login
+   cd ../webex-bridge
+   mise run service:start
+   "$HOME/Library/Application Support/webex-bridge/bin/webex-bridge" login
+   "$HOME/Library/Application Support/webex-bridge/bin/webex-bridge" health
    ```
 
-   `webex-bridge health` shows whether it runs and is connected.
-
-2. Start webex-tui. On the first start the daemon shows a macOS dialog:
-   "Allow <path to webex-tui> full access to your Webex mirror?" Click
-   **Allow**. webex-tui stores its pairing secret in your login Keychain
+2. Build and start the signed webex-tui (see [Installing](#installing)). On
+   the first start the daemon shows a macOS dialog: "Allow <path to
+   webex-tui> full access to your Webex mirror?" Click **Allow**. webex-tui
+   stores its pairing secret in your login Keychain
    (`com.cisco.webex-tui.ui-pairing`); later starts reuse it without a dialog.
 
 If the daemon is not running, webex-tui prints the exact `install-service`
@@ -54,8 +57,8 @@ webex-tui first: it would register its own Webex device next to the daemon.
 Optional cleanup, once you no longer need the old version:
 
 ```shell
-rm ~/.config/webex-tui/client.yml               # old integration client ID/secret
-rm ~/Library/Caches/webex-tui/tokens*.json      # old OAuth token cache
+rm -f ~/.config/webex-tui/client.yml          # old integration client ID/secret
+rm -f ~/Library/Caches/webex-tui/tokens*.json # old OAuth token cache
 ```
 
 You may also delete the old webex-tui integration on
@@ -64,26 +67,34 @@ webex-bridge integration or its Keychain items.
 
 ## Installing
 
-### Homebrew
+### From source (signed; the supported way)
+
+webex-tui must run as a binary signed with a persistent identity, so that the
+Keychain recognises it (see
+[CONFIGURATION.md](CONFIGURATION.md#keychain-and-code-signing)). With
+[Rust](https://www.rust-lang.org/tools/install), [just](https://github.com/casey/just)
+and a Code Signing certificate, in a checkout next to `webex-bridge`:
 
 ```shell
-brew install sgrimee/tap/webex-tui
+git clone https://github.com/sgrimee/webex-tui
+cd webex-tui
+just build-signed            # cargo build + codesign as com.sgrimee.webex-tui
+./target/debug/webex-tui     # or: just run (build, sign and run with a log file)
 ```
 
-### From source
+Run the signed binary directly, never `cargo run` or `cargo install` (both
+leave an ad-hoc signature). Each rebuild or upgrade is a new binary to macOS:
+its first start asks once for Keychain access (choose **Always Allow**). The
+pairing itself is kept (it belongs to the secret, not the binary), so no new
+daemon dialog appears. A binary signed with another identity cannot read the
+secret and has to be paired anew.
 
-With [Rust installed](https://www.rust-lang.org/tools/install), you can install with:
+### Homebrew and release binaries (legacy)
 
-```shell
-cargo install --git https://github.com/sgrimee/webex-tui
-```
-
-For development, build a signed binary with `just build-signed` and run it
-with `just run` (see [CONFIGURATION.md](CONFIGURATION.md#keychain-and-code-signing)).
-
-### Pre-build binaries
-
-Pre-build binaries are available on the [releases page](https://github.com/sgrimee/webex-tui/releases).
+`brew install sgrimee/tap/webex-tui` and the binaries on the
+[releases page](https://github.com/sgrimee/webex-tui/releases) are the older,
+standalone (OAuth) versions and are not signed for the Keychain. They stay
+legacy until there is a signing pipeline for this version.
 
 ## Configuration
 
