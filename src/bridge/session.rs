@@ -34,6 +34,9 @@ const MAX_PENDING: usize = 256;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum SessionFailure {
+    /// Exactly `401 auth_required` on session creation: the secret is not
+    /// (or no longer) paired. The only answer that may lead to pairing.
+    NotPaired,
     AuthRequired,
     Forbidden,
     Transport,
@@ -60,6 +63,20 @@ pub(super) fn session_auth_failure(error: &ClientError) -> Option<SessionFailure
             _ => None,
         },
         _ => None,
+    }
+}
+
+/// Session-creation failure. Only exactly `401 auth_required` means "not
+/// paired"; every other answer (other 401 codes, 400, 403, 503, transport)
+/// keeps its ordinary classification and never leads to pairing.
+pub(super) fn issue_failure(error: ClientError) -> SessionFailure {
+    match &error {
+        ClientError::Api { status, code, .. }
+            if status.as_u16() == 401 && code == "auth_required" =>
+        {
+            SessionFailure::NotPaired
+        }
+        _ => io_failure(error),
     }
 }
 
@@ -255,7 +272,7 @@ impl SessionBackend for BridgeSessionBackend {
         self.bridge
             .create_ui_session(secret)
             .await
-            .map_err(io_failure)
+            .map_err(issue_failure)
     }
     async fn subscribe(&mut self, client: &UiClient) -> Result<EventStream, SessionFailure> {
         client.events().await.map_err(io_failure)
@@ -522,6 +539,11 @@ impl<B: SessionBackend, C: SessionClock> SessionLifecycle<B, C> {
 
     pub(crate) fn subscription(&self) -> Option<SubscriptionId> {
         self.active.as_ref().map(|a| a.subscription)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn backend_for_tests(&self) -> &B {
+        &self.backend
     }
     pub(crate) fn lease_deadline(&self) -> Option<Instant> {
         self.active.as_ref().map(|a| a.lease_deadline)

@@ -489,6 +489,42 @@ fn futures_poll_once<F: Future>(future: std::pin::Pin<&mut F>) -> Option<F::Outp
     }
 }
 
+/// S1 pin: only exactly `401 auth_required` on session create is NotPaired.
+#[test]
+fn session_create_errors_pair_only_on_exact_auth_required() {
+    let api = |status: u16, code: &str| ClientError::Api {
+        status: status.try_into().unwrap(),
+        code: code.into(),
+        message: "synthetic".into(),
+    };
+    assert_eq!(
+        issue_failure(api(401, "auth_required")),
+        SessionFailure::NotPaired
+    );
+    assert_eq!(
+        issue_failure(api(401, "session_expired")),
+        SessionFailure::AuthRequired
+    );
+    assert_eq!(
+        issue_failure(api(400, "auth_required")),
+        SessionFailure::InvalidResponse
+    );
+    assert_eq!(
+        issue_failure(api(403, "forbidden_peer")),
+        SessionFailure::Forbidden
+    );
+    assert_eq!(
+        issue_failure(api(503, "bridge_unavailable")),
+        SessionFailure::InvalidResponse
+    );
+    assert_eq!(
+        issue_failure(ClientError::Transport(
+            std::io::Error::other("synthetic").into()
+        )),
+        SessionFailure::Transport
+    );
+}
+
 #[test]
 fn bridge_renewal_errors_are_classified_by_code() {
     let api = |status: u16, code: &str| ClientError::Api {

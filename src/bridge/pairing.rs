@@ -250,9 +250,12 @@ impl<S: UiSecretStore, P: PairingBackend, R: RandomSource> PairingBootstrap<S, P
     }
 
     /// Check bridge compatibility before any store/random/pair/session work,
-    /// pair the existing or freshly persisted secret, then borrow it for one
-    /// explicit `SessionLifecycle::connect` call. The bootstrap retains no
-    /// secret after this future completes.
+    /// then connect session-first: an existing secret is borrowed for one
+    /// explicit `SessionLifecycle::connect` call and paired (one native
+    /// dialog) only if the daemon answers exactly `401 auth_required`; a fresh
+    /// secret is persisted and paired before its connect. At most one pair
+    /// call per bootstrap. The bootstrap retains no secret after this future
+    /// completes.
     pub(crate) async fn connect<B: SessionBackend, C: SessionClock>(
         &mut self,
         session: &mut SessionLifecycle<B, C>,
@@ -267,8 +270,8 @@ impl<S: UiSecretStore, P: PairingBackend, R: RandomSource> PairingBootstrap<S, P
         }
 
         self.state = PairingState::LoadingSecret;
-        let secret = match self.store.load().await {
-            Ok(Some(secret)) => secret,
+        let (secret, fresh) = match self.store.load().await {
+            Ok(Some(secret)) => (secret, false),
             Ok(None) => {
                 self.state = PairingState::GeneratingSecret;
                 let mut bytes = [0_u8; 32];
@@ -279,7 +282,7 @@ impl<S: UiSecretStore, P: PairingBackend, R: RandomSource> PairingBootstrap<S, P
                 let secret = UiSecret::from_random(bytes);
                 self.state = PairingState::PersistingSecret;
                 match self.store.persist(&secret).await {
-                    Ok(()) => secret,
+                    Ok(()) => (secret, true),
                     Err(SecretStoreFailure::Denied) => {
                         return self.fail(BootstrapFailure::PersistDenied)
                     }
@@ -295,6 +298,23 @@ impl<S: UiSecretStore, P: PairingBackend, R: RandomSource> PairingBootstrap<S, P
             Err(SecretStoreFailure::Corrupt) => return self.fail(BootstrapFailure::SecretCorrupt),
         };
 
+        // Session-first: an existing secret is normally already paired, and
+        // every pair call shows the daemon's native dialog. Pair only a fresh
+        // secret, or an existing one the daemon answered with exactly
+        // `401 auth_required` (SessionFailure::NotPaired); any other failure
+        // (400, 403, 503, transport) is reported without pairing.
+        if !fresh {
+            self.state = PairingState::Connecting;
+            match session.connect(secret.as_str()).await {
+                Ok(subscription) => {
+                    self.state = PairingState::Ready;
+                    return Ok(subscription);
+                }
+                Err(SessionFailure::NotPaired) => {}
+                Err(error) => return self.fail(BootstrapFailure::Session(error)),
+            }
+        }
+
         self.state = PairingState::Pairing;
         let pairing = {
             let secret_hash = secret.pair_hash();
@@ -308,6 +328,8 @@ impl<S: UiSecretStore, P: PairingBackend, R: RandomSource> PairingBootstrap<S, P
             }
         }
 
+        // Exactly one connect after pairing; a repeated NotPaired fails
+        // closed rather than looping on dialogs.
         self.state = PairingState::Connecting;
         let subscription = match session.connect(secret.as_str()).await {
             Ok(subscription) => subscription,

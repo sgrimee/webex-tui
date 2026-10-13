@@ -454,9 +454,11 @@ where
         };
         drop(secret);
         match renewed {
-            Ok(Err(failure @ (SessionFailure::AuthRequired | SessionFailure::Forbidden))) => {
-                Some(RuntimeExit::PairingRequired(failure))
-            }
+            Ok(Err(
+                failure @ (SessionFailure::NotPaired
+                | SessionFailure::AuthRequired
+                | SessionFailure::Forbidden),
+            )) => Some(RuntimeExit::PairingRequired(failure)),
             // Other failures leave the session Failed; a timed-out renewal
             // leaves it Connecting. Both are picked up by the reconnect path.
             _ => None,
@@ -498,9 +500,11 @@ where
         };
         drop(secret);
         match connected {
-            Ok(Err(failure @ (SessionFailure::AuthRequired | SessionFailure::Forbidden))) => {
-                Some(RuntimeExit::PairingRequired(failure))
-            }
+            Ok(Err(
+                failure @ (SessionFailure::NotPaired
+                | SessionFailure::AuthRequired
+                | SessionFailure::Forbidden),
+            )) => Some(RuntimeExit::PairingRequired(failure)),
             _ => None,
         }
     }

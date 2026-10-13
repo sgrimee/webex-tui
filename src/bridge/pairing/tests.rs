@@ -89,6 +89,8 @@ impl SessionClock for Clock {
 
 struct Session {
     calls: Calls,
+    /// Scripted session-create answers, consumed in order; empty means Ok.
+    issues: Arc<Mutex<std::collections::VecDeque<SessionFailure>>>,
 }
 
 impl SessionBackend for Session {
@@ -99,7 +101,10 @@ impl SessionBackend for Session {
 
     async fn issue(&mut self, secret: &str) -> Result<(), SessionFailure> {
         self.calls.lock().unwrap().push(Call::Issue(secret.into()));
-        Ok(())
+        match self.issues.lock().unwrap().pop_front() {
+            Some(failure) => Err(failure),
+            None => Ok(()),
+        }
     }
 
     async fn subscribe(&mut self, _: &()) -> Result<(), SessionFailure> {
@@ -165,6 +170,7 @@ fn bootstrap(
     let session = SessionLifecycle::new(
         Session {
             calls: Arc::clone(&calls),
+            issues: Arc::default(),
         },
         Clock,
     );
@@ -287,12 +293,13 @@ async fn explicit_pair_denial_reuses_secret_without_overwriting_then_fails_close
     let secret = encoded([3; 32]);
     let hash = expected_hash(&secret);
     let (mut bootstrap, mut session, calls) = bootstrap(
-        Ok(Some(secret)),
+        Ok(Some(secret.clone())),
         Ok(()),
         Ok(SUPPORTED_API_VERSION),
         Err(PairingBackendFailure::Denied),
         Ok([4; 32]),
     );
+    not_paired(&session, 1);
 
     assert_eq!(
         bootstrap.connect(&mut session).await,
@@ -304,9 +311,14 @@ async fn explicit_pair_denial_reuses_secret_without_overwriting_then_fails_close
     );
     assert_eq!(
         *calls.lock().unwrap(),
-        [Call::Status, Call::Load, Call::Pair(hash)]
+        [
+            Call::Status,
+            Call::Load,
+            Call::Issue(secret.clone()),
+            Call::Pair(hash)
+        ]
     );
-    assert_eq!(session.phase(), SessionPhase::Disconnected);
+    assert!(session.subscription().is_none(), "no session");
 }
 
 type Events = Arc<Mutex<Vec<&'static str>>>;
@@ -429,6 +441,7 @@ async fn fresh_secret_is_not_observable_through_pair_failure_or_state() {
     let mut session = SessionLifecycle::new(
         Session {
             calls: Arc::new(Mutex::new(Vec::new())),
+            issues: Arc::default(),
         },
         Clock,
     );
@@ -485,7 +498,8 @@ async fn existing_secret_is_not_observable_through_session_failure_or_state() {
     );
     assert_secret_free(&result, &secret);
     assert_secret_free(&bootstrap.state(), &secret);
-    assert_eq!(*events.lock().unwrap(), ["status", "load", "pair", "issue"]);
+    // Session-first: a transport failure never leads to pairing.
+    assert_eq!(*events.lock().unwrap(), ["status", "load", "issue"]);
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -618,4 +632,137 @@ async fn version_mismatch_stops_before_secret_read_or_pairing() {
     );
     assert_eq!(*calls.lock().unwrap(), [Call::Status]);
     assert_eq!(session.phase(), SessionPhase::Disconnected);
+}
+
+/// Script the next `count` session creations to answer `401 auth_required`.
+fn not_paired(session: &SessionLifecycle<Session, Clock>, count: usize) {
+    let mut issues = session.backend_for_tests().issues.lock().unwrap();
+    for _ in 0..count {
+        issues.push_back(SessionFailure::NotPaired);
+    }
+}
+
+fn existing(
+    secret: &str,
+) -> (
+    PairingBootstrap<Store, Backend, Random>,
+    SessionLifecycle<Session, Clock>,
+    Calls,
+) {
+    bootstrap(
+        Ok(Some(secret.into())),
+        Ok(()),
+        Ok(SUPPORTED_API_VERSION),
+        Ok(()),
+        Ok([9; 32]),
+    )
+}
+
+#[tokio::test]
+async fn an_already_paired_secret_connects_without_any_pair_call() {
+    let secret = encoded([0x11; 32]);
+    let (mut bootstrap, mut session, calls) = existing(&secret);
+    assert!(bootstrap.connect(&mut session).await.is_ok());
+    assert_eq!(bootstrap.state(), PairingState::Ready);
+    assert_eq!(
+        *calls.lock().unwrap(),
+        [
+            Call::Status,
+            Call::Load,
+            Call::Issue(secret),
+            Call::Subscribe
+        ]
+    );
+}
+
+#[tokio::test]
+async fn an_unpaired_existing_secret_pairs_exactly_once_then_connects() {
+    let secret = encoded([0x22; 32]);
+    let hash = expected_hash(&secret);
+    let (mut bootstrap, mut session, calls) = existing(&secret);
+    not_paired(&session, 1);
+    assert!(bootstrap.connect(&mut session).await.is_ok());
+    assert_eq!(session.phase(), SessionPhase::AwaitingReady);
+    assert_eq!(
+        *calls.lock().unwrap(),
+        [
+            Call::Status,
+            Call::Load,
+            Call::Issue(secret.clone()),
+            Call::Pair(hash),
+            Call::Issue(secret),
+            Call::Subscribe
+        ]
+    );
+}
+
+/// Pinned: only exactly `401 auth_required` (NotPaired) may pair. Other 401
+/// codes, 400/503 (InvalidResponse), 403 forbidden_* and transport never do.
+#[tokio::test]
+async fn other_session_create_failures_never_pair() {
+    for failure in [
+        SessionFailure::AuthRequired,
+        SessionFailure::InvalidResponse,
+        SessionFailure::Forbidden,
+        SessionFailure::Transport,
+    ] {
+        let secret = encoded([0x33; 32]);
+        let (mut bootstrap, mut session, calls) = existing(&secret);
+        session
+            .backend_for_tests()
+            .issues
+            .lock()
+            .unwrap()
+            .push_back(failure);
+        assert_eq!(
+            bootstrap.connect(&mut session).await,
+            Err(BootstrapFailure::Session(failure))
+        );
+        assert_eq!(
+            *calls.lock().unwrap(),
+            [Call::Status, Call::Load, Call::Issue(secret)],
+            "{failure:?}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn still_unpaired_after_pairing_fails_closed_without_a_second_dialog() {
+    // Existing secret: NotPaired, pair, NotPaired again.
+    let secret = encoded([0x44; 32]);
+    let (mut bootstrap, mut session, calls) = existing(&secret);
+    not_paired(&session, 2);
+    assert_eq!(
+        bootstrap.connect(&mut session).await,
+        Err(BootstrapFailure::Session(SessionFailure::NotPaired))
+    );
+    let pairs = calls
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|call| matches!(call, Call::Pair(_)))
+        .count();
+    assert_eq!(pairs, 1);
+    // Fresh secret: pair first, then a NotPaired connect never pairs again.
+    let (mut fresh, mut session, calls) = super::tests::bootstrap(
+        Ok(None),
+        Ok(()),
+        Ok(SUPPORTED_API_VERSION),
+        Ok(()),
+        Ok([0x55; 32]),
+    );
+    not_paired(&session, 1);
+    assert_eq!(
+        fresh.connect(&mut session).await,
+        Err(BootstrapFailure::Session(SessionFailure::NotPaired))
+    );
+    let calls = calls.lock().unwrap();
+    assert_eq!(
+        calls
+            .iter()
+            .filter(|call| matches!(call, Call::Pair(_)))
+            .count(),
+        1
+    );
+    assert!(matches!(calls.last(), Some(Call::Issue(_))));
 }

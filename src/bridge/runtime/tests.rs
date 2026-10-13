@@ -652,6 +652,23 @@ async fn refused_secret_exits_pairing_required_and_settles_reads() {
     assert_eq!(f.mailbox.try_read(read_request()), ReadAdmission::Closed);
 }
 
+/// A reconnect answered `401 auth_required` (not paired) exits for an
+/// explicit re-pair; the loop itself never pairs.
+#[tokio::test]
+async fn unpaired_reconnect_exits_pairing_required() {
+    let (runtime, f) = fixture();
+    f.shared
+        .issue_failures
+        .lock()
+        .unwrap()
+        .push_back(SessionFailure::NotPaired);
+    assert_eq!(
+        runtime.run().await,
+        RuntimeExit::PairingRequired(SessionFailure::NotPaired)
+    );
+    assert_eq!(f.shared.issues.load(Ordering::SeqCst), 1);
+}
+
 #[tokio::test]
 async fn missing_secret_at_renewal_exits_without_creating_one() {
     let (runtime, f) = fixture();
