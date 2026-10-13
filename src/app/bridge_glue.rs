@@ -590,8 +590,10 @@ impl BridgeGlue {
         }
     }
 
-    /// Fetch a room's team name once (legacy parity: team-name decoration).
-    /// An inaccessible team stays requested, so the room shows its own title.
+    /// Fetch a room's team name once (the room title's team decoration).
+    /// Until it arrives, or if the team is inaccessible, the room shows its
+    /// own title. A lookup that failed is asked again after the next
+    /// snapshot install (which clears requested-but-absent markers).
     fn request_team(&mut self, state: &mut AppState, room: &Room) {
         let Some(team) = room.team_id.clone() else {
             return;
