@@ -874,44 +874,47 @@ async fn confirmed_delete_and_leave_apply_only_after_success() {
     assert_eq!(shared.writes.load(Ordering::SeqCst), 2);
 }
 
+/// Unknown and (REVIEW-13 nit c) rejected deletes both reconcile by reading.
 #[tokio::test]
-async fn uncertain_delete_reconciles_by_reading_instead_of_replaying() {
-    let (runtime, mut glue, control, shared) = fixture(None);
-    let mut state = AppState::default();
-    let driver = async {
-        active_room_loaded(&mut glue, &mut state, &shared).await;
-        shared
-            .write_replies
-            .lock()
-            .unwrap()
-            .push_back(WriteReply::Unknown);
-        loop {
-            match glue.delete_message(&ROOM_A.to_owned(), &MessageId::new("a1")) {
-                Ok(()) => break,
-                Err(WriteRefusal::NotReady) => {
-                    glue.drain(&mut state, usize::MAX);
-                    tokio::time::sleep(Duration::from_millis(1)).await;
+async fn uncertain_or_rejected_delete_reconciles_by_reading_instead_of_replaying() {
+    for (reply, rejected) in [(WriteReply::Unknown, false), (WriteReply::Rejected, true)] {
+        let (runtime, mut glue, control, shared) = fixture(None);
+        let mut state = AppState::default();
+        let driver = async {
+            active_room_loaded(&mut glue, &mut state, &shared).await;
+            shared.write_replies.lock().unwrap().push_back(reply);
+            loop {
+                match glue.delete_message(&ROOM_A.to_owned(), &MessageId::new("a1")) {
+                    Ok(()) => break,
+                    Err(WriteRefusal::NotReady) => {
+                        glue.drain(&mut state, usize::MAX);
+                        tokio::time::sleep(Duration::from_millis(1)).await;
+                    }
+                    Err(other) => panic!("{other:?}"),
                 }
-                Err(other) => panic!("{other:?}"),
             }
-        }
-        let reads_before = shared.message_reads.load(Ordering::SeqCst);
-        settle("reconciling read", &mut glue, &mut state, |glue, _| {
-            matches!(glue.last_action(), Some(ActionOutcome::Unknown(_)))
-                && shared.message_reads.load(Ordering::SeqCst) > reads_before
-        })
-        .await;
-        // Still shown: only a confirmed tombstone removes it.
-        assert!(ids(&state, ROOM_A).contains(&"a1".to_owned()));
-        for _ in 0..20 {
-            glue.drain(&mut state, usize::MAX);
-            tokio::time::sleep(Duration::from_millis(1)).await;
-        }
-        assert_eq!(shared.writes.load(Ordering::SeqCst), 1, "never replayed");
-        control.shutdown();
-    };
-    let (exit, ()) = tokio::join!(runtime.run(), driver);
-    assert_eq!(exit, RuntimeExit::Shutdown);
+            let reads_before = shared.message_reads.load(Ordering::SeqCst);
+            settle("reconciling read", &mut glue, &mut state, |glue, _| {
+                let outcome = match glue.last_action() {
+                    Some(ActionOutcome::Unknown(_)) => !rejected,
+                    Some(ActionOutcome::Rejected(_)) => rejected,
+                    _ => false,
+                };
+                outcome && shared.message_reads.load(Ordering::SeqCst) > reads_before
+            })
+            .await;
+            // Still shown: only a confirmed tombstone removes it.
+            assert!(ids(&state, ROOM_A).contains(&"a1".to_owned()));
+            for _ in 0..20 {
+                glue.drain(&mut state, usize::MAX);
+                tokio::time::sleep(Duration::from_millis(1)).await;
+            }
+            assert_eq!(shared.writes.load(Ordering::SeqCst), 1, "never replayed");
+            control.shutdown();
+        };
+        let (exit, ()) = tokio::join!(runtime.run(), driver);
+        assert_eq!(exit, RuntimeExit::Shutdown);
+    }
 }
 
 #[tokio::test]

@@ -369,7 +369,12 @@ impl BridgeGlue {
             }
             (ActionOutcome::Confirmed(_), Action::LeaveRoom(room)) => state.cache.remove_room(room),
             // Reconcile from the mirror; the user decides on any fresh write.
-            (ActionOutcome::Unknown(_), Action::DeleteMessage { room, message }) => {
+            // A rejected delete (e.g. the message is already gone) is also
+            // reconciled, so a stale row cannot linger.
+            (
+                ActionOutcome::Unknown(_) | ActionOutcome::Rejected(_),
+                Action::DeleteMessage { room, message },
+            ) => {
                 self.request_message(room, message, false);
             }
             (ActionOutcome::Unknown(_), Action::LeaveRoom(_)) => {
