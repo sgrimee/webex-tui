@@ -216,7 +216,14 @@ impl RoomMessageView {
             return Err(ViewError::Room);
         }
         let parent = match &page.parent {
-            ThreadParent::Active(message) | ThreadParent::Deleted(message) => Some(message),
+            // A thread parent is a root: a parent that is itself a reply
+            // would create nested threads, which Webex does not have.
+            ThreadParent::Active(message) | ThreadParent::Deleted(message) => {
+                if message.parent_id.is_some() {
+                    return Err(ViewError::Identity);
+                }
+                Some(message)
+            }
             ThreadParent::Missing(id) | ThreadParent::Unavailable(id) => {
                 if !valid_opaque_id(id.as_str()) {
                     return Err(ViewError::Identity);
@@ -224,6 +231,17 @@ impl RoomMessageView {
                 None
             }
         };
+        // Cheap re-check of the ThreadPage invariant: every reply names this
+        // exact parent and none is the parent itself.
+        let parent_id = page.parent.id();
+        if page
+            .replies
+            .messages
+            .iter()
+            .any(|reply| reply.id == *parent_id || reply.parent_id.as_ref() != Some(parent_id))
+        {
+            return Err(ViewError::Identity);
+        }
         let batch: Vec<&MessageSnapshot> =
             parent.into_iter().chain(&page.replies.messages).collect();
         self.apply_batch(batch)
@@ -372,10 +390,14 @@ impl RoomMessageView {
     }
 
     fn rebuild(&mut self) {
-        let threads = group(self.messages.values().map(|message| ThreadMessage {
-            id: message.id.as_str().to_owned(),
-            parent_id: message.parent_id.as_ref().map(|id| id.as_str().to_owned()),
-            created_at: sort_key(message.created_at.as_deref()),
+        let threads = group(self.messages.values().map(|message| {
+            ThreadMessage {
+                id: message.id.as_str().to_owned(),
+                parent_id: self
+                    .display_parent(message)
+                    .map(|id| id.as_str().to_owned()),
+                created_at: sort_key(message.created_at.as_deref()),
+            }
         }));
         let mut rows = Vec::with_capacity(self.messages.len());
         for thread in threads {
@@ -399,6 +421,28 @@ impl RoomMessageView {
             rows.extend(replies.into_iter().map(RowKey::Message));
         }
         self.rows = rows;
+    }
+
+    /// Display grouping parent. Webex threads are one level deep, but stored
+    /// data could still be malformed: a nested reply collapses to its top-most
+    /// loaded ancestor (or the first absent one, shown as a missing root), and
+    /// any member of a parent cycle is shown as its own root. Every message
+    /// therefore appears in exactly one row. Canonical parent IDs are untouched.
+    fn display_parent<'a>(&'a self, message: &'a MessageSnapshot) -> Option<&'a MessageId> {
+        let mut parent = message.parent_id.as_ref()?;
+        let mut visited = HashSet::from([&message.id]);
+        loop {
+            let Some(ancestor) = self.messages.get(parent) else {
+                return Some(parent); // absent: missing-root group
+            };
+            let Some(next) = ancestor.parent_id.as_ref() else {
+                return Some(parent); // top-most loaded root
+            };
+            if !visited.insert(parent) || visited.contains(next) {
+                return None; // cycle: show as its own root
+            }
+            parent = next;
+        }
     }
 
     fn active(&self, id: &MessageId) -> bool {

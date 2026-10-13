@@ -549,3 +549,70 @@ fn mixed_timestamp_precision_and_offsets_order_chronologically() {
         Some("2026-01-01T01:00:01+01:00")
     );
 }
+
+#[test]
+fn nested_replies_and_parent_cycles_never_duplicate_rows() {
+    let mut v = view();
+    v.upsert(&msg("root", None, at(1), 0)).unwrap();
+    v.upsert(&msg("reply", Some("root"), at(2), 0)).unwrap();
+    // Malformed nested reply: collapses into the top-most root's thread.
+    v.upsert(&msg("nested", Some("reply"), at(3), 0)).unwrap();
+    assert_eq!(ids(&v), ["root", "reply", "nested"]);
+    // Nested under an absent reply: grouped under that absent ID.
+    v.upsert(&msg("orphan", Some("gone"), at(4), 0)).unwrap();
+    v.upsert(&msg("deeper", Some("orphan"), at(5), 0)).unwrap();
+    assert_eq!(
+        ids(&v),
+        [
+            "root",
+            "reply",
+            "nested",
+            "missing:gone",
+            "orphan",
+            "deeper"
+        ]
+    );
+    // Parent cycle: each member is its own root, once.
+    v.upsert(&msg("cycle-a", Some("cycle-b"), at(6), 0))
+        .unwrap();
+    v.upsert(&msg("cycle-b", Some("cycle-a"), at(7), 0))
+        .unwrap();
+    let rows = ids(&v);
+    for id in ["cycle-a", "cycle-b", "reply", "orphan"] {
+        assert_eq!(
+            rows.iter().filter(|row| row.as_str() == id).count(),
+            1,
+            "{id}"
+        );
+    }
+    assert_eq!(rows.len(), 8); // 7 messages + one missing-root placeholder
+                               // Canonical parents are not rewritten.
+    assert_eq!(
+        v.get(&MessageId::new("nested"))
+            .unwrap()
+            .parent_id
+            .as_ref()
+            .unwrap()
+            .as_str(),
+        "reply"
+    );
+}
+
+#[test]
+fn thread_page_parent_must_be_a_root_and_replies_must_name_it() {
+    let mut v = view();
+    let nested_parent = ThreadPage {
+        parent: ThreadParent::Active(msg("root", Some("above"), at(1), 0)),
+        replies: page(vec![msg("r1", Some("root"), at(2), 0)]),
+    };
+    assert_eq!(
+        v.apply_thread_page(&nested_parent),
+        Err(ViewError::Identity)
+    );
+    let wrong_reply = ThreadPage {
+        parent: ThreadParent::Missing(MessageId::new("root")),
+        replies: page(vec![msg("r1", Some("elsewhere"), at(2), 0)]),
+    };
+    assert_eq!(v.apply_thread_page(&wrong_reply), Err(ViewError::Identity));
+    assert!(v.is_empty() && v.messages.is_empty());
+}
