@@ -48,10 +48,9 @@ async fn main() -> Result<ExitCode> {
             .action(clap::ArgAction::Append)
         )
         .arg(
-            arg!(-m --messages <NUMBER> "Set the number of messages to retrieve per room")
+            arg!(-m --messages <NUMBER> "Messages per room page, 1-100 (default: messages_to_load in config.yml, else 10)")
             .required(false)
-            .value_parser(value_parser!(u32))
-            .default_value("10")
+            .value_parser(value_parser!(u32).range(1..=100))
         )
         .arg(
             Arg::new("list-modules")
@@ -98,9 +97,13 @@ async fn main() -> Result<ExitCode> {
     let theme = load_theme(&user_config.theme);
     // CLI args override config values
     let debug = matches.get_flag("debug") || user_config.debug;
-    let messages_to_load = *matches
-        .get_one("messages")
-        .unwrap_or(&user_config.messages_to_load);
+    let (messages_to_load, warning) = config::resolve_messages_to_load(
+        matches.get_one::<u32>("messages").copied(),
+        user_config.messages_to_load,
+    );
+    if let Some(warning) = warning {
+        eprintln!("{warning}");
+    }
 
     run(debug, messages_to_load, theme).await
 }
