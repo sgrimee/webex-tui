@@ -8,13 +8,14 @@
 use super::{
     events::project_continuity,
     projection::valid_id,
+    read_dispatch::{dispatch_read, ReadDispatchError, UiReadBackend},
     write_dispatch::{BridgeUiWriteBackend, DispatchError, UiWriteBackend, WriteDispatcher},
 };
 use crate::frontend::{
     continuity::{
         ContinuityBoundary, DaemonInstanceId, LifecycleControl, SnapshotRelation, UiLifecycleFrame,
     },
-    envelopes::{FrontendIntent, FrontendResult},
+    envelopes::{FrontendIntent, FrontendResult, RequestEnvelope, ResultEnvelope},
     events::{ChangeScope, LifecycleEvent, ResyncReason},
 };
 use std::{
@@ -60,9 +61,10 @@ pub(crate) trait SessionBackend: Send {
     /// Private mutation capability created from an active client. It is retained
     /// by the lifecycle and is never returned through this trait's public API.
     type Writer: UiWriteBackend;
-    /// Read-only view of a client, scoped to a current snapshot ticket.
-    /// Implementations must not expose a cloneable write client or bearer token.
-    type SnapshotReader<'a>
+    /// Read-only view of a client, borrowed for one snapshot ticket or one
+    /// active read. Implementations must not expose a cloneable write client
+    /// or bearer token.
+    type SnapshotReader<'a>: UiReadBackend
     where
         Self: 'a;
     fn issue(
@@ -301,6 +303,16 @@ impl WriteAdmissionStamp {
     }
 }
 
+/// Every error here is proven before any read I/O. Once a read is attempted,
+/// its failure is a typed `ReadOutcome::Rejected` inside the result envelope.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum SessionReadError {
+    NotReady,
+    Expired,
+    Failed,
+    Dispatch(ReadDispatchError),
+}
+
 /// Every error here is proven before backend mutation I/O. Once a backend write
 /// is attempted its failure is carried inside FrontendResult, never this enum.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -361,6 +373,27 @@ impl<B: SessionBackend, C: SessionClock> SessionLifecycle<B, C> {
             .dispatch(intent)
             .await
             .map_err(SessionWriteError::Dispatch)
+    }
+
+    /// Ordinary page/history/point read for an Active session only. During
+    /// SnapshotRequired the ticket-fenced snapshot reader is the sole path, so
+    /// reads cannot race ahead of snapshot installation. No retry or replay.
+    pub(crate) async fn dispatch_read(
+        &mut self,
+        request: RequestEnvelope,
+    ) -> Result<ResultEnvelope, SessionReadError> {
+        self.check_lease();
+        match self.phase() {
+            SessionPhase::Active => {}
+            SessionPhase::Expired => return Err(SessionReadError::Expired),
+            SessionPhase::Failed(_) => return Err(SessionReadError::Failed),
+            _ => return Err(SessionReadError::NotReady),
+        }
+        let active = self.active.as_ref().ok_or(SessionReadError::NotReady)?;
+        let reader = B::snapshot_reader(&active.client);
+        dispatch_read(&reader, request)
+            .await
+            .map_err(SessionReadError::Dispatch)
     }
 
     pub(crate) fn subscription(&self) -> Option<SubscriptionId> {

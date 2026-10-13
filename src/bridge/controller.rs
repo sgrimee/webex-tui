@@ -8,12 +8,13 @@ use super::{
     events::project_ui_event,
     session::{
         FrameAction, LeaseAction, SessionBackend, SessionClock, SessionFailure, SessionLifecycle,
-        SessionPhase, SessionWriteError, SnapshotTicket, SubscriptionId, WriteAdmissionStamp,
+        SessionPhase, SessionReadError, SessionWriteError, SnapshotTicket, SubscriptionId,
+        WriteAdmissionStamp,
     },
 };
 use crate::frontend::{
     continuity::UiLifecycleFrame,
-    envelopes::{FrontendIntent, FrontendResult},
+    envelopes::{FrontendIntent, FrontendResult, RequestEnvelope, ResultEnvelope},
     events::{ConnectionState, LifecycleEvent},
     lifecycle::{LifecycleProjection, ProjectionEffects},
 };
@@ -51,6 +52,20 @@ impl<B: SessionBackend, C: SessionClock, H: PresentationHost> HostController<B, 
     ) -> Result<FrontendResult, SessionWriteError> {
         let had_active = self.session.subscription().is_some();
         let result = self.session.dispatch_write(intent).await;
+        if had_active && self.session.subscription().is_none() {
+            self.phase_changed();
+        }
+        result
+    }
+
+    /// Active-only read; the host receives a correlated typed result and never
+    /// the read facade. A lease expiry observed here is published like a write.
+    pub(crate) async fn dispatch_read(
+        &mut self,
+        request: RequestEnvelope,
+    ) -> Result<ResultEnvelope, SessionReadError> {
+        let had_active = self.session.subscription().is_some();
+        let result = self.session.dispatch_read(request).await;
         if had_active && self.session.subscription().is_none() {
             self.phase_changed();
         }
