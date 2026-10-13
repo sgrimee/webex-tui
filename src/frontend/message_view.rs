@@ -218,10 +218,10 @@ impl RoomMessageView {
         &mut self,
         page: &ThreadPage,
     ) -> Result<PageOutcome, ViewError> {
-        if page.replies.room_id != self.room_id {
+        if page.replies().room_id != self.room_id {
             return Err(ViewError::Room);
         }
-        let parent = match &page.parent {
+        let parent = match page.parent() {
             // A thread parent is a root: a parent that is itself a reply
             // would create nested threads, which Webex does not have.
             ThreadParent::Active(message) | ThreadParent::Deleted(message) => {
@@ -239,9 +239,9 @@ impl RoomMessageView {
         };
         // Cheap re-check of the ThreadPage invariant: every reply names this
         // exact parent and none is the parent itself.
-        let parent_id = page.parent.id();
+        let parent_id = page.parent().id();
         if page
-            .replies
+            .replies()
             .messages
             .iter()
             .any(|reply| reply.id == *parent_id || reply.parent_id.as_ref() != Some(parent_id))
@@ -249,7 +249,7 @@ impl RoomMessageView {
             return Err(ViewError::Identity);
         }
         let batch: Vec<&MessageSnapshot> =
-            parent.into_iter().chain(&page.replies.messages).collect();
+            parent.into_iter().chain(&page.replies().messages).collect();
         self.apply_batch(batch)
     }
 

@@ -463,13 +463,23 @@ fn thread_pages_validate_atomically() {
     assert_eq!(text(&v, "root").as_deref(), Some("root r0"));
 
     let mut other = view();
-    let mut foreign = thread(ThreadParent::Missing(MessageId::new("root")), vec![]);
-    foreign.replies.room_id = RoomId::new("room/b");
+    let mut foreign_page = page(vec![]);
+    foreign_page.room_id = RoomId::new("room/b");
+    let foreign = ThreadPage::new(
+        &MessageId::new("root"),
+        &RoomId::new("room/b"),
+        ThreadParent::Missing(MessageId::new("root")),
+        foreign_page,
+    )
+    .unwrap();
     assert_eq!(other.apply_thread_page(&foreign), Err(ViewError::Room));
-    let bad_parent = ThreadPage {
-        parent: ThreadParent::Missing(MessageId::new("bad\nid")),
-        replies: page(vec![]),
-    };
+    let bad_parent = ThreadPage::new(
+        &MessageId::new("bad\nid"),
+        &RoomId::new(ROOM),
+        ThreadParent::Missing(MessageId::new("bad\nid")),
+        page(vec![]),
+    )
+    .unwrap();
     assert_eq!(
         other.apply_thread_page(&bad_parent),
         Err(ViewError::Identity)
@@ -604,19 +614,23 @@ fn nested_replies_and_parent_cycles_never_duplicate_rows() {
 #[test]
 fn thread_page_parent_must_be_a_root_and_replies_must_name_it() {
     let mut v = view();
-    let nested_parent = ThreadPage {
-        parent: ThreadParent::Active(msg("root", Some("above"), at(1), 0)),
-        replies: page(vec![msg("r1", Some("root"), at(2), 0)]),
-    };
+    // ThreadPage::new accepts a parent that is itself a reply; the view does not.
+    let nested_parent = thread(
+        ThreadParent::Active(msg("root", Some("above"), at(1), 0)),
+        vec![msg("r1", Some("root"), at(2), 0)],
+    );
     assert_eq!(
         v.apply_thread_page(&nested_parent),
         Err(ViewError::Identity)
     );
-    let wrong_reply = ThreadPage {
-        parent: ThreadParent::Missing(MessageId::new("root")),
-        replies: page(vec![msg("r1", Some("elsewhere"), at(2), 0)]),
-    };
-    assert_eq!(v.apply_thread_page(&wrong_reply), Err(ViewError::Identity));
+    // Fields are private: a reply naming another parent cannot be built.
+    assert!(ThreadPage::new(
+        &MessageId::new("root"),
+        &RoomId::new(ROOM),
+        ThreadParent::Missing(MessageId::new("root")),
+        page(vec![msg("r1", Some("elsewhere"), at(2), 0)]),
+    )
+    .is_err());
     assert!(v.is_empty() && v.messages.is_empty());
 }
 

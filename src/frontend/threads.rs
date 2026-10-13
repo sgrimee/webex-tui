@@ -43,13 +43,22 @@ pub(crate) enum ThreadProjectionError {
     ReplyParent,
 }
 
+/// Fields are private so every page passes `ThreadPage::new` validation.
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) struct ThreadPage {
-    pub(crate) parent: ThreadParent,
-    pub(crate) replies: MessagePage,
+    parent: ThreadParent,
+    replies: MessagePage,
 }
 
 impl ThreadPage {
+    pub(crate) fn parent(&self) -> &ThreadParent {
+        &self.parent
+    }
+
+    pub(crate) fn replies(&self) -> &MessagePage {
+        &self.replies
+    }
+
     pub(crate) fn new(
         expected_parent: &MessageId,
         expected_room: &RoomId,

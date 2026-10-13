@@ -445,10 +445,10 @@ fn orphan_and_deleted_roots_preserve_replies_and_scope_mismatches_fail() {
         else {
             panic!("expected thread page");
         };
-        assert_eq!(value.replies.messages.len(), 1);
-        if matches!(value.parent, ThreadParent::Deleted(_)) {
+        assert_eq!(value.replies().messages.len(), 1);
+        if matches!(value.parent(), ThreadParent::Deleted(_)) {
             assert_eq!(
-                value.parent.presentation().unwrap().body.display(),
+                value.parent().presentation().unwrap().body.display(),
                 DisplayBody::Missing
             );
         }
