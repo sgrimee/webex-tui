@@ -417,6 +417,63 @@ fn read_from_an_older_install_is_settled_stale_never_applied() {
     ));
 }
 
+#[test]
+fn overflow_never_merges_post_install_hints_into_an_older_install() {
+    let (mut host, endpoint) = pump::<u32>();
+    let projection = LifecycleProjection::default();
+    // Fill the cap with distinct (unmergeable) pre-install entries.
+    for index in 0..LIFECYCLE_CAP {
+        host.lifecycle(&projection, membership(&format!("room-{index}"), true));
+    }
+    host.install_snapshot(1);
+    let mut post = membership("after", false);
+    post.redact.push(key("deleted-after-install"));
+    host.lifecycle(&projection, post);
+    let mut later = membership("later", true);
+    later.redact.push(key("deleted-later"));
+    host.lifecycle(&projection, later);
+    let events = endpoint.drain(usize::MAX);
+    let snapshot = events
+        .iter()
+        .position(|event| matches!(event, PumpEvent::Snapshot { .. }))
+        .unwrap();
+    assert_eq!(
+        snapshot, LIFECYCLE_CAP,
+        "pre-install entries stay untouched"
+    );
+    for event in &events[..snapshot] {
+        let PumpEvent::Lifecycle {
+            install, effects, ..
+        } = event
+        else {
+            panic!("lifecycle")
+        };
+        assert_eq!(*install, None);
+        assert!(
+            effects.redact.is_empty(),
+            "no post-install redaction leaked back"
+        );
+        assert_eq!(effects.resync, None);
+    }
+    // Post-install hints form one lag entry after the snapshot.
+    assert_eq!(events.len(), snapshot + 2);
+    let PumpEvent::Lifecycle {
+        install, effects, ..
+    } = &events[snapshot + 1]
+    else {
+        panic!("post-install lifecycle")
+    };
+    assert!(install.is_some());
+    assert_eq!(
+        effects.redact,
+        [key("deleted-after-install"), key("deleted-later")]
+    );
+    assert_eq!(
+        effects.resync,
+        Some((ChangeScope::WholeMirror, ResyncReason::EventLag))
+    );
+}
+
 // ---- Integration with the worker's write admission ------------------------
 
 #[derive(Clone)]

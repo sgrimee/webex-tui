@@ -202,18 +202,30 @@ impl<S> PresentationHost for PumpHost<S> {
             return;
         }
         // Overflow: never drop hints silently. Merge into the newest queued
-        // lifecycle entry and upgrade it to a whole-mirror lag reconcile.
+        // lifecycle entry of the *current* install (never across a snapshot
+        // fence) and upgrade it to a whole-mirror lag reconcile.
         let target = pump.queue.iter_mut().rev().find_map(|entry| match entry {
-            Entry::Lifecycle(entry) => Some(entry),
+            Entry::Lifecycle(entry) if entry.install == install => Some(entry),
             _ => None,
         });
-        if let Some(last) = target {
-            last.projection = projection.clone();
-            let membership = last.effects.membership.clone();
-            merge(last, effects);
-            // A conflicting membership hint is covered by the Rooms refresh.
-            last.effects.membership = membership;
-            lag_resync(&mut last.effects);
+        match target {
+            Some(last) => {
+                last.projection = projection.clone();
+                let membership = last.effects.membership.clone();
+                merge(last, effects);
+                // A conflicting membership hint is covered by the Rooms refresh.
+                last.effects.membership = membership;
+                lag_resync(&mut last.effects);
+            }
+            None => {
+                // Every queued entry belongs to an older install: open one
+                // lag entry for this install. Bounded: later overflow merges
+                // into it, and superseding drops post-snapshot entries.
+                let mut entry = LifecycleEntry::new(install, projection.clone(), effects);
+                lag_resync(&mut entry.effects);
+                pump.lifecycle += 1;
+                pump.queue.push_back(Entry::Lifecycle(entry));
+            }
         }
     }
 
