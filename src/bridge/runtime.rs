@@ -111,6 +111,16 @@ pub(crate) struct RuntimeControl {
 }
 
 impl RuntimeControl {
+    /// A control not attached to any runtime, for glue tests that drive the
+    /// presentation pump by hand.
+    #[cfg(test)]
+    pub(crate) fn detached() -> Self {
+        Self {
+            wake: Arc::new(Notify::new()),
+            stop: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
     pub(crate) fn wake(&self) {
         self.wake.notify_one();
     }

@@ -194,7 +194,7 @@ impl FrontendResult {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct RequestId(u64);
 
 /// Immutable correlation captured once before work is dispatched.

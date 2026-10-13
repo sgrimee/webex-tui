@@ -38,6 +38,20 @@ impl Room {
             unread: false,
         })
     }
+    /// Bridge rooms may lack an activity timestamp (never fabricated). Such a
+    /// room keeps the earliest ordering key, so it sorts last; the key is
+    /// ordering-only and never displayed as a time.
+    #[allow(dead_code)] // dormant bridge glue
+    pub(crate) fn from_bridge_snapshot(value: &RoomSnapshot) -> Result<Self> {
+        if value.last_activity.is_some() {
+            return Self::from_snapshot(value);
+        }
+        let mut dated = value.clone();
+        dated.last_activity = Some("1970-01-01T00:00:00Z".into());
+        let mut room = Self::from_snapshot(&dated)?;
+        room.last_activity = DateTime::<Utc>::MIN_UTC;
+        Ok(room)
+    }
     pub(crate) fn is_direct(&self) -> bool {
         self.room_type == "direct"
     }
