@@ -96,6 +96,7 @@ impl EventSource for Stream {
 struct Session {
     log: Log,
     issues: VecDeque<SessionFailure>,
+    hang: bool,
 }
 impl SessionBackend for Session {
     type Client = ();
@@ -104,6 +105,9 @@ impl SessionBackend for Session {
     type SnapshotReader = ();
     async fn issue(&mut self, _: &str) -> Result<(), SessionFailure> {
         self.log.lock().unwrap().push("issue");
+        if self.hang {
+            std::future::pending::<()>().await;
+        }
         match self.issues.pop_front() {
             Some(failure) => Err(failure),
             None => Ok(()),
@@ -143,6 +147,8 @@ struct Fixture {
     loaded: Result<Option<&'static str>, SecretStoreFailure>,
     pair: Option<Result<(), PairingBackendFailure>>,
     issues: Vec<SessionFailure>,
+    /// Session creation never answers.
+    issue_hangs: bool,
 }
 
 impl Default for Fixture {
@@ -154,6 +160,7 @@ impl Default for Fixture {
             loaded: Ok(Some(SECRET)),
             pair: Some(Ok(())),
             issues: Vec::new(),
+            issue_hangs: false,
         }
     }
 }
@@ -188,6 +195,7 @@ fn deps(f: Fixture, log: &Log) -> Deps {
             Session {
                 log: Arc::clone(log),
                 issues: f.issues.into(),
+                hang: f.issue_hangs,
             },
             Clock,
         ),
@@ -379,14 +387,28 @@ async fn bootstrap_failures_map_to_actionable_messages() {
 }
 
 #[tokio::test]
-async fn a_hung_bootstrap_times_out() {
-    let (result, _) = run(Fixture {
+async fn an_unanswered_pairing_dialog_times_out_as_a_pairing_timeout() {
+    let (result, calls) = run(Fixture {
         issues: vec![SessionFailure::NotPaired],
         pair: None, // the dialog never answers
         ..Fixture::default()
     })
     .await;
+    let error = result.unwrap_err();
+    assert_eq!(error, StartupError::PairingTimedOut);
+    assert!(error.message().contains("close it with Deny"));
+    assert_eq!(calls.last(), Some(&"pair"));
+}
+
+#[tokio::test]
+async fn a_hung_session_create_times_out_without_blaming_pairing() {
+    let (result, calls) = run(Fixture {
+        issue_hangs: true,
+        ..Fixture::default()
+    })
+    .await;
     assert_eq!(result.unwrap_err(), StartupError::TimedOut);
+    assert!(!calls.contains(&"pair"));
 }
 
 #[test]

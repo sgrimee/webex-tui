@@ -20,8 +20,8 @@
 
 use super::{
     pairing::{
-        BootstrapFailure, PairingBackend, PairingBootstrap, RandomFailure, RandomSource,
-        UiSecretStore, SUPPORTED_API_VERSION,
+        BootstrapFailure, PairingBackend, PairingBootstrap, PairingState, RandomFailure,
+        RandomSource, UiSecretStore, SUPPORTED_API_VERSION,
     },
     runtime::{EventSource, RuntimeConfig},
     session::{SessionBackend, SessionClock, SessionFailure, SessionLifecycle},
@@ -250,6 +250,9 @@ pub(crate) enum StartupError {
     PairingNotApproved,
     PairingUnavailable,
     Session(SessionFailure),
+    /// The bootstrap deadline expired while the daemon's pairing dialog was
+    /// still unanswered; that dialog may still be on screen.
+    PairingTimedOut,
     TimedOut,
 }
 
@@ -325,7 +328,7 @@ impl StartupError {
                 .into(),
             Self::RandomUnavailable => "The system random source is unavailable; no pairing secret was created."
                 .into(),
-            Self::PairingNotApproved => "Pairing was not approved (denied, timed out after 60 s, or no graphical session). \
+            Self::PairingNotApproved => "Pairing was not approved (denied, not answered in time, or no graphical session). \
                  Start webex-tui again from your logged-in desktop session to retry; the same secret is reused."
                 .into(),
             Self::PairingUnavailable => "The webex-bridge daemon could not be reached for pairing. Check that it is running and start webex-tui again."
@@ -335,6 +338,10 @@ impl StartupError {
             Self::Session(failure) => format!(
                 "Could not open a webex-bridge UI session ({failure:?}). Start webex-tui again."
             ),
+            Self::PairingTimedOut => "The webex-bridge pairing dialog was not answered in time; nothing was paired. \
+                 If that dialog is still open, close it with Deny (an answer now has no effect), \
+                 then start webex-tui again; the same secret is reused."
+                .into(),
             Self::TimedOut => "Starting the bridge session timed out. Start webex-tui again.".into(),
         }
     }
@@ -452,6 +459,9 @@ where
     match tokio::time::timeout(config.bootstrap_deadline, bootstrap.connect(&mut session)).await {
         Ok(Ok(_subscription)) => {}
         Ok(Err(failure)) => return Err(StartupError::from_bootstrap(failure)),
+        Err(_) if bootstrap.state() == PairingState::Pairing => {
+            return Err(StartupError::PairingTimedOut)
+        }
         Err(_) => return Err(StartupError::TimedOut),
     }
     let (runtime, glue) = BridgeGlue::assemble(session, runtime_secrets, runtime, page_size);
