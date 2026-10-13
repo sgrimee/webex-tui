@@ -38,7 +38,7 @@ pub(crate) enum ChangeScope {
     Room(RoomId),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct MessageKey {
     pub(crate) room_id: RoomId,
     pub(crate) message_id: MessageId,

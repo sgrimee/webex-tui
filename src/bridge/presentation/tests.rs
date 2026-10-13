@@ -219,6 +219,117 @@ fn ack_before_drain_is_refused_and_drop_closes_the_endpoint() {
     assert!(!endpoint.ack(install));
 }
 
+fn only_lifecycle(events: Vec<PumpEvent<()>>) -> ProjectionEffects {
+    assert_eq!(events.len(), 1);
+    let Some(PumpEvent::Lifecycle { effects, .. }) = events.into_iter().next() else {
+        panic!("lifecycle")
+    };
+    effects
+}
+
+#[test]
+fn bursts_of_one_message_stay_one_target_with_highest_revision() {
+    let (mut host, endpoint) = pump::<()>();
+    let projection = LifecycleProjection::default();
+    for revision in 0..5000_u64 {
+        host.lifecycle(
+            &projection,
+            ProjectionEffects {
+                refresh: vec![
+                    RefreshTarget::Message {
+                        key: key("hot"),
+                        min_revision: Some(revision % 4000),
+                    },
+                    RefreshTarget::Room(room("room")),
+                ],
+                redact: vec![key("hot")],
+                ..Default::default()
+            },
+        );
+    }
+    let effects = only_lifecycle(endpoint.drain(usize::MAX));
+    assert_eq!(
+        effects.refresh,
+        [
+            RefreshTarget::Message {
+                key: key("hot"),
+                min_revision: Some(3999),
+            },
+            RefreshTarget::Room(room("room")),
+        ]
+    );
+    assert_eq!(effects.redact, [key("hot")]);
+    assert_eq!(effects.resync, None);
+}
+
+#[test]
+fn distinct_targets_beyond_cap_collapse_to_whole_mirror_lag() {
+    let (mut host, endpoint) = pump::<()>();
+    let projection = LifecycleProjection::default();
+    for index in 0..REFRESH_CAP * 10 {
+        host.lifecycle(
+            &projection,
+            ProjectionEffects {
+                refresh: vec![RefreshTarget::Message {
+                    key: key(&format!("m{index}")),
+                    min_revision: None,
+                }],
+                redact: vec![key(&format!("m{index}"))],
+                ..Default::default()
+            },
+        );
+    }
+    let effects = only_lifecycle(endpoint.drain(usize::MAX));
+    assert_eq!(
+        effects.resync,
+        Some((ChangeScope::WholeMirror, ResyncReason::EventLag))
+    );
+    assert_eq!(
+        effects.refresh,
+        [
+            RefreshTarget::LoadedMessages(ChangeScope::WholeMirror),
+            RefreshTarget::Status,
+            RefreshTarget::Rooms,
+        ]
+    );
+    // Redactions are never dropped, only deduplicated.
+    assert_eq!(effects.redact.len(), REFRESH_CAP * 10);
+}
+
+#[test]
+fn whole_mirror_reconcile_subsumes_scoped_targets() {
+    let (mut host, endpoint) = pump::<()>();
+    let projection = LifecycleProjection::default();
+    host.lifecycle(&projection, effects(vec![RefreshTarget::Room(room("a"))]));
+    host.lifecycle(
+        &projection,
+        effects(vec![RefreshTarget::LoadedMessages(
+            ChangeScope::WholeMirror,
+        )]),
+    );
+    host.lifecycle(
+        &projection,
+        effects(vec![
+            RefreshTarget::Room(room("b")),
+            RefreshTarget::LoadedMessages(ChangeScope::Room(room("c"))),
+            RefreshTarget::Message {
+                key: key("m"),
+                min_revision: Some(1),
+            },
+            RefreshTarget::Status,
+        ]),
+    );
+    let effects = only_lifecycle(endpoint.drain(usize::MAX));
+    assert_eq!(
+        effects.refresh,
+        [
+            RefreshTarget::LoadedMessages(ChangeScope::WholeMirror),
+            RefreshTarget::Status,
+            RefreshTarget::Rooms,
+        ]
+    );
+}
+
 // ---- Integration with the worker's write admission ------------------------
 
 #[derive(Clone)]

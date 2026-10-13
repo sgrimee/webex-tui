@@ -24,15 +24,18 @@
 
 use super::{controller::PresentationHost, read_dispatch::ReadTerminal, session::SessionPhase};
 use crate::frontend::{
-    events::{ChangeScope, ResyncReason},
+    events::{ChangeScope, MessageKey, ResyncReason},
     lifecycle::{LifecycleProjection, ProjectionEffects, RefreshTarget},
 };
 use std::{
-    collections::VecDeque,
+    collections::{HashSet, VecDeque},
     sync::{Arc, Mutex, MutexGuard},
 };
 
 pub(crate) const LIFECYCLE_CAP: usize = 64;
+/// Distinct refresh targets per queued lifecycle entry before collapsing to a
+/// whole-mirror lag reconcile.
+pub(crate) const REFRESH_CAP: usize = 64;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct InstallId(u64);
@@ -53,8 +56,52 @@ pub(crate) enum PumpEvent<S> {
     Read(ReadTerminal),
 }
 
+/// Queued lifecycle hints plus an O(1) redaction index, so merging a burst of
+/// SSE metadata stays linear and bounded.
+struct LifecycleEntry {
+    projection: LifecycleProjection,
+    effects: ProjectionEffects,
+    redacted: HashSet<MessageKey>,
+}
+
+impl LifecycleEntry {
+    fn new(projection: LifecycleProjection, effects: ProjectionEffects) -> Self {
+        let mut entry = Self {
+            projection,
+            effects: ProjectionEffects {
+                membership: effects.membership.clone(),
+                ..Default::default()
+            },
+            redacted: HashSet::new(),
+        };
+        merge(&mut entry, effects);
+        entry
+    }
+}
+
+enum Entry<S> {
+    Phase(SessionPhase),
+    Lifecycle(LifecycleEntry),
+    Snapshot { install: InstallId, snapshot: S },
+    Read(ReadTerminal),
+}
+
+impl<S> Entry<S> {
+    fn into_event(self) -> PumpEvent<S> {
+        match self {
+            Self::Phase(phase) => PumpEvent::Phase(phase),
+            Self::Lifecycle(entry) => PumpEvent::Lifecycle {
+                projection: entry.projection,
+                effects: entry.effects,
+            },
+            Self::Snapshot { install, snapshot } => PumpEvent::Snapshot { install, snapshot },
+            Self::Read(terminal) => PumpEvent::Read(terminal),
+        }
+    }
+}
+
 struct Pump<S> {
-    queue: VecDeque<PumpEvent<S>>,
+    queue: VecDeque<Entry<S>>,
     lifecycle: usize,
     last_install: u64,
     latest: Option<InstallId>,
@@ -99,50 +146,43 @@ impl<S> PresentationHost for PumpHost<S> {
 
     fn session_phase(&mut self, phase: SessionPhase) {
         let mut pump = lock(&self.shared);
-        if let Some(PumpEvent::Phase(last)) = pump.queue.back_mut() {
+        if let Some(Entry::Phase(last)) = pump.queue.back_mut() {
             *last = phase;
         } else {
-            pump.queue.push_back(PumpEvent::Phase(phase));
+            pump.queue.push_back(Entry::Phase(phase));
         }
     }
 
     fn lifecycle(&mut self, projection: &LifecycleProjection, effects: ProjectionEffects) {
         let mut pump = lock(&self.shared);
-        if let Some(PumpEvent::Lifecycle {
-            projection: last,
-            effects: queued,
-        }) = pump.queue.back_mut()
-        {
-            if mergeable(queued, &effects) {
-                *last = projection.clone();
-                merge(queued, effects);
+        if let Some(Entry::Lifecycle(last)) = pump.queue.back_mut() {
+            if mergeable(&last.effects, &effects) {
+                last.projection = projection.clone();
+                merge(last, effects);
                 return;
             }
         }
         if pump.lifecycle < LIFECYCLE_CAP {
             pump.lifecycle += 1;
-            pump.queue.push_back(PumpEvent::Lifecycle {
-                projection: projection.clone(),
+            pump.queue.push_back(Entry::Lifecycle(LifecycleEntry::new(
+                projection.clone(),
                 effects,
-            });
+            )));
             return;
         }
         // Overflow: never drop hints silently. Merge into the newest queued
         // lifecycle entry and upgrade it to a whole-mirror lag reconcile.
-        let target = pump.queue.iter_mut().rev().find_map(|event| match event {
-            PumpEvent::Lifecycle {
-                projection,
-                effects,
-            } => Some((projection, effects)),
+        let target = pump.queue.iter_mut().rev().find_map(|entry| match entry {
+            Entry::Lifecycle(entry) => Some(entry),
             _ => None,
         });
-        if let Some((last, queued)) = target {
-            *last = projection.clone();
-            let membership = queued.membership.clone();
-            merge(queued, effects);
+        if let Some(last) = target {
+            last.projection = projection.clone();
+            let membership = last.effects.membership.clone();
+            merge(last, effects);
             // A conflicting membership hint is covered by the Rooms refresh.
-            queued.membership = membership;
-            lag_resync(queued);
+            last.effects.membership = membership;
+            lag_resync(&mut last.effects);
         }
     }
 
@@ -156,18 +196,15 @@ impl<S> PresentationHost for PumpHost<S> {
         pump.last_install = next;
         // An undrained older snapshot is superseded; only the latest matters.
         pump.queue
-            .retain(|event| !matches!(event, PumpEvent::Snapshot { .. }));
+            .retain(|entry| !matches!(entry, Entry::Snapshot { .. }));
         let install = InstallId(next);
         pump.latest = Some(install);
         pump.drained_latest = false;
-        pump.queue
-            .push_back(PumpEvent::Snapshot { install, snapshot });
+        pump.queue.push_back(Entry::Snapshot { install, snapshot });
     }
 
     fn deliver_read(&mut self, terminal: ReadTerminal) {
-        lock(&self.shared)
-            .queue
-            .push_back(PumpEvent::Read(terminal));
+        lock(&self.shared).queue.push_back(Entry::Read(terminal));
     }
 
     fn snapshot_acknowledged(&self) -> bool {
@@ -193,17 +230,17 @@ impl<S> PresentationEndpoint<S> {
         let mut pump = lock(&self.shared);
         let mut events = Vec::new();
         while events.len() < max {
-            let Some(event) = pump.queue.pop_front() else {
+            let Some(entry) = pump.queue.pop_front() else {
                 break;
             };
-            match &event {
-                PumpEvent::Lifecycle { .. } => pump.lifecycle -= 1,
-                PumpEvent::Snapshot { install, .. } if pump.latest == Some(*install) => {
+            match &entry {
+                Entry::Lifecycle(_) => pump.lifecycle -= 1,
+                Entry::Snapshot { install, .. } if pump.latest == Some(*install) => {
                     pump.drained_latest = true;
                 }
                 _ => {}
             }
-            events.push(event);
+            events.push(entry.into_event());
         }
         events
     }
@@ -229,12 +266,20 @@ fn mergeable(queued: &ProjectionEffects, next: &ProjectionEffects) -> bool {
     queued.membership.is_none() || next.membership.is_none() || queued.membership == next.membership
 }
 
-fn merge(queued: &mut ProjectionEffects, next: ProjectionEffects) {
-    for target in next.refresh {
-        push_unique(&mut queued.refresh, target);
-    }
+/// Merge one hint set into a queued entry. Refresh targets stay deduplicated
+/// and bounded: message targets dedupe by key keeping the highest minimum
+/// revision, a whole-mirror reconcile subsumes room/message/room-scoped
+/// targets, and more than `REFRESH_CAP` targets collapse to a whole-mirror
+/// lag reconcile. Redactions dedupe in O(1) and are never dropped.
+fn merge(entry: &mut LifecycleEntry, next: ProjectionEffects) {
     for key in next.redact {
-        push_unique(&mut queued.redact, key);
+        if entry.redacted.insert(key.clone()) {
+            entry.effects.redact.push(key);
+        }
+    }
+    let queued = &mut entry.effects;
+    for target in next.refresh {
+        add_refresh(queued, target);
     }
     if queued.membership.is_none() {
         queued.membership = next.membership;
@@ -243,21 +288,55 @@ fn merge(queued: &mut ProjectionEffects, next: ProjectionEffects) {
         (None, next) => next,
         (current, None) => current,
         (Some(current), Some(next)) if current == next => Some(current),
-        (Some(_), Some((_, reason))) => {
-            // Different scopes/reasons: reconcile everything loaded.
-            for target in whole_mirror_refresh() {
-                push_unique(&mut queued.refresh, target);
-            }
-            Some((ChangeScope::WholeMirror, reason))
-        }
+        // Different scopes/reasons: reconcile everything loaded.
+        (Some(_), Some((_, reason))) => Some((ChangeScope::WholeMirror, reason)),
     };
+    if matches!(queued.resync, Some((ChangeScope::WholeMirror, _))) {
+        collapse_whole_mirror(queued);
+    }
+    if queued.refresh.len() > REFRESH_CAP {
+        lag_resync(queued);
+    }
+}
+
+fn add_refresh(queued: &mut ProjectionEffects, target: RefreshTarget) {
+    let whole = RefreshTarget::LoadedMessages(ChangeScope::WholeMirror);
+    if queued.refresh.contains(&whole) {
+        // Already reconciling everything loaded: only global targets remain.
+        if matches!(target, RefreshTarget::Status | RefreshTarget::Rooms) {
+            push_unique(&mut queued.refresh, target);
+        }
+        return;
+    }
+    match target {
+        RefreshTarget::Message { key, min_revision } => {
+            let existing = queued.refresh.iter_mut().find_map(|queued| match queued {
+                RefreshTarget::Message {
+                    key: queued_key,
+                    min_revision,
+                } if *queued_key == key => Some(min_revision),
+                _ => None,
+            });
+            match existing {
+                Some(existing) => *existing = (*existing).max(min_revision),
+                None => queued
+                    .refresh
+                    .push(RefreshTarget::Message { key, min_revision }),
+            }
+        }
+        RefreshTarget::LoadedMessages(ChangeScope::WholeMirror) => collapse_whole_mirror(queued),
+        target => push_unique(&mut queued.refresh, target),
+    }
+}
+
+/// Whole-mirror reconcile subsumes every room, message and room-scoped target.
+fn collapse_whole_mirror(queued: &mut ProjectionEffects) {
+    queued.refresh = whole_mirror_refresh().into();
 }
 
 fn lag_resync(queued: &mut ProjectionEffects) {
     queued.resync = Some((ChangeScope::WholeMirror, ResyncReason::EventLag));
-    for target in whole_mirror_refresh() {
-        push_unique(&mut queued.refresh, target);
-    }
+    collapse_whole_mirror(queued);
 }
 
 fn whole_mirror_refresh() -> [RefreshTarget; 3] {
