@@ -538,6 +538,20 @@ mod tests {
         assert_eq!(leave_d.backend.calls, 1);
     }
     #[tokio::test]
+    async fn an_invalid_response_is_unknown_once_without_backend_detail_or_session_failure() {
+        let invalid =
+            || ClientError::InvalidResponse(std::io::Error::other("raw secret-or-body").into());
+        let mut d = fake(Err(invalid()), Ok(msg()), Ok(()), Ok(()));
+        let (result, failure) = d.dispatch_observed(send()).await.unwrap();
+        let FrontendResult::SendMessage(WriteOutcome::DeliveryUnknown(error)) = result else {
+            panic!("an undecodable reply is delivery-unknown");
+        };
+        assert_eq!(error.code, "invalid_response");
+        assert!(!error.message.contains("secret-or-body"));
+        assert_eq!(failure, None, "not a session failure");
+        assert_eq!(d.backend.calls, 1);
+    }
+    #[tokio::test]
     async fn every_non_write_intent_returns_error_without_io() {
         let page = || PageRequest {
             before: Some(PageCursor::new("cursor")),
