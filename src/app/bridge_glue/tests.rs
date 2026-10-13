@@ -916,6 +916,68 @@ async fn a_write_lost_with_the_runtime_is_uncertain_not_unsent() {
     assert_eq!(state.message_editor.lines(), ["in flight"]);
 }
 
+/// REVIEW-13 LOW-1: a write the worker confirmed just before the runtime
+/// dropped stays confirmed. The glue first observes `closed`, then drains the
+/// slot (the worker fills the slot before its Drop closes the endpoint).
+#[tokio::test]
+async fn writes_confirmed_just_before_the_runtime_exits_stay_confirmed() {
+    let (runtime, mut glue, control, shared) = fixture(None);
+    let mut state = AppState::default();
+    let driver = async {
+        active_room_loaded(&mut glue, &mut state, &shared).await;
+        state.message_editor.reset_with_text("last words".into());
+        submit(&mut glue, &mut state).await;
+        for _ in 0..2000 {
+            if shared.writes.load(Ordering::SeqCst) == 1 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        }
+        // The App does not drain before the runtime is gone.
+        control.shutdown();
+    };
+    let (exit, ()) = tokio::join!(runtime.run(), driver);
+    assert_eq!(exit, RuntimeExit::Shutdown);
+    glue.drain(&mut state, usize::MAX);
+    assert!(glue.status().closed);
+    assert_eq!(glue.editor().status(), EditorWriteStatus::Ready);
+    assert!(glue.editor().review().is_none(), "not uncertain");
+    assert!(ids(&state, ROOM_A).contains(&"sent-1".to_owned()));
+    assert!(state.message_editor.is_empty());
+
+    // Same for an explicit delete confirmed right before the exit.
+    let (runtime, mut glue, control, shared) = fixture(None);
+    let mut state = AppState::default();
+    let driver = async {
+        active_room_loaded(&mut glue, &mut state, &shared).await;
+        loop {
+            match glue.delete_message(&ROOM_A.to_owned(), &MessageId::new("a1")) {
+                Ok(()) => break,
+                Err(WriteRefusal::NotReady) => {
+                    glue.drain(&mut state, usize::MAX);
+                    tokio::time::sleep(Duration::from_millis(1)).await;
+                }
+                Err(other) => panic!("{other:?}"),
+            }
+        }
+        for _ in 0..2000 {
+            if shared.writes.load(Ordering::SeqCst) == 1 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        }
+        control.shutdown();
+    };
+    let (exit, ()) = tokio::join!(runtime.run(), driver);
+    assert_eq!(exit, RuntimeExit::Shutdown);
+    glue.drain(&mut state, usize::MAX);
+    assert!(matches!(
+        glue.last_action(),
+        Some(ActionOutcome::Confirmed(_))
+    ));
+    assert_eq!(ids(&state, ROOM_A), ["a2"]);
+}
+
 #[tokio::test]
 async fn writes_stay_closed_until_the_snapshot_is_acknowledged() {
     let (runtime, mut glue, control, shared) = fixture(None);

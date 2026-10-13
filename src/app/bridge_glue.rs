@@ -304,11 +304,19 @@ impl BridgeGlue {
 
     /// Settle the single write slot's terminal, if any, then reduce a closed
     /// pump's still-pending write as uncertain.
+    ///
+    /// Order matters: `closed` is observed *before* draining. The worker's
+    /// Drop closes the endpoint only after its reservation guard has put the
+    /// terminal in the slot, so a closed observation implies the terminal
+    /// (if any) is already drainable. Checking after draining would let a
+    /// worker that confirms and drops in between turn a confirmed write into
+    /// an uncertain one (and never install its canonical message).
     fn settle_writes(&mut self, state: &mut AppState) {
+        let closed = self.endpoint.is_closed();
         if let Some(terminal) = self.mailbox.drain() {
             self.apply_write(state, terminal);
         }
-        if self.endpoint.is_closed() {
+        if closed {
             if let Some(context) = self.ledger.pending_context().cloned() {
                 let current = current_stamp(state);
                 let effects = self.ledger.missing_completion(&context, current.as_ref());
