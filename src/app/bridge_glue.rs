@@ -716,9 +716,18 @@ impl BridgeGlue {
                     entry.1 = merge_purpose(&entry.1, purpose);
                 }
             }
+            // Deduplicated like an admitted duplicate: the queued entry takes
+            // the newest purpose, so a request deferred before a room reset
+            // carries the room's current generation when it is sent (else its
+            // result would be dropped as pre-reset and the room left empty).
             ReadAdmission::Full => {
-                if !self.deferred.iter().any(|(queued, _)| *queued == intent) {
-                    self.deferred.push_back((intent, purpose));
+                match self
+                    .deferred
+                    .iter_mut()
+                    .find(|(queued, _)| *queued == intent)
+                {
+                    Some(entry) => entry.1 = merge_purpose(&entry.1, purpose),
+                    None => self.deferred.push_back((intent, purpose)),
                 }
             }
             ReadAdmission::Closed => self.status.closed = true,

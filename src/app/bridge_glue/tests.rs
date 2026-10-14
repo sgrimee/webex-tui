@@ -487,6 +487,138 @@ async fn snapshot_installs_identity_and_rooms_then_open_room_loads_its_page() {
     assert_eq!(exit, RuntimeExit::Shutdown);
 }
 
+/// Daemon restart (e.g. `launchctl kickstart`): the event stream fails, the
+/// runtime reconnects and installs a new snapshot. Afterwards the loaded room
+/// is refetched and a newly opened room still loads its page (live S5).
+#[tokio::test]
+async fn rooms_still_load_after_a_reconnect_and_snapshot_reinstall() {
+    let (runtime, mut glue, control, shared) = fixture(None);
+    shared
+        .pages
+        .lock()
+        .unwrap()
+        .insert(ROOM_B.into(), vec![message("b1", ROOM_B, "alice", 3, 1)]);
+    let mut state = AppState::default();
+    let driver = async {
+        wait_subscribed(&shared, 1).await;
+        ready(&mut glue, &mut state, &shared).await;
+        glue.open_room(&mut state, &ROOM_A.to_owned());
+        settle("page A", &mut glue, &mut state, |glue, state| {
+            ids(state, ROOM_A).len() == 2 && glue.outstanding_reads() == 0
+        })
+        .await;
+        let reads_before = shared.page_reads.load(Ordering::SeqCst);
+
+        // The daemon goes away: the stream fails with a transport error.
+        let sender = shared.stream.lock().unwrap().clone().unwrap();
+        sender.send(Some(Err(SessionFailure::Transport))).unwrap();
+        wait_subscribed(&shared, 2).await;
+        shared.push("continuity.ready", json!({}));
+        settle(
+            "loaded room refetched",
+            &mut glue,
+            &mut state,
+            |glue, state| {
+                shared.page_reads.load(Ordering::SeqCst) > reads_before
+                    && ids(state, ROOM_A).len() == 2
+                    && glue.outstanding_reads() == 0
+            },
+        )
+        .await;
+
+        // A room opened only after the reinstall loads too.
+        glue.open_room(&mut state, &ROOM_B.to_owned());
+        settle(
+            "page B after reconnect",
+            &mut glue,
+            &mut state,
+            |_, state| ids(state, ROOM_B) == ["b1"],
+        )
+        .await;
+        assert!(glue.status().failed_rooms.is_empty());
+        control.shutdown();
+    };
+    let (exit, ()) = tokio::join!(runtime.run(), driver);
+    assert_eq!(exit, RuntimeExit::Shutdown);
+}
+
+/// Fail the current event stream as a daemon restart does, then complete
+/// the reconnect's continuity handshake so a new snapshot is installed.
+async fn restart_daemon(
+    glue: &mut BridgeGlue,
+    state: &mut AppState<'_>,
+    shared: &Shared,
+    loaded: &str,
+) {
+    let generation = glue.generation(&loaded.to_owned());
+    let subscribes = shared.subscribes.load(Ordering::SeqCst);
+    let sender = shared.stream.lock().unwrap().clone().unwrap();
+    sender.send(Some(Err(SessionFailure::Transport))).unwrap();
+    wait_subscribed(shared, subscribes + 1).await;
+    shared.push("continuity.ready", json!({}));
+    // An install bumps every loaded room's generation.
+    settle("reinstall", glue, state, |glue, _| {
+        glue.generation(&loaded.to_owned()) > generation
+    })
+    .await;
+}
+
+/// Live S5: after a daemon restart, rooms loaded in the session stayed
+/// empty. The reconnect's whole-mirror reconcile asks for every loaded room
+/// just before the new snapshot; with more loaded rooms than read credits,
+/// some of those requests wait in the deferred queue under the old room
+/// generation. The install then asks again under the new generation, but the
+/// deferred duplicate kept its old generation, so its page was dropped as
+/// pre-reset and the room was left empty, not pending and not failed.
+#[tokio::test]
+async fn every_loaded_room_is_refilled_after_a_reinstall_with_a_full_read_queue() {
+    let (runtime, mut glue, control, shared) = fixture(None);
+    let mut loaded: Vec<String> = (0..20).map(|i| format!("loaded-{i:02}")).collect();
+    {
+        let mut pages = shared.pages.lock().unwrap();
+        for (i, room) in loaded.iter().enumerate() {
+            pages.insert(
+                room.clone(),
+                vec![message(&format!("m{i}"), room, "alice", 1, 1)],
+            );
+        }
+    }
+    loaded.push(ROOM_A.into());
+    let mut state = AppState::default();
+    let filled = |state: &AppState, loaded: &[String]| {
+        loaded.iter().all(|room| !ids(state, room).is_empty())
+    };
+    let driver = async {
+        wait_subscribed(&shared, 1).await;
+        ready(&mut glue, &mut state, &shared).await;
+        for room in &loaded {
+            glue.open_room(&mut state, room);
+        }
+        settle("all pages", &mut glue, &mut state, |glue, state| {
+            filled(state, &loaded) && glue.outstanding_reads() == 0
+        })
+        .await;
+
+        restart_daemon(&mut glue, &mut state, &shared, ROOM_A).await;
+        settle("reads settled", &mut glue, &mut state, |glue, _| {
+            glue.outstanding_reads() == 0
+        })
+        .await;
+        let empty: Vec<&String> = loaded
+            .iter()
+            .filter(|room| ids(&state, room).is_empty())
+            .collect();
+        assert!(
+            empty.is_empty(),
+            "rooms left empty after the reinstall: {empty:?}"
+        );
+        assert!(glue.status().failed_rooms.is_empty());
+        control.shutdown();
+    };
+    let (exit, ()) = tokio::join!(runtime.run(), driver);
+    assert_eq!(exit, RuntimeExit::Shutdown);
+}
+
 #[tokio::test]
 async fn team_names_are_fetched_once_per_team_and_decorate_room_titles() {
     let (runtime, mut glue, control, shared) = fixture(None);
