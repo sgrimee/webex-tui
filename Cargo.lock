@@ -2289,6 +2289,7 @@ dependencies = [
 [[package]]
 name = "webex-bridge"
 version = "0.1.0"
+source = "git+https://github.com/sgrimee/webex-bridge?rev=0c073c0c236d5c9af34cb1ed36c555df5ad704f1#0c073c0c236d5c9af34cb1ed36c555df5ad704f1"
 dependencies = [
  "anyhow",
  "dirs",

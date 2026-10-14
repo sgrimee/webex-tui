@@ -26,8 +26,17 @@ Always run cargo check, test, fmt and clippy before committing.
 ### Development Environment
 - Rust toolchain: 1.88 (specified in `rust-toolchain.toml`)
 - Uses Nix flakes for environment management (`flake.nix`, `flake.lock`)
-- `webex-bridge` is a path dependency on the sibling checkout (client feature
-  only); see the workspace AGENTS.md for the push order.
+- `webex-bridge` is a git dependency pinned by `rev` on
+  `github.com/sgrimee/webex-bridge` (client feature only). To bump it, change
+  the `rev` and run `cargo update -p webex-bridge`. See the workspace AGENTS.md
+  for the push order.
+- To develop against an unpushed sibling `../webex-bridge`, override the git
+  dependency locally without committing the override:
+  `cargo --config 'patch."https://github.com/sgrimee/webex-bridge".webex-bridge.path="../webex-bridge"' check`
+  (or the same `[patch."https://github.com/sgrimee/webex-bridge"]` entry in an
+  uncommitted `.cargo/config.toml`). The override rewrites `Cargo.lock`: never
+  commit a lock or `Cargo.toml` that points at the path, and run the gates
+  without the override before pushing.
 
 ## Code Style Guidelines
 - **Modules**: Use `mod.rs` pattern, declare submodules with `pub(crate) mod`

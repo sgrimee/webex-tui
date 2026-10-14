@@ -5,9 +5,8 @@ on: [push, pull_request]
 env:
   CARGO_TERM_COLOR: always
 
-# webex-tui depends on webex-bridge (client feature). During local development
-# that is a path dependency on the sibling checkout; CI builds once it is
-# switched to the git dependency at push time (see the workspace AGENTS.md).
+# webex-tui depends on webex-bridge (client feature) as a git dependency pinned
+# by rev on github.com/sgrimee/webex-bridge; no sibling checkout is needed.
 # Tests run on macOS: the pairing secret store is the macOS Keychain.
 
 jobs:

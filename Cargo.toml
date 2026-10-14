@@ -34,7 +34,7 @@ textwrap = "0.16"
 thiserror = "2.0"
 # rt-multi-thread: #[tokio::main] runs the UI loop and the bridge runtime task in parallel.
 tokio = { version = "1.43.1", features = ["rt", "rt-multi-thread", "macros", "sync", "time"] }
-webex-bridge = { path = "../webex-bridge", default-features = false, features = ["client"] }
+webex-bridge = { git = "https://github.com/sgrimee/webex-bridge", rev = "0c073c0c236d5c9af34cb1ed36c555df5ad704f1", default-features = false, features = ["client"] }
 
 # UI dependencies - allow latest compatible versions
 crossterm = "0.29"
