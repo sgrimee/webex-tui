@@ -457,9 +457,10 @@ impl BridgeGlue {
         self.pending.len() + self.deferred.len()
     }
 
-    /// Explicit user navigation: load the newest page of a room once.
+    /// Explicit user navigation: load the newest page of a room once, or
+    /// again if its last page read failed ("reopen to retry").
     pub(crate) fn open_room(&mut self, state: &mut AppState, room: &RoomId) {
-        if state.cache.canonical_view(room).is_some() {
+        if state.cache.canonical_view(room).is_some() && !self.status.failed_rooms.contains(room) {
             return;
         }
         state.cache.canonical_view_mut(room);

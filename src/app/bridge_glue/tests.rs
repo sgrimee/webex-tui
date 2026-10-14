@@ -619,6 +619,39 @@ async fn every_loaded_room_is_refilled_after_a_reinstall_with_a_full_read_queue(
     assert_eq!(exit, RuntimeExit::Shutdown);
 }
 
+/// The status line says "reopen to retry": reopening a room whose page read
+/// failed (here: timed out) requests it again.
+#[tokio::test]
+async fn reopening_a_room_whose_page_failed_retries_it() {
+    let (runtime, mut glue, control, shared) = fixture(Some(Duration::from_millis(20)));
+    let mut state = AppState::default();
+    let driver = async {
+        wait_subscribed(&shared, 1).await;
+        ready(&mut glue, &mut state, &shared).await;
+        shared.pages_pending.store(true, Ordering::SeqCst);
+        glue.open_room(&mut state, &ROOM_A.to_owned());
+        settle("page timed out", &mut glue, &mut state, |glue, _| {
+            glue.status().failed_rooms.contains(ROOM_A)
+        })
+        .await;
+        shared.pages_pending.store(false, Ordering::SeqCst);
+        glue.open_room(&mut state, &ROOM_A.to_owned());
+        settle("retried page", &mut glue, &mut state, |_, state| {
+            ids(state, ROOM_A).len() == 2
+        })
+        .await;
+        assert!(glue.status().failed_rooms.is_empty());
+        // A loaded room is still not re-requested on reopen.
+        let reads = shared.page_reads.load(Ordering::SeqCst);
+        glue.open_room(&mut state, &ROOM_A.to_owned());
+        glue.drain(&mut state, usize::MAX);
+        assert_eq!(shared.page_reads.load(Ordering::SeqCst), reads);
+        control.shutdown();
+    };
+    let (exit, ()) = tokio::join!(runtime.run(), driver);
+    assert_eq!(exit, RuntimeExit::Shutdown);
+}
+
 #[tokio::test]
 async fn team_names_are_fetched_once_per_team_and_decorate_room_titles() {
     let (runtime, mut glue, control, shared) = fixture(None);
