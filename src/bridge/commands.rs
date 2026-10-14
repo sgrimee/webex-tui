@@ -490,6 +490,9 @@ impl<B: SessionBackend, C: SessionClock, H: PresentationHost> CommandWorker<B, C
             request
         };
         let context = request.context.clone();
+        let operation = request.intent.operation();
+        let queued = lock(&self.shared).reads.len();
+        let started = std::time::Instant::now();
         let terminal =
             match tokio::time::timeout(self.read_deadline, self.controller.dispatch_read(request))
                 .await
@@ -514,6 +517,16 @@ impl<B: SessionBackend, C: SessionClock, H: PresentationHost> CommandWorker<B, C
             mailbox.reading = None;
             mailbox.reading_install = None;
         }
+        // Metadata only: the operation, its duration, the outcome class and
+        // how many reads waited behind it. Never IDs or content.
+        log::debug!(
+            "bridge read {operation:?} {}ms {} queued_behind={queued}",
+            started.elapsed().as_millis(),
+            match &terminal {
+                ReadTerminal::Result(_) => "result".to_owned(),
+                ReadTerminal::Unavailable { reason, .. } => format!("unavailable:{reason:?}"),
+            },
+        );
         self.publish();
         self.deliver_read(terminal, install);
         true

@@ -528,9 +528,16 @@ impl BridgeGlue {
                     if self.endpoint.ack(install) {
                         self.control.wake();
                     }
-                    for room in state.cache.canonical_rooms() {
-                        self.request_newest(&room);
+                    let loaded = state.cache.canonical_rooms();
+                    for room in &loaded {
+                        self.request_newest(room);
                     }
+                    log::debug!(
+                        "bridge snapshot reads: {} loaded rooms refetched, {} pending, {} deferred",
+                        loaded.len(),
+                        self.pending.len(),
+                        self.deferred.len()
+                    );
                 }
                 PumpEvent::Read { terminal, .. } => self.apply_read(state, terminal),
             }

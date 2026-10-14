@@ -54,6 +54,7 @@ pub(crate) fn crate_modules() -> &'static [&'static str] {
         "webex_tui::app::rooms_list",
         "webex_tui::app::state",
         "webex_tui::app",
+        "webex_tui::bridge::commands",
         "webex_tui::bridge::runtime",
         "webex_tui::bridge::session",
         "webex_tui::config",
