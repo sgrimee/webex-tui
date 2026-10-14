@@ -94,7 +94,17 @@ enum Purpose {
     },
 }
 
+/// At most this many background lookups (team names, senders) are admitted
+/// at once, out of `READ_CAPACITY`; the rest of the credits stay for reads the
+/// user is waiting for (pages, threads, rooms, messages).
+const BACKGROUND_READS: usize = 4;
+
 impl Purpose {
+    /// Display decoration the user is not directly waiting for.
+    fn is_background(&self) -> bool {
+        matches!(self, Self::Team(_) | Self::Person(_))
+    }
+
     fn room(&self) -> Option<&RoomId> {
         match self {
             Self::NewestPage { room, .. }
@@ -708,6 +718,13 @@ impl BridgeGlue {
     }
 
     fn request(&mut self, intent: FrontendIntent, purpose: Purpose) {
+        // Background lookups (team names, senders) may hold only a few of the
+        // read credits; the rest wait here, so a room the user opens is
+        // served after at most BACKGROUND_READS of them (reads are FIFO).
+        if purpose.is_background() && self.background_in_flight() >= BACKGROUND_READS {
+            self.defer(intent, purpose);
+            return;
+        }
         let Ok(request) = self.sequence.begin(intent.clone(), None) else {
             return;
         };
@@ -724,28 +741,42 @@ impl BridgeGlue {
                     entry.1 = merge_purpose(&entry.1, purpose);
                 }
             }
-            // Deduplicated like an admitted duplicate: the queued entry takes
-            // the newest purpose, so a request deferred before a room reset
-            // carries the room's current generation when it is sent (else its
-            // result would be dropped as pre-reset and the room left empty).
-            ReadAdmission::Full => {
-                match self
-                    .deferred
-                    .iter_mut()
-                    .find(|(queued, _)| *queued == intent)
-                {
-                    Some(entry) => entry.1 = merge_purpose(&entry.1, purpose),
-                    None => self.deferred.push_back((intent, purpose)),
-                }
-            }
+            ReadAdmission::Full => self.defer(intent, purpose),
             ReadAdmission::Closed => self.status.closed = true,
             ReadAdmission::InvalidRequest => {}
         }
     }
 
+    /// Deduplicated like an admitted duplicate: the queued entry takes the
+    /// newest purpose, so a request deferred before a room reset carries the
+    /// room's current generation when it is sent (else its result would be
+    /// dropped as pre-reset and the room left empty).
+    fn defer(&mut self, intent: FrontendIntent, purpose: Purpose) {
+        match self
+            .deferred
+            .iter_mut()
+            .find(|(queued, _)| *queued == intent)
+        {
+            Some(entry) => entry.1 = merge_purpose(&entry.1, purpose),
+            None => self.deferred.push_back((intent, purpose)),
+        }
+    }
+
+    fn background_in_flight(&self) -> usize {
+        self.pending
+            .values()
+            .filter(|(_, purpose)| purpose.is_background())
+            .count()
+    }
+
+    /// Re-submit deferred reads: user-facing ones first, then background
+    /// lookups (each kind in its original order).
     fn flush_deferred(&mut self) {
         let deferred = std::mem::take(&mut self.deferred);
-        for (intent, purpose) in deferred {
+        let (background, foreground): (Vec<_>, Vec<_>) = deferred
+            .into_iter()
+            .partition(|(_, purpose)| purpose.is_background());
+        for (intent, purpose) in foreground.into_iter().chain(background) {
             self.request(intent, purpose);
         }
     }

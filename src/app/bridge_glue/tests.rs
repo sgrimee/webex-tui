@@ -72,6 +72,8 @@ struct Shared {
     team_reads: AtomicUsize,
     /// Team reads answering 503 before succeeding.
     team_failures: AtomicUsize,
+    /// Team and page reads in daemon service order ("team" or "page:<room>").
+    read_log: Mutex<Vec<String>>,
     /// Person reads never answer (they time out with a read deadline).
     persons_pending: AtomicBool,
     pages_pending: AtomicBool,
@@ -125,6 +127,7 @@ impl UiReadBackend for Reader {
     }
     async fn team(&self, id: &str) -> Reply<dto::Team> {
         self.0.team_reads.fetch_add(1, Ordering::SeqCst);
+        self.0.read_log.lock().unwrap().push("team".into());
         if self
             .0
             .team_failures
@@ -164,6 +167,7 @@ impl UiReadBackend for Reader {
         _: Option<u32>,
     ) -> Reply<dto::MessagePage> {
         self.0.page_reads.fetch_add(1, Ordering::SeqCst);
+        self.0.read_log.lock().unwrap().push(format!("page:{room}"));
         if self.0.pages_pending.load(Ordering::SeqCst) {
             std::future::pending::<()>().await;
         }
@@ -690,6 +694,52 @@ async fn team_names_are_fetched_once_per_team_and_decorate_room_titles() {
         })
         .await;
         assert_eq!(shared.team_reads.load(Ordering::SeqCst), 1);
+        control.shutdown();
+    };
+    let (exit, ()) = tokio::join!(runtime.run(), driver);
+    assert_eq!(exit, RuntimeExit::Shutdown);
+}
+
+/// Live (C): a snapshot asks one team-name lookup per distinct team (37 in
+/// the live run, ~150 ms each at the daemon), and the first room the user
+/// opened waited behind all of them. Background lookups now hold at most
+/// BACKGROUND_READS credits, so the page is served after at most that many.
+#[tokio::test]
+async fn an_opened_room_is_served_ahead_of_queued_team_lookups() {
+    let (runtime, mut glue, control, shared) = fixture(None);
+    {
+        let mut rooms = shared.rooms.lock().unwrap();
+        for i in 0..37 {
+            let mut r = room(&format!("team-room-{i:02}"));
+            r.team_id = Some(format!("team-{i:02}"));
+            rooms.push(r);
+        }
+    }
+    let mut state = AppState::default();
+    let driver = async {
+        wait_subscribed(&shared, 1).await;
+        // The install (in this drain) queues all 37 team lookups.
+        ready(&mut glue, &mut state, &shared).await;
+        glue.open_room(&mut state, &ROOM_A.to_owned());
+        settle("page", &mut glue, &mut state, |_, state| {
+            ids(state, ROOM_A).len() == 2
+        })
+        .await;
+        let log = shared.read_log.lock().unwrap().clone();
+        let page = log
+            .iter()
+            .position(|read| read == &format!("page:{ROOM_A}"))
+            .expect("page served");
+        assert!(
+            page <= BACKGROUND_READS,
+            "the page waited behind {page} team lookups"
+        );
+        // Every team is still looked up, just not ahead of the page.
+        settle("teams", &mut glue, &mut state, |glue, _| {
+            glue.outstanding_reads() == 0
+        })
+        .await;
+        assert_eq!(shared.team_reads.load(Ordering::SeqCst), 37);
         control.shutdown();
     };
     let (exit, ()) = tokio::join!(runtime.run(), driver);
