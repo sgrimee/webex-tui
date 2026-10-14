@@ -1694,6 +1694,65 @@ mod app_routing {
         h.app.bridge_selection_changed();
     }
 
+    /// Live S5: a reinstall re-sorts the room list by activity. The list
+    /// selection is an index, so it pointed at another room while the active
+    /// room stayed put, and the next Down activated the room after that
+    /// index. The selection now follows the active room ID.
+    #[tokio::test]
+    async fn the_room_selection_stays_on_the_active_room_when_a_reinstall_reorders_the_list() {
+        let (runtime, glue, control, shared) = fixture(None);
+        let dated = |id: &str, minute: u32| {
+            let mut r = room(id);
+            r.last_activity = Some(format!("2026-01-01T00:{minute:02}:00Z"));
+            r
+        };
+        *shared.rooms.lock().unwrap() =
+            vec![dated(ROOM_A, 3), dated(ROOM_B, 2), dated("room-c", 1)];
+        let mut h = harness(glue);
+        let driver = async {
+            room_a_open(&mut h, &shared).await;
+            h.app.state.set_active_pane(Some(ActivePane::Rooms));
+            assert_eq!(h.app.state.id_of_selected_room().as_deref(), Some(ROOM_A));
+
+            // Daemon restart; B became the most recently active room.
+            *shared.rooms.lock().unwrap() =
+                vec![dated(ROOM_A, 3), dated(ROOM_B, 9), dated("room-c", 1)];
+            let sender = shared.stream.lock().unwrap().clone().unwrap();
+            sender.send(Some(Err(SessionFailure::Transport))).unwrap();
+            wait_subscribed(&shared, 2).await;
+            shared.push("continuity.ready", json!({}));
+            tick_until("reordered", &mut h, |app| {
+                app.state
+                    .cache
+                    .rooms
+                    .sorted_rooms()
+                    .first()
+                    .map(|r| r.id.as_str())
+                    == Some(ROOM_B)
+            })
+            .await;
+            h.app.update_on_tick().await;
+            assert_eq!(
+                h.app.state.rooms_list.active_room_id().map(String::as_str),
+                Some(ROOM_A)
+            );
+            assert_eq!(
+                h.app.state.id_of_selected_room().as_deref(),
+                Some(ROOM_A),
+                "the list highlight follows the active room"
+            );
+            // Down moves to the room after A in the new order.
+            h.app.do_action(Key::Down);
+            assert_eq!(
+                h.app.state.rooms_list.active_room_id().map(String::as_str),
+                Some("room-c")
+            );
+            control.shutdown();
+        };
+        let (exit, ()) = tokio::join!(runtime.run(), driver);
+        assert_eq!(exit, RuntimeExit::Shutdown);
+    }
+
     #[tokio::test]
     async fn send_edit_and_delete_go_through_the_bridge_only() {
         let (runtime, glue, control, shared) = fixture(None);

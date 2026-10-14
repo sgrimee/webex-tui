@@ -9,9 +9,10 @@
 //! - opening a room loads its newest page once; moving above the first row
 //!   loads the older page; selecting a missing-root placeholder loads that
 //!   thread;
-//! - every tick drains the glue (§7.2 d), re-anchors the selection by row ID
-//!   and refreshes the one-line status (session, daemon/Webex, stale data,
-//!   write outcome); `x` dismisses a failed/uncertain write review.
+//! - every tick drains the glue (§7.2 d), re-anchors the message selection by
+//!   row ID and the room-list selection by room ID, and refreshes the
+//!   one-line status (session, daemon/Webex, stale data, write outcome); `x`
+//!   dismisses a failed/uncertain write review.
 
 use super::{
     bridge_glue::{Action as GlueAction, ActionOutcome, BridgeGlue, QuitMark, WriteRefusal},
@@ -51,6 +52,14 @@ impl App<'_> {
         };
         let anchor = selected_row_id(&self.state);
         glue.drain(&mut self.state, DRAIN_PER_TICK);
+        // Snapshots and room refreshes re-sort the list by activity; the list
+        // selection is an index, so keep it on the active room's ID (else the
+        // highlight, and the next Up/Down, would follow another room).
+        if let Some(active) = self.state.rooms_list.active_room_id() {
+            if self.state.id_of_selected_room().as_ref() != Some(active) {
+                self.state.update_room_selection_with_active_room();
+            }
+        }
         // While quitting, queued leaves stay queued (reported as not sent).
         if let Some(room) = self
             .pending_leaves
