@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 This project tries to follow semantic versioning.
 
+## [Unreleased]
+
+### Changes
+
+- **ratatui 0.30**: ratatui 0.30, tui-logger 0.18 and ratatui-textarea 0.9
+  (the ratatui org's successor of tui-textarea, which stayed on ratatui 0.29).
+  This drops lru 0.12 (security advisory; lru is now 0.18). Rendering is
+  unchanged (golden full-frame tests). Shift+Tab is still ignored while
+  composing (the new editor would otherwise insert a tab).
+
 ## [0.9.0] - 2026-10-14
 
 webex-tui is now a client of the webex-bridge daemon only (bridge API

@@ -258,14 +258,14 @@ fn selected_message_and_composing_reply() {
     state.set_active_pane(Some(ActivePane::Compose));
     state.message_editor.set_is_composing(true);
     for key in "draft".chars() {
-        state.message_editor.input(tui_textarea::Input {
-            key: tui_textarea::Key::Char(key),
+        state.message_editor.input(ratatui_textarea::Input {
+            key: ratatui_textarea::Key::Char(key),
             ..Default::default()
         });
     }
     state.message_editor.insert_newline();
-    state.message_editor.input(tui_textarea::Input {
-        key: tui_textarea::Key::Char('x'),
+    state.message_editor.input(ratatui_textarea::Input {
+        key: ratatui_textarea::Key::Char('x'),
         ..Default::default()
     });
     golden("compose_100x30", 100, 30, &mut state);

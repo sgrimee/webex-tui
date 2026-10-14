@@ -4,7 +4,7 @@ use crate::app::state::{ActivePane, AppState};
 
 use ratatui::layout::Constraint;
 use ratatui::style::{Modifier, Style};
-use ratatui::widgets::block::{Block, BorderType};
+use ratatui::widgets::{Block, BorderType};
 use ratatui::widgets::{Borders, Cell, Row, Table};
 
 use super::style::line_for_room_and_team_title;

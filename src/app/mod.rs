@@ -24,8 +24,8 @@ use cache::room::RoomId;
 use color_eyre::{eyre::eyre, Result};
 use log::*;
 use ratatui::crossterm::event::KeyEvent;
+use ratatui_textarea::Input;
 use tui_logger::TuiWidgetEvent;
-use tui_textarea::Input;
 
 /// Return status indicating whether the app should exit or not.
 #[derive(Debug, PartialEq, Eq)]
@@ -328,6 +328,10 @@ impl App<'_> {
                 self.state.set_active_pane(Some(ActivePane::Messages))
             }
             Key::AltEnter => self.state.message_editor.insert_newline(),
+            // Shift+Tab does nothing while composing. ratatui-textarea maps
+            // crossterm's BackTab to a shifted Tab and would insert a tab;
+            // tui-textarea ignored it.
+            Key::ShiftTab => {}
             Key::Enter => {
                 if let Err(e) = self.send_message_buffer() {
                     error!("Could not send message: {e}");
@@ -580,5 +584,28 @@ impl App<'_> {
         self.state.rooms_list.clear_room_selections();
         debug!("Queued {count} bridge leave(s)");
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::crossterm::event::{KeyCode, KeyModifiers};
+
+    #[tokio::test]
+    async fn shift_tab_does_not_change_a_draft() {
+        let mut app = App::new(false, Theme::default());
+        app.state.message_editor.set_is_composing(true);
+        let press = |code| KeyEvent::new(code, KeyModifiers::NONE);
+        app.process_key_event(press(KeyCode::Char('a'))).await;
+        let revision = app.state.message_editor.revision();
+        app.process_key_event(KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT))
+            .await;
+        assert_eq!(app.state.message_editor.lines(), ["a"]);
+        assert_eq!(app.state.message_editor.revision(), revision);
+        assert!(app.state.message_editor.is_composing());
+        // Plain typing still reaches the textarea.
+        app.process_key_event(press(KeyCode::Char('b'))).await;
+        assert_eq!(app.state.message_editor.lines(), ["ab"]);
     }
 }

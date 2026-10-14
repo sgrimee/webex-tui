@@ -12,6 +12,7 @@ Guidance for coding agents working with this Rust TUI Webex client.
 - `cargo fmt` - Format the code
 - `cargo doc --no-deps` - Generate documentation
 - `just check-graph` - Fail if the dependency graph pulls in Webex/OAuth/WebSocket/SQLite/TLS crates
+- `UPDATE_GOLDEN=1 cargo test ui::render_tests` - Regenerate the golden full-frame renders in `src/ui/golden/` after an intended UI change; review the diff before committing
 
 Always run cargo check, test, fmt and clippy before committing.
 

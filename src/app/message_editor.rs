@@ -7,7 +7,7 @@ use crate::frontend::{
     data::{ComposedBody, MessageSnapshot, OwnedMessageBody, RoomId},
     editor_submission::{DraftRevision, DraftSnapshot, DraftStamp, DraftTarget},
 };
-use tui_textarea::{Input, TextArea};
+use ratatui_textarea::{Input, TextArea};
 #[derive(Default)]
 pub(crate) struct MessageEditor<'a> {
     textarea: TextArea<'a>,
@@ -191,7 +191,7 @@ mod tests {
             last = e.revision();
         };
         e.input(Input {
-            key: tui_textarea::Key::Char('x'),
+            key: ratatui_textarea::Key::Char('x'),
             ..Default::default()
         });
         check(&e, "input");
@@ -206,7 +206,7 @@ mod tests {
         // A non-modifying input does not advance.
         let before = e.revision();
         assert!(!e.input(Input {
-            key: tui_textarea::Key::Left,
+            key: ratatui_textarea::Key::Left,
             ..Default::default()
         }));
         assert_eq!(e.revision(), before);

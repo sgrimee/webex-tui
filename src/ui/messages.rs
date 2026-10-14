@@ -30,7 +30,7 @@ use chrono::{DateTime, Local, Utc};
 use ratatui::layout::Constraint;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
-use ratatui::widgets::block::{Block, BorderType};
+use ratatui::widgets::{Block, BorderType};
 use ratatui::widgets::{Borders, Cell, Row, Table};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};

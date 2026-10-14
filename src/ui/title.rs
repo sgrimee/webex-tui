@@ -4,7 +4,7 @@
 
 use ratatui::layout::Alignment;
 use ratatui::style::Style;
-use ratatui::widgets::block::{Block, BorderType};
+use ratatui::widgets::{Block, BorderType};
 use ratatui::widgets::{Borders, Paragraph};
 
 use crate::app::state::AppState;

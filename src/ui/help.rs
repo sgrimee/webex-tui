@@ -5,7 +5,7 @@
 use ratatui::layout::Constraint;
 use ratatui::style::{Color, Style};
 use ratatui::text::Span;
-use ratatui::widgets::block::{Block, BorderType};
+use ratatui::widgets::{Block, BorderType};
 use ratatui::widgets::{Borders, Cell, Row, Table};
 
 use crate::app::actions::Actions;

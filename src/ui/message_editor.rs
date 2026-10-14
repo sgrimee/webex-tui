@@ -5,7 +5,7 @@ use ratatui::{
     text::Span,
     widgets::{Block, BorderType, Borders},
 };
-use tui_textarea::TextArea;
+use ratatui_textarea::TextArea;
 pub(crate) const MSG_INPUT_BLOCK_HEIGHT: u16 = 5;
 /// Like the message list: the cached display name, then the sender email.
 /// The account's own message says "your".
