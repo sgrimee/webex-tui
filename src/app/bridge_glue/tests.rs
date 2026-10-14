@@ -72,6 +72,8 @@ struct Shared {
     team_reads: AtomicUsize,
     /// Team reads answering 503 before succeeding.
     team_failures: AtomicUsize,
+    /// Teams answered 404 `not_found` (not visible to this account).
+    teams_missing: Mutex<std::collections::HashSet<String>>,
     /// Team and page reads in daemon service order ("team" or "page:<room>").
     read_log: Mutex<Vec<String>>,
     /// Person reads never answer (they time out with a read deadline).
@@ -128,6 +130,13 @@ impl UiReadBackend for Reader {
     async fn team(&self, id: &str) -> Reply<dto::Team> {
         self.0.team_reads.fetch_add(1, Ordering::SeqCst);
         self.0.read_log.lock().unwrap().push("team".into());
+        if self.0.teams_missing.lock().unwrap().contains(id) {
+            return Err(ClientError::Api {
+                status: 404_u16.try_into().unwrap(),
+                code: "not_found".into(),
+                message: "synthetic".into(),
+            });
+        }
         if self
             .0
             .team_failures
@@ -740,6 +749,55 @@ async fn an_opened_room_is_served_ahead_of_queued_team_lookups() {
         })
         .await;
         assert_eq!(shared.team_reads.load(Ordering::SeqCst), 37);
+        control.shutdown();
+    };
+    let (exit, ()) = tokio::join!(runtime.run(), driver);
+    assert_eq!(exit, RuntimeExit::Shutdown);
+}
+
+/// Live (C): after every snapshot, teams the daemon had answered 404 were
+/// asked again, each costing a Webex REST call. Within a run they are now
+/// not re-asked (until the marker expires), across snapshot installs too.
+#[tokio::test]
+async fn a_team_the_daemon_cannot_find_is_not_asked_again_after_a_snapshot() {
+    let (runtime, mut glue, control, shared) = fixture(None);
+    shared.rooms.lock().unwrap()[0].team_id = Some("team-gone".into());
+    shared.rooms.lock().unwrap()[1].team_id = Some("team-ok".into());
+    shared
+        .teams_missing
+        .lock()
+        .unwrap()
+        .insert("team-gone".into());
+    let mut state = AppState::default();
+    let driver = async {
+        wait_subscribed(&shared, 1).await;
+        ready(&mut glue, &mut state, &shared).await;
+        settle("team reads", &mut glue, &mut state, |glue, _| {
+            shared.team_reads.load(Ordering::SeqCst) == 2 && glue.outstanding_reads() == 0
+        })
+        .await;
+        assert!(state.cache.teams.team_with_id(&"team-ok".into()).is_some());
+        glue.open_room(&mut state, &ROOM_A.to_owned());
+        settle("page", &mut glue, &mut state, |_, state| {
+            ids(state, ROOM_A).len() == 2
+        })
+        .await;
+        // A new snapshot (after event lag) re-asks nothing: one team is
+        // known, the other was reported missing.
+        let generation = glue.generation(&ROOM_A.to_owned());
+        shared.push("resync.required", json!({"reason": "event_lag"}));
+        settle("resynced", &mut glue, &mut state, |glue, _| {
+            glue.generation(&ROOM_A.to_owned()) > generation
+        })
+        .await;
+        for _ in 0..50 {
+            glue.drain(&mut state, usize::MAX);
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        }
+        assert_eq!(shared.team_reads.load(Ordering::SeqCst), 2);
+        // The room keeps its own title.
+        let title = state.cache.room_and_team_title(&ROOM_A.to_owned()).unwrap();
+        assert!(title.team_name.is_none());
         control.shutdown();
     };
     let (exit, ()) = tokio::join!(runtime.run(), driver);

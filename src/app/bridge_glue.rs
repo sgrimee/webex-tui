@@ -834,11 +834,23 @@ impl BridgeGlue {
                     state.cache.persons.insert(person);
                 }
             }
-            (Purpose::Team(_), FrontendResult::UpdateTeam(outcome)) => {
-                if let Some(team) = read_value(outcome) {
+            (Purpose::Team(id), FrontendResult::UpdateTeam(outcome)) => match outcome {
+                ReadOutcome::Success(team) | ReadOutcome::Partial { value: team, .. } => {
                     state.cache.teams.add(team);
                 }
-            }
+                // Missing, inaccessible or failed at Webex: each new ask would
+                // cost the daemon a REST call, so not again for a while (across
+                // snapshot installs too). Bridge-side or unexpected rejections
+                // are asked again after the next snapshot, as before.
+                ReadOutcome::Rejected(error) => {
+                    if let Some(ttl) = team_unavailable_ttl(&error.code) {
+                        state
+                            .cache
+                            .teams
+                            .mark_unavailable(&id, std::time::Instant::now(), ttl);
+                    }
+                }
+            },
             (
                 purpose @ (Purpose::NewestPage { .. } | Purpose::OlderPage { .. }),
                 FrontendResult::ListMessagesInRoom(outcome),
@@ -1025,6 +1037,17 @@ fn merge_purpose(existing: &Purpose, newer: Purpose) -> Purpose {
 }
 
 /// Success and partial reads both carry honest data; rejection carries none.
+/// How long not to re-ask a team after the daemon rejected its lookup with
+/// `code`, or `None` to ask again after the next snapshot (transient).
+fn team_unavailable_ttl(code: &str) -> Option<std::time::Duration> {
+    use super::cache::teams::{TEAM_MISSING_TTL, TEAM_REMOTE_FAILURE_TTL};
+    match code {
+        "not_found" | "forbidden" => Some(TEAM_MISSING_TTL),
+        "webex_unavailable" => Some(TEAM_REMOTE_FAILURE_TTL),
+        _ => None,
+    }
+}
+
 fn read_value<T>(outcome: ReadOutcome<T>) -> Option<T> {
     match outcome {
         ReadOutcome::Success(value) | ReadOutcome::Partial { value, .. } => Some(value),
