@@ -3,13 +3,12 @@ name: "Tag"
 permissions:
   contents: "write"
 
-# Every push to main tags v<Cargo.toml version> and triggers Release. Bump the
-# version in Cargo.toml (and CHANGELOG) before merging to main: v0.8.0
-# already exists, and re-tagging an existing version fails this job.
+# Releases are paused until a signing/notarization pipeline exists (user decision 2026-10-14).
+# Manual runs only, never on push or tag. When run, this
+# tags v<Cargo.toml version>; then run Release manually. Re-tagging an
+# existing version fails this job.
 on:
-  push:
-    branches:
-      - "main"
+  workflow_dispatch:
 
 jobs:
   create-tag:

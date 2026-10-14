@@ -3,14 +3,17 @@ name: "Release"
 permissions:
   contents: "write"
 
+# Releases are paused until a signing/notarization pipeline exists (user decision 2026-10-14).
+# Manual runs only, with no push, tag or workflow_run
+# trigger. That covers the changelog auto-commit, the GitHub release, the
+# binaries and the Homebrew bump below. Run Tag manually first: this workflow
+# releases the existing tag v<Cargo.toml version>.
 on:
-  workflow_run:
-    workflows: ["Tag"]
-    types:
-      - "completed"
+  workflow_dispatch:
 
 jobs:
-  # always generate changelog, using 'unreleased' if the tag was not set
+  # Generates CHANGELOG.md with git-cliff and commits it to the branch the
+  # workflow runs on (manual runs only).
   changelog:
     name: Generate changelog
     runs-on: ubuntu-latest
@@ -40,7 +43,7 @@ jobs:
 
   get-tag:
     name: "Get Tag From Package Version"
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     runs-on: "ubuntu-latest"
     outputs:
       pkg-version: ${{ steps.pkg-version.outputs.PKG_VERSION }}
@@ -107,6 +110,7 @@ jobs:
           ref: refs/tags/v${{ needs.get-tag.outputs.pkg-version }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
+  # Paused with the rest of this workflow (user decision 2026-10-14).
   update-homebrew:
     name: "Update homebrew formula"
     needs:
