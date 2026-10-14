@@ -321,6 +321,68 @@ async fn explicit_pair_denial_reuses_secret_without_overwriting_then_fails_close
     assert!(session.subscription().is_none(), "no session");
 }
 
+/// Only the daemon's exact `409 pairing_in_progress` means another dialog is
+/// open; other conflicts and 403 keep their existing classification.
+#[test]
+fn pair_errors_classify_a_busy_dialog_by_exact_code() {
+    let api = |status: u16, code: &str| ClientError::Api {
+        status: status.try_into().unwrap(),
+        code: code.into(),
+        message: "synthetic".into(),
+    };
+    assert_eq!(
+        pair_failure(api(409, "pairing_in_progress")),
+        PairingBackendFailure::InProgress
+    );
+    assert_eq!(
+        pair_failure(api(409, "conflict")),
+        PairingBackendFailure::Unavailable
+    );
+    assert_eq!(
+        pair_failure(api(403, "pairing_in_progress")),
+        PairingBackendFailure::Denied
+    );
+    assert_eq!(
+        pair_failure(api(403, "forbidden_peer")),
+        PairingBackendFailure::Denied
+    );
+}
+
+/// A busy dialog fails closed after the single pair call: no retry, no
+/// second dialog, no connect, and the secret is neither replaced nor lost.
+#[tokio::test]
+async fn a_busy_pairing_dialog_fails_closed_without_retry_or_connect() {
+    let secret = encoded([5; 32]);
+    let hash = expected_hash(&secret);
+    let (mut bootstrap, mut session, calls) = bootstrap(
+        Ok(Some(secret.clone())),
+        Ok(()),
+        Ok(SUPPORTED_API_VERSION),
+        Err(PairingBackendFailure::InProgress),
+        Ok([6; 32]),
+    );
+    not_paired(&session, 1);
+
+    assert_eq!(
+        bootstrap.connect(&mut session).await,
+        Err(BootstrapFailure::PairInProgress)
+    );
+    assert_eq!(
+        bootstrap.state(),
+        PairingState::Failed(BootstrapFailure::PairInProgress)
+    );
+    assert_eq!(
+        *calls.lock().unwrap(),
+        [
+            Call::Status,
+            Call::Load,
+            Call::Issue(secret.clone()),
+            Call::Pair(hash)
+        ]
+    );
+    assert!(session.subscription().is_none(), "no session");
+}
+
 type Events = Arc<Mutex<Vec<&'static str>>>;
 
 /// These fakes record only control flow. They intentionally have no field that

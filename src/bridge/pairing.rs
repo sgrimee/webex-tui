@@ -118,6 +118,9 @@ pub(crate) enum RandomFailure {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum PairingBackendFailure {
     Denied,
+    /// `409 pairing_in_progress`: another pairing dialog is still waiting for
+    /// an answer, so the daemon asked nothing for this request.
+    InProgress,
     Unavailable,
 }
 
@@ -166,6 +169,9 @@ fn status_failure(_: ClientError) -> PairingBackendFailure {
 }
 
 fn pair_failure(error: ClientError) -> PairingBackendFailure {
+    if error.is_pairing_in_progress() {
+        return PairingBackendFailure::InProgress;
+    }
     match error {
         ClientError::Api { status, .. } if status.as_u16() == 403 => PairingBackendFailure::Denied,
         _ => PairingBackendFailure::Unavailable,
@@ -214,6 +220,8 @@ pub(crate) enum BootstrapFailure {
     PersistDenied,
     PersistUnavailable,
     PairDenied,
+    /// Another pairing dialog is open; this request showed none.
+    PairInProgress,
     PairUnavailable,
     Session(SessionFailure),
 }
@@ -321,6 +329,9 @@ impl<S: UiSecretStore, P: PairingBackend, R: RandomSource> PairingBootstrap<S, P
         match pairing {
             Ok(()) => {}
             Err(PairingBackendFailure::Denied) => return self.fail(BootstrapFailure::PairDenied),
+            Err(PairingBackendFailure::InProgress) => {
+                return self.fail(BootstrapFailure::PairInProgress)
+            }
             Err(PairingBackendFailure::Unavailable) => {
                 return self.fail(BootstrapFailure::PairUnavailable)
             }

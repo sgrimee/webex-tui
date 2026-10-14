@@ -249,6 +249,8 @@ pub(crate) enum StartupError {
     SecretNotSaved,
     RandomUnavailable,
     PairingNotApproved,
+    /// The daemon refused to open a second pairing dialog while one is open.
+    PairingInProgress,
     PairingUnavailable,
     Session(SessionFailure),
     /// The bootstrap deadline expired while the daemon's pairing dialog was
@@ -270,6 +272,7 @@ impl StartupError {
             }
             BootstrapFailure::RandomUnavailable => Self::RandomUnavailable,
             BootstrapFailure::PairDenied => Self::PairingNotApproved,
+            BootstrapFailure::PairInProgress => Self::PairingInProgress,
             BootstrapFailure::PairUnavailable => Self::PairingUnavailable,
             BootstrapFailure::Session(failure) => Self::Session(failure),
         }
@@ -331,6 +334,9 @@ impl StartupError {
                 .into(),
             Self::PairingNotApproved => "Pairing was not approved (denied, not answered in time, or no graphical session). \
                  Start webex-tui again from your logged-in desktop session to retry; the same secret is reused."
+                .into(),
+            Self::PairingInProgress => "Another pairing request is already waiting for an answer; \
+                 answer or deny it, then start webex-tui again."
                 .into(),
             Self::PairingUnavailable => "The webex-bridge daemon could not be reached for pairing. Check that it is running and start webex-tui again."
                 .into(),

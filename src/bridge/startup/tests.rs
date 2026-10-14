@@ -387,6 +387,25 @@ async fn bootstrap_failures_map_to_actionable_messages() {
 }
 
 #[tokio::test]
+async fn a_busy_pairing_dialog_names_the_waiting_request() {
+    let (result, calls) = run(Fixture {
+        issues: vec![SessionFailure::NotPaired],
+        pair: Some(Err(PairingBackendFailure::InProgress)),
+        ..Fixture::default()
+    })
+    .await;
+    let error = result.unwrap_err();
+    assert_eq!(error, StartupError::PairingInProgress);
+    assert_eq!(
+        error.message(),
+        "Another pairing request is already waiting for an answer; \
+         answer or deny it, then start webex-tui again."
+    );
+    // One pair attempt, no retry and no session after it.
+    assert_eq!(calls, ["probe", "status", "load", "issue", "pair"]);
+}
+
+#[tokio::test]
 async fn an_unanswered_pairing_dialog_times_out_as_a_pairing_timeout() {
     let (result, calls) = run(Fixture {
         issues: vec![SessionFailure::NotPaired],
