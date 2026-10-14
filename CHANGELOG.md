@@ -14,6 +14,17 @@ This project tries to follow semantic versioning.
   unchanged (golden full-frame tests). Shift+Tab is still ignored while
   composing (the new editor would otherwise insert a tab).
 
+### Fixes
+
+- After a webex-bridge daemon restart, rooms loaded before it are refilled
+  (some stayed empty when many rooms were loaded), and the room list keeps
+  its highlight on the open room (it could point at another room, so the
+  next Up/Down seemed to jump).
+- Reopening a room that failed to load retries it, as the status line says.
+- Opening a room is no longer delayed behind team-name lookups (up to ~5 s
+  after start), and teams the daemon cannot return are not asked again
+  after every reconnect.
+
 ## [0.9.0] - 2026-10-14
 
 webex-tui is now a client of the webex-bridge daemon only (bridge API
