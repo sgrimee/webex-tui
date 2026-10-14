@@ -4,7 +4,11 @@ All notable changes to this project will be documented in this file.
 
 This project tries to follow semantic versioning.
 
-## [Unreleased]
+## [0.9.0] - 2026-10-14
+
+webex-tui is now a client of the webex-bridge daemon only (bridge API
+version 1). No binary or Homebrew release is published for 0.9.0: releases
+are paused until a signing/notarization pipeline exists. Build from source.
 
 ### Breaking changes
 
