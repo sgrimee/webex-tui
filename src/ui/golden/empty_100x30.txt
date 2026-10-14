@@ -1,0 +1,84 @@
+|╭──────────────────────────────────────────────────────────────────────────────────────────────────╮|
+|│                                             webex-tui                                            │|
+|╰──────────────────────────────────────────────────────────────────────────────────────────────────╯|
+|╭Filter: All───────────────────╮╭No selected room────────────────╮╭Help────────────────────────────╮|
+|│                              ││                                ││<Ctrl+c>    Quit                │|
+|│                              ││                                ││<q>                             │|
+|│                              ││                                ││<?>         Toggle help         │|
+|│                              ││                                ││<l>         Toggle logs         │|
+|│                              ││                                ││<R>         Toggle rooms panel  │|
+|│                              ││                                ││                                │|
+|│                              ││                                ││                                │|
+|│                              ││                                ││                                │|
+|│                              ││                                ││                                │|
+|│                              ││                                ││                                │|
+|│                              ││                                ││                                │|
+|│                              ││                                ││                                │|
+|│                              ││                                ││                                │|
+|│                              ││                                ││                                │|
+|│                              ││                                ││                                │|
+|│                              ││                                ││                                │|
+|│                              ││                                ││                                │|
+|│                              ││                                ││                                │|
+|│                              ││                                ││                                │|
+|│                              ││                                ││                                │|
+|│                              │╰────────────────────────────────╯│                                │|
+|│                              │╭Press Enter with a selected room╮│                                │|
+|│                              ││                                ││                                │|
+|│                              ││                                ││                                │|
+|│                              ││                                ││                                │|
+|╰──────────────────────────────╯╰────────────────────────────────╯╰────────────────────────────────╯|
+--- styles (row: x0-x1 fg bg underline modifier-bits)
+0: 0-99 Reset Reset Reset 0x0000
+1: 0-0 Reset Reset Reset 0x0000
+1: 1-98 LightCyan Reset Reset 0x0000
+1: 99-99 Reset Reset Reset 0x0000
+2: 0-99 Reset Reset Reset 0x0000
+3: 0-99 Reset Reset Reset 0x0000
+4: 0-66 Reset Reset Reset 0x0000
+4: 67-74 LightCyan Reset Reset 0x0000
+4: 75-78 Reset Reset Reset 0x0000
+4: 79-82 Gray Reset Reset 0x0000
+4: 83-99 Reset Reset Reset 0x0000
+5: 0-66 Reset Reset Reset 0x0000
+5: 67-69 LightCyan Reset Reset 0x0000
+5: 70-99 Reset Reset Reset 0x0000
+6: 0-66 Reset Reset Reset 0x0000
+6: 67-69 LightCyan Reset Reset 0x0000
+6: 70-78 Reset Reset Reset 0x0000
+6: 79-89 Gray Reset Reset 0x0000
+6: 90-99 Reset Reset Reset 0x0000
+7: 0-66 Reset Reset Reset 0x0000
+7: 67-69 LightCyan Reset Reset 0x0000
+7: 70-78 Reset Reset Reset 0x0000
+7: 79-89 Gray Reset Reset 0x0000
+7: 90-99 Reset Reset Reset 0x0000
+8: 0-66 Reset Reset Reset 0x0000
+8: 67-69 LightCyan Reset Reset 0x0000
+8: 70-78 Reset Reset Reset 0x0000
+8: 79-96 Gray Reset Reset 0x0000
+8: 97-99 Reset Reset Reset 0x0000
+9: 0-99 Reset Reset Reset 0x0000
+10: 0-99 Reset Reset Reset 0x0000
+11: 0-99 Reset Reset Reset 0x0000
+12: 0-99 Reset Reset Reset 0x0000
+13: 0-99 Reset Reset Reset 0x0000
+14: 0-99 Reset Reset Reset 0x0000
+15: 0-99 Reset Reset Reset 0x0000
+16: 0-99 Reset Reset Reset 0x0000
+17: 0-99 Reset Reset Reset 0x0000
+18: 0-99 Reset Reset Reset 0x0000
+19: 0-99 Reset Reset Reset 0x0000
+20: 0-99 Reset Reset Reset 0x0000
+21: 0-99 Reset Reset Reset 0x0000
+22: 0-99 Reset Reset Reset 0x0000
+23: 0-99 Reset Reset Reset 0x0000
+24: 0-99 Reset Reset Reset 0x0000
+25: 0-99 Reset Reset Reset 0x0000
+26: 0-32 Reset Reset Reset 0x0000
+26: 33-33 Reset Reset Reset 0x0040
+26: 34-99 Reset Reset Reset 0x0000
+27: 0-99 Reset Reset Reset 0x0000
+28: 0-99 Reset Reset Reset 0x0000
+29: 0-99 Reset Reset Reset 0x0000
+--- cursor Some(Position { x: 0, y: 0 })

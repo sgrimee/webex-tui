@@ -1,0 +1,57 @@
+|╭────────────────────────────────────────────────╮|
+|│                    webex-tui                   │|
+|╰────────────────────────────────────────────────╯|
+|╭Alpha room (Synthetic Team)─────────────────────↑|
+|│                                                ║|
+|│[message deleted]                               ║|
+|│  |                                             ║|
+|│  | Alice Example  TTTTTTTTTTTTTTTTTTTTTT       █|
+|│  |   reply under a deleted root                █|
+|│                                                ║|
+|╰────────────────────────────────────────────────↓|
+|╭Press Enter with a selected room to type────────╮|
+|│                                                │|
+|│                                                │|
+|│                                                │|
+|╰────────────────────────────────────────────────╯|
+--- styles (row: x0-x1 fg bg underline modifier-bits)
+0: 0-49 Reset Reset Reset 0x0000
+1: 0-0 Reset Reset Reset 0x0000
+1: 1-48 LightCyan Reset Reset 0x0000
+1: 49-49 Reset Reset Reset 0x0000
+2: 0-49 Reset Reset Reset 0x0000
+3: 0-10 Cyan Reset Reset 0x0000
+3: 11-27 LightCyan Reset Reset 0x0000
+3: 28-49 Cyan Reset Reset 0x0000
+4: 0-0 Cyan Reset Reset 0x0000
+4: 1-48 Reset Reset Reset 0x0000
+4: 49-49 Cyan Reset Reset 0x0000
+5: 0-0 Cyan Reset Reset 0x0000
+5: 1-17 Gray Reset Reset 0x0004
+5: 18-48 Reset Reset Reset 0x0000
+5: 49-49 Cyan Reset Reset 0x0000
+6: 0-0 Cyan Reset Reset 0x0000
+6: 1-48 Reset Reset Reset 0x0040
+6: 49-49 Cyan Reset Reset 0x0000
+7: 0-0 Cyan Reset Reset 0x0000
+7: 1-4 Reset Reset Reset 0x0040
+7: 5-17 LightMagenta Reset Reset 0x0040
+7: 18-19 Reset Reset Reset 0x0040
+7: 20-41 Gray Reset Reset 0x0040
+7: 42-48 Reset Reset Reset 0x0040
+7: 49-49 Cyan Reset Reset 0x0000
+8: 0-0 Cyan Reset Reset 0x0000
+8: 1-48 Reset Reset Reset 0x0040
+8: 49-49 Cyan Reset Reset 0x0000
+9: 0-0 Cyan Reset Reset 0x0000
+9: 1-48 Reset Reset Reset 0x0000
+9: 49-49 Cyan Reset Reset 0x0000
+10: 0-49 Cyan Reset Reset 0x0000
+11: 0-49 Reset Reset Reset 0x0000
+12: 0-0 Reset Reset Reset 0x0000
+12: 1-1 Reset Reset Reset 0x0040
+12: 2-49 Reset Reset Reset 0x0000
+13: 0-49 Reset Reset Reset 0x0000
+14: 0-49 Reset Reset Reset 0x0000
+15: 0-49 Reset Reset Reset 0x0000
+--- cursor Some(Position { x: 0, y: 0 })

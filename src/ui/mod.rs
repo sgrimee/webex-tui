@@ -15,6 +15,9 @@ mod rooms;
 mod style;
 mod title;
 
+#[cfg(test)]
+mod render_tests;
+
 use crate::app::state::AppState;
 use help::{draw_help, HELP_WIDTH};
 use logs::{draw_logs, LOG_BLOCK_PERCENTAGE};

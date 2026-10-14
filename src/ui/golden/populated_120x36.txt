@@ -1,0 +1,283 @@
+|╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮|
+|│                                                       webex-tui                                                      │|
+|╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯|
+|╭Filter: All───────────────────╮╭Alpha room (Synthetic Team)─────────────────────────↑╭Help────────────────────────────╮|
+|│☐ Gamma room with a rather lon││                                                    ║│<Enter>     New message         │|
+|│☐ Beta direct                 ││Alice Example  TTTTTTTTTTTTTTTTTTTTTT               ║│<r>         Mark read (locally) │|
+|│☐ Alpha room (Synthetic Team) ││  hello there                                       ║│<Down>      Next room           │|
+|│                              ││  |                                                 ║│<Up>        Previous room       │|
+|│                              ││  | me@example.invalid  TTTTTTTTTTTTTTTTTTTTTT      ║│<Right>     Next room filter    │|
+|│                              ││  |   **bold** and `code`                           ║│<Left>      Previous room filter│|
+|│                              ││                                                    ║│</>         Search rooms        │|
+|│                              ││Alice Example  TTTTTTTTTTTTTTTTTTTTTT (edited)      ║│<Ctrl+f>                        │|
+|│                              ││  a long line that has to wrap across several rows  ║│<Space>     Toggle room selectio│|
+|│                              ││  of the message table because it is wider than     █│<Ctrl+a>    Select all visible r│|
+|│                              ││  the panel                                         █│<Ctrl+i>    Invert selection    │|
+|│                              ││                                                    █│<Ctrl+d>    Clear room selection│|
+|│                              ││[message deleted]                                   █│<Ctrl+u>    Clear search filter │|
+|│                              ││  |                                                 █│<X>         Delete selected room│|
+|│                              ││  | Alice Example  TTTTTTTTTTTTTTTTTTTTTT           █│<Tab>       Next pane           │|
+|│                              ││  |   reply under a deleted root                    █│<Shift+Tab> Previous pane       │|
+|│                              ││                                                    █│<t>         Toggle debug        │|
+|│                              ││                                                    █│<?>         Toggle help         │|
+|│                              ││                                                    █│<l>         Toggle logs         │|
+|│                              ││                                                    █│<R>         Toggle rooms panel  │|
+|│                              ││                                                    █│<Ctrl+c>    Quit                │|
+|│                              ││                                                    █│<q>                             │|
+|│                              ││                                                    █│                                │|
+|│                              ││                                                    █│                                │|
+|│                              ││                                                    █│                                │|
+|│                              ││                                                    █│                                │|
+|│                              │╰────────────────────────────────────────────────────↓│                                │|
+|│                              │╭Press Enter with a selected room to type────────────╮│                                │|
+|│                              ││                                                    ││                                │|
+|│                              ││                                                    ││                                │|
+|│                              ││                                                    ││                                │|
+|╰──────────────────────────────╯╰────────────────────────────────────────────────────╯╰────────────────────────────────╯|
+--- styles (row: x0-x1 fg bg underline modifier-bits)
+0: 0-119 Reset Reset Reset 0x0000
+1: 0-0 Reset Reset Reset 0x0000
+1: 1-118 LightCyan Reset Reset 0x0000
+1: 119-119 Reset Reset Reset 0x0000
+2: 0-119 Reset Reset Reset 0x0000
+3: 0-31 Cyan Reset Reset 0x0000
+3: 32-42 Reset Reset Reset 0x0000
+3: 43-59 LightCyan Reset Reset 0x0000
+3: 60-119 Reset Reset Reset 0x0000
+4: 0-0 Cyan Reset Reset 0x0000
+4: 1-30 Reset Reset Reset 0x0000
+4: 31-31 Cyan Reset Reset 0x0000
+4: 32-86 Reset Reset Reset 0x0000
+4: 87-93 LightCyan Reset Reset 0x0000
+4: 94-98 Reset Reset Reset 0x0000
+4: 99-109 Gray Reset Reset 0x0000
+4: 110-119 Reset Reset Reset 0x0000
+5: 0-0 Cyan Reset Reset 0x0000
+5: 1-30 Reset Reset Reset 0x0000
+5: 31-31 Cyan Reset Reset 0x0000
+5: 32-32 Reset Reset Reset 0x0000
+5: 33-45 LightMagenta Reset Reset 0x0000
+5: 46-47 Reset Reset Reset 0x0000
+5: 48-69 Gray Reset Reset 0x0000
+5: 70-86 Reset Reset Reset 0x0000
+5: 87-89 LightCyan Reset Reset 0x0000
+5: 90-98 Reset Reset Reset 0x0000
+5: 99-117 Gray Reset Reset 0x0000
+5: 118-119 Reset Reset Reset 0x0000
+6: 0-0 Cyan Reset Reset 0x0000
+6: 1-30 Black Yellow Reset 0x0001
+6: 31-31 Cyan Reset Reset 0x0000
+6: 32-86 Reset Reset Reset 0x0000
+6: 87-92 LightCyan Reset Reset 0x0000
+6: 93-98 Reset Reset Reset 0x0000
+6: 99-107 Gray Reset Reset 0x0000
+6: 108-119 Reset Reset Reset 0x0000
+7: 0-0 Cyan Reset Reset 0x0000
+7: 1-30 Reset Reset Reset 0x0000
+7: 31-31 Cyan Reset Reset 0x0000
+7: 32-86 Reset Reset Reset 0x0000
+7: 87-90 LightCyan Reset Reset 0x0000
+7: 91-98 Reset Reset Reset 0x0000
+7: 99-111 Gray Reset Reset 0x0000
+7: 112-119 Reset Reset Reset 0x0000
+8: 0-0 Cyan Reset Reset 0x0000
+8: 1-30 Reset Reset Reset 0x0000
+8: 31-31 Cyan Reset Reset 0x0000
+8: 32-36 Reset Reset Reset 0x0000
+8: 37-54 LightMagenta Reset Reset 0x0000
+8: 55-56 Reset Reset Reset 0x0000
+8: 57-78 Gray Reset Reset 0x0000
+8: 79-86 Reset Reset Reset 0x0000
+8: 87-93 LightCyan Reset Reset 0x0000
+8: 94-98 Reset Reset Reset 0x0000
+8: 99-114 Gray Reset Reset 0x0000
+8: 115-119 Reset Reset Reset 0x0000
+9: 0-0 Cyan Reset Reset 0x0000
+9: 1-30 Reset Reset Reset 0x0000
+9: 31-31 Cyan Reset Reset 0x0000
+9: 32-86 Reset Reset Reset 0x0000
+9: 87-92 LightCyan Reset Reset 0x0000
+9: 93-98 Reset Reset Reset 0x0000
+9: 99-118 Gray Reset Reset 0x0000
+9: 119-119 Reset Reset Reset 0x0000
+10: 0-0 Cyan Reset Reset 0x0000
+10: 1-30 Reset Reset Reset 0x0000
+10: 31-31 Cyan Reset Reset 0x0000
+10: 32-86 Reset Reset Reset 0x0000
+10: 87-89 LightCyan Reset Reset 0x0000
+10: 90-98 Reset Reset Reset 0x0000
+10: 99-110 Gray Reset Reset 0x0000
+10: 111-119 Reset Reset Reset 0x0000
+11: 0-0 Cyan Reset Reset 0x0000
+11: 1-30 Reset Reset Reset 0x0000
+11: 31-31 Cyan Reset Reset 0x0000
+11: 32-32 Reset Reset Reset 0x0000
+11: 33-45 LightMagenta Reset Reset 0x0000
+11: 46-47 Reset Reset Reset 0x0000
+11: 48-78 Gray Reset Reset 0x0000
+11: 79-86 Reset Reset Reset 0x0000
+11: 87-94 LightCyan Reset Reset 0x0000
+11: 95-119 Reset Reset Reset 0x0000
+12: 0-0 Cyan Reset Reset 0x0000
+12: 1-30 Reset Reset Reset 0x0000
+12: 31-31 Cyan Reset Reset 0x0000
+12: 32-86 Reset Reset Reset 0x0000
+12: 87-93 LightCyan Reset Reset 0x0000
+12: 94-98 Reset Reset Reset 0x0000
+12: 99-118 Gray Reset Reset 0x0000
+12: 119-119 Reset Reset Reset 0x0000
+13: 0-0 Cyan Reset Reset 0x0000
+13: 1-30 Reset Reset Reset 0x0000
+13: 31-31 Cyan Reset Reset 0x0000
+13: 32-86 Reset Reset Reset 0x0000
+13: 87-94 LightCyan Reset Reset 0x0000
+13: 95-98 Reset Reset Reset 0x0000
+13: 99-118 Gray Reset Reset 0x0000
+13: 119-119 Reset Reset Reset 0x0000
+14: 0-0 Cyan Reset Reset 0x0000
+14: 1-30 Reset Reset Reset 0x0000
+14: 31-31 Cyan Reset Reset 0x0000
+14: 32-86 Reset Reset Reset 0x0000
+14: 87-94 LightCyan Reset Reset 0x0000
+14: 95-98 Reset Reset Reset 0x0000
+14: 99-114 Gray Reset Reset 0x0000
+14: 115-119 Reset Reset Reset 0x0000
+15: 0-0 Cyan Reset Reset 0x0000
+15: 1-30 Reset Reset Reset 0x0000
+15: 31-31 Cyan Reset Reset 0x0000
+15: 32-86 Reset Reset Reset 0x0000
+15: 87-94 LightCyan Reset Reset 0x0000
+15: 95-98 Reset Reset Reset 0x0000
+15: 99-118 Gray Reset Reset 0x0000
+15: 119-119 Reset Reset Reset 0x0000
+16: 0-0 Cyan Reset Reset 0x0000
+16: 1-30 Reset Reset Reset 0x0000
+16: 31-31 Cyan Reset Reset 0x0000
+16: 32-32 Reset Reset Reset 0x0000
+16: 33-49 Gray Reset Reset 0x0004
+16: 50-86 Reset Reset Reset 0x0000
+16: 87-94 LightCyan Reset Reset 0x0000
+16: 95-98 Reset Reset Reset 0x0000
+16: 99-117 Gray Reset Reset 0x0000
+16: 118-119 Reset Reset Reset 0x0000
+17: 0-0 Cyan Reset Reset 0x0000
+17: 1-30 Reset Reset Reset 0x0000
+17: 31-31 Cyan Reset Reset 0x0000
+17: 32-32 Reset Reset Reset 0x0000
+17: 33-84 Reset Reset Reset 0x0040
+17: 85-86 Reset Reset Reset 0x0000
+17: 87-89 LightCyan Reset Reset 0x0000
+17: 90-98 Reset Reset Reset 0x0000
+17: 99-118 Gray Reset Reset 0x0000
+17: 119-119 Reset Reset Reset 0x0000
+18: 0-0 Cyan Reset Reset 0x0000
+18: 1-30 Reset Reset Reset 0x0000
+18: 31-31 Cyan Reset Reset 0x0000
+18: 32-32 Reset Reset Reset 0x0000
+18: 33-36 Reset Reset Reset 0x0040
+18: 37-49 LightMagenta Reset Reset 0x0040
+18: 50-51 Reset Reset Reset 0x0040
+18: 52-73 Gray Reset Reset 0x0040
+18: 74-84 Reset Reset Reset 0x0040
+18: 85-86 Reset Reset Reset 0x0000
+18: 87-91 LightCyan Reset Reset 0x0000
+18: 92-98 Reset Reset Reset 0x0000
+18: 99-107 Gray Reset Reset 0x0000
+18: 108-119 Reset Reset Reset 0x0000
+19: 0-0 Cyan Reset Reset 0x0000
+19: 1-30 Reset Reset Reset 0x0000
+19: 31-31 Cyan Reset Reset 0x0000
+19: 32-32 Reset Reset Reset 0x0000
+19: 33-84 Reset Reset Reset 0x0040
+19: 85-86 Reset Reset Reset 0x0000
+19: 87-97 LightCyan Reset Reset 0x0000
+19: 98-98 Reset Reset Reset 0x0000
+19: 99-111 Gray Reset Reset 0x0000
+19: 112-119 Reset Reset Reset 0x0000
+20: 0-0 Cyan Reset Reset 0x0000
+20: 1-30 Reset Reset Reset 0x0000
+20: 31-31 Cyan Reset Reset 0x0000
+20: 32-86 Reset Reset Reset 0x0000
+20: 87-89 LightCyan Reset Reset 0x0000
+20: 90-98 Reset Reset Reset 0x0000
+20: 99-110 Gray Reset Reset 0x0000
+20: 111-119 Reset Reset Reset 0x0000
+21: 0-0 Cyan Reset Reset 0x0000
+21: 1-30 Reset Reset Reset 0x0000
+21: 31-31 Cyan Reset Reset 0x0000
+21: 32-86 Reset Reset Reset 0x0000
+21: 87-89 LightCyan Reset Reset 0x0000
+21: 90-98 Reset Reset Reset 0x0000
+21: 99-109 Gray Reset Reset 0x0000
+21: 110-119 Reset Reset Reset 0x0000
+22: 0-0 Cyan Reset Reset 0x0000
+22: 1-30 Reset Reset Reset 0x0000
+22: 31-31 Cyan Reset Reset 0x0000
+22: 32-86 Reset Reset Reset 0x0000
+22: 87-89 LightCyan Reset Reset 0x0000
+22: 90-98 Reset Reset Reset 0x0000
+22: 99-109 Gray Reset Reset 0x0000
+22: 110-119 Reset Reset Reset 0x0000
+23: 0-0 Cyan Reset Reset 0x0000
+23: 1-30 Reset Reset Reset 0x0000
+23: 31-31 Cyan Reset Reset 0x0000
+23: 32-86 Reset Reset Reset 0x0000
+23: 87-89 LightCyan Reset Reset 0x0000
+23: 90-98 Reset Reset Reset 0x0000
+23: 99-116 Gray Reset Reset 0x0000
+23: 117-119 Reset Reset Reset 0x0000
+24: 0-0 Cyan Reset Reset 0x0000
+24: 1-30 Reset Reset Reset 0x0000
+24: 31-31 Cyan Reset Reset 0x0000
+24: 32-86 Reset Reset Reset 0x0000
+24: 87-94 LightCyan Reset Reset 0x0000
+24: 95-98 Reset Reset Reset 0x0000
+24: 99-102 Gray Reset Reset 0x0000
+24: 103-119 Reset Reset Reset 0x0000
+25: 0-0 Cyan Reset Reset 0x0000
+25: 1-30 Reset Reset Reset 0x0000
+25: 31-31 Cyan Reset Reset 0x0000
+25: 32-86 Reset Reset Reset 0x0000
+25: 87-89 LightCyan Reset Reset 0x0000
+25: 90-119 Reset Reset Reset 0x0000
+26: 0-0 Cyan Reset Reset 0x0000
+26: 1-30 Reset Reset Reset 0x0000
+26: 31-31 Cyan Reset Reset 0x0000
+26: 32-119 Reset Reset Reset 0x0000
+27: 0-0 Cyan Reset Reset 0x0000
+27: 1-30 Reset Reset Reset 0x0000
+27: 31-31 Cyan Reset Reset 0x0000
+27: 32-119 Reset Reset Reset 0x0000
+28: 0-0 Cyan Reset Reset 0x0000
+28: 1-30 Reset Reset Reset 0x0000
+28: 31-31 Cyan Reset Reset 0x0000
+28: 32-119 Reset Reset Reset 0x0000
+29: 0-0 Cyan Reset Reset 0x0000
+29: 1-30 Reset Reset Reset 0x0000
+29: 31-31 Cyan Reset Reset 0x0000
+29: 32-119 Reset Reset Reset 0x0000
+30: 0-0 Cyan Reset Reset 0x0000
+30: 1-30 Reset Reset Reset 0x0000
+30: 31-31 Cyan Reset Reset 0x0000
+30: 32-119 Reset Reset Reset 0x0000
+31: 0-0 Cyan Reset Reset 0x0000
+31: 1-30 Reset Reset Reset 0x0000
+31: 31-31 Cyan Reset Reset 0x0000
+31: 32-119 Reset Reset Reset 0x0000
+32: 0-0 Cyan Reset Reset 0x0000
+32: 1-30 Reset Reset Reset 0x0000
+32: 31-31 Cyan Reset Reset 0x0000
+32: 32-32 Reset Reset Reset 0x0000
+32: 33-33 Reset Reset Reset 0x0040
+32: 34-119 Reset Reset Reset 0x0000
+33: 0-0 Cyan Reset Reset 0x0000
+33: 1-30 Reset Reset Reset 0x0000
+33: 31-31 Cyan Reset Reset 0x0000
+33: 32-119 Reset Reset Reset 0x0000
+34: 0-0 Cyan Reset Reset 0x0000
+34: 1-30 Reset Reset Reset 0x0000
+34: 31-31 Cyan Reset Reset 0x0000
+34: 32-119 Reset Reset Reset 0x0000
+35: 0-31 Cyan Reset Reset 0x0000
+35: 32-119 Reset Reset Reset 0x0000
+--- cursor Some(Position { x: 0, y: 0 })

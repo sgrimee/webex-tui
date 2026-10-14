@@ -61,7 +61,7 @@ fn hash_string_to_number(s: &str, upper: u64) -> u64 {
 
 /// Returns a human friendly view of the timestamp.
 /// Panics if the timestamp cannot be parsed.
-fn human_timestamp(datetime_str: &str) -> String {
+pub(super) fn human_timestamp(datetime_str: &str) -> String {
     let datetime = DateTime::parse_from_rfc3339(datetime_str).unwrap();
 
     // Display more detail for further dates

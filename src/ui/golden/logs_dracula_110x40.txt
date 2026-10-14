@@ -1,0 +1,294 @@
+|╭────────────────────────────────────────────────────────────────────────────────────────────────────────────╮|
+|│                                                  webex-tui                                                 │|
+|╰────────────────────────────────────────────────────────────────────────────────────────────────────────────╯|
+|╭Filter: All───────────────────╮╭Alpha room (Synthetic Team)───────────────↑╭Help────────────────────────────╮|
+|│☐ Gamma room with a rather lon││  |                                       ║│<h>         Toggle selector     │|
+|│☐ Beta direct                 ││  | me@example.invalid   4-Mar-2020,2020 0║│<Down>      Select next         │|
+|│☐ Alpha room (Synthetic Team) ││  |   **bold** and `code`                 ║│<Up>        Select previous     │|
+|│                              ││                                          ║│<f>         Focus selected      │|
+|│                              ││Alice Example  TTTTTTTTTTTTTTTTTTTTTT (edi║│<+>         Increase captured   │|
+|│                              ││  a long line that has to wrap across     ║│<->         Reduce captured     │|
+|│                              ││  several rows of the message table       ║│<Right>     Increase shown      │|
+|│                              ││  because it is wider than the panel      █│<Left>      Reduce shown        │|
+|│                              ││                                          █│<PageUp>    Page up             │|
+|│                              ││[message deleted]                         █│<PageDown>  Page down           │|
+|│                              ││  |                                       █│<Esc>       Exit page mode      │|
+|│                              ││  | Alice Example  TTTTTTTTTTTTTTTTTTTTTT █│<Space>     Toggle filtered     │|
+|│                              ││  |   reply under a deleted root          █│<Tab>       Next pane           │|
+|│                              ││                                          █│<Shift+Tab> Previous pane       │|
+|│                              │╰──────────────────────────────────────────↓│<t>         Toggle debug        │|
+|│                              │╭Press Enter with a selected room to type──╮│<?>         Toggle help         │|
+|│                              ││                                          ││<l>         Toggle logs         │|
+|│                              ││                                          ││<R>         Toggle rooms panel  │|
+|│                              ││                                          ││<Ctrl+c>    Quit                │|
+|╰──────────────────────────────╯╰──────────────────────────────────────────╯╰────────────────────────────────╯|
+|╭Tui Log [log=0.0/s]─────────────────────────────────────────────────────────────────────────────────────────╮|
+|│                                                                                                            │|
+|│                                                                                                            │|
+|│                                                                                                            │|
+|│                                                                                                            │|
+|│                                                                                                            │|
+|│                                                                                                            │|
+|│                                                                                                            │|
+|│                                                                                                            │|
+|│                                                                                                            │|
+|│                                                                                                            │|
+|│                                                                                                            │|
+|│                                                                                                            │|
+|│                                                                                                            │|
+|│                                                                                                            │|
+|╰────────────────────────────────────────────────────────────────────────────────────────────────────────────╯|
+--- styles (row: x0-x1 fg bg underline modifier-bits)
+0: 0-109 Rgb(68, 71, 90) Reset Reset 0x0000
+1: 0-0 Rgb(68, 71, 90) Reset Reset 0x0000
+1: 1-108 Rgb(80, 250, 123) Reset Reset 0x0000
+1: 109-109 Rgb(68, 71, 90) Reset Reset 0x0000
+2: 0-109 Rgb(68, 71, 90) Reset Reset 0x0000
+3: 0-42 Rgb(68, 71, 90) Reset Reset 0x0000
+3: 43-59 Rgb(255, 184, 108) Reset Reset 0x0000
+3: 60-75 Rgb(68, 71, 90) Reset Reset 0x0000
+3: 76-109 Reset Reset Reset 0x0000
+4: 0-0 Rgb(68, 71, 90) Reset Reset 0x0000
+4: 1-30 Reset Reset Reset 0x0000
+4: 31-32 Rgb(68, 71, 90) Reset Reset 0x0000
+4: 33-74 Reset Reset Reset 0x0000
+4: 75-75 Rgb(68, 71, 90) Reset Reset 0x0000
+4: 76-76 Reset Reset Reset 0x0000
+4: 77-79 Rgb(189, 147, 249) Reset Reset 0x0000
+4: 80-88 Reset Reset Reset 0x0000
+4: 89-103 Rgb(98, 114, 164) Reset Reset 0x0000
+4: 104-109 Reset Reset Reset 0x0000
+5: 0-0 Rgb(68, 71, 90) Reset Reset 0x0000
+5: 1-30 Reset Reset Reset 0x0000
+5: 31-32 Rgb(68, 71, 90) Reset Reset 0x0000
+5: 33-36 Reset Reset Reset 0x0000
+5: 37-54 Rgb(255, 85, 85) Reset Reset 0x0000
+5: 55-56 Reset Reset Reset 0x0000
+5: 57-74 Rgb(98, 114, 164) Reset Reset 0x0000
+5: 75-75 Rgb(68, 71, 90) Reset Reset 0x0000
+5: 76-76 Reset Reset Reset 0x0000
+5: 77-82 Rgb(189, 147, 249) Reset Reset 0x0000
+5: 83-88 Reset Reset Reset 0x0000
+5: 89-99 Rgb(98, 114, 164) Reset Reset 0x0000
+5: 100-109 Reset Reset Reset 0x0000
+6: 0-0 Rgb(68, 71, 90) Reset Reset 0x0000
+6: 1-30 Rgb(248, 248, 242) Rgb(68, 71, 90) Reset 0x0001
+6: 31-32 Rgb(68, 71, 90) Reset Reset 0x0000
+6: 33-74 Reset Reset Reset 0x0000
+6: 75-75 Rgb(68, 71, 90) Reset Reset 0x0000
+6: 76-76 Reset Reset Reset 0x0000
+6: 77-80 Rgb(189, 147, 249) Reset Reset 0x0000
+6: 81-88 Reset Reset Reset 0x0000
+6: 89-103 Rgb(98, 114, 164) Reset Reset 0x0000
+6: 104-109 Reset Reset Reset 0x0000
+7: 0-0 Rgb(68, 71, 90) Reset Reset 0x0000
+7: 1-30 Reset Reset Reset 0x0000
+7: 31-32 Rgb(68, 71, 90) Reset Reset 0x0000
+7: 33-74 Reset Reset Reset 0x0000
+7: 75-75 Rgb(68, 71, 90) Reset Reset 0x0000
+7: 76-76 Reset Reset Reset 0x0000
+7: 77-79 Rgb(189, 147, 249) Reset Reset 0x0000
+7: 80-88 Reset Reset Reset 0x0000
+7: 89-102 Rgb(98, 114, 164) Reset Reset 0x0000
+7: 103-109 Reset Reset Reset 0x0000
+8: 0-0 Rgb(68, 71, 90) Reset Reset 0x0000
+8: 1-30 Reset Reset Reset 0x0000
+8: 31-32 Rgb(68, 71, 90) Reset Reset 0x0000
+8: 33-45 Rgb(80, 250, 123) Reset Reset 0x0000
+8: 46-47 Reset Reset Reset 0x0000
+8: 48-74 Rgb(98, 114, 164) Reset Reset 0x0000
+8: 75-75 Rgb(68, 71, 90) Reset Reset 0x0000
+8: 76-76 Reset Reset Reset 0x0000
+8: 77-79 Rgb(189, 147, 249) Reset Reset 0x0000
+8: 80-88 Reset Reset Reset 0x0000
+8: 89-105 Rgb(98, 114, 164) Reset Reset 0x0000
+8: 106-109 Reset Reset Reset 0x0000
+9: 0-0 Rgb(68, 71, 90) Reset Reset 0x0000
+9: 1-30 Reset Reset Reset 0x0000
+9: 31-32 Rgb(68, 71, 90) Reset Reset 0x0000
+9: 33-74 Reset Reset Reset 0x0000
+9: 75-75 Rgb(68, 71, 90) Reset Reset 0x0000
+9: 76-76 Reset Reset Reset 0x0000
+9: 77-79 Rgb(189, 147, 249) Reset Reset 0x0000
+9: 80-88 Reset Reset Reset 0x0000
+9: 89-103 Rgb(98, 114, 164) Reset Reset 0x0000
+9: 104-109 Reset Reset Reset 0x0000
+10: 0-0 Rgb(68, 71, 90) Reset Reset 0x0000
+10: 1-30 Reset Reset Reset 0x0000
+10: 31-32 Rgb(68, 71, 90) Reset Reset 0x0000
+10: 33-74 Reset Reset Reset 0x0000
+10: 75-75 Rgb(68, 71, 90) Reset Reset 0x0000
+10: 76-76 Reset Reset Reset 0x0000
+10: 77-83 Rgb(189, 147, 249) Reset Reset 0x0000
+10: 84-88 Reset Reset Reset 0x0000
+10: 89-102 Rgb(98, 114, 164) Reset Reset 0x0000
+10: 103-109 Reset Reset Reset 0x0000
+11: 0-0 Rgb(68, 71, 90) Reset Reset 0x0000
+11: 1-30 Reset Reset Reset 0x0000
+11: 31-32 Rgb(68, 71, 90) Reset Reset 0x0000
+11: 33-74 Reset Reset Reset 0x0000
+11: 75-75 Rgb(68, 71, 90) Reset Reset 0x0000
+11: 76-76 Reset Reset Reset 0x0000
+11: 77-82 Rgb(189, 147, 249) Reset Reset 0x0000
+11: 83-88 Reset Reset Reset 0x0000
+11: 89-100 Rgb(98, 114, 164) Reset Reset 0x0000
+11: 101-109 Reset Reset Reset 0x0000
+12: 0-0 Rgb(68, 71, 90) Reset Reset 0x0000
+12: 1-30 Reset Reset Reset 0x0000
+12: 31-32 Rgb(68, 71, 90) Reset Reset 0x0000
+12: 33-74 Reset Reset Reset 0x0000
+12: 75-75 Rgb(68, 71, 90) Reset Reset 0x0000
+12: 76-76 Reset Reset Reset 0x0000
+12: 77-84 Rgb(189, 147, 249) Reset Reset 0x0000
+12: 85-88 Reset Reset Reset 0x0000
+12: 89-95 Rgb(98, 114, 164) Reset Reset 0x0000
+12: 96-109 Reset Reset Reset 0x0000
+13: 0-0 Rgb(68, 71, 90) Reset Reset 0x0000
+13: 1-30 Reset Reset Reset 0x0000
+13: 31-32 Rgb(68, 71, 90) Reset Reset 0x0000
+13: 33-49 Rgb(98, 114, 164) Reset Reset 0x0004
+13: 50-74 Reset Reset Reset 0x0000
+13: 75-75 Rgb(68, 71, 90) Reset Reset 0x0000
+13: 76-76 Reset Reset Reset 0x0000
+13: 77-86 Rgb(189, 147, 249) Reset Reset 0x0000
+13: 87-88 Reset Reset Reset 0x0000
+13: 89-97 Rgb(98, 114, 164) Reset Reset 0x0000
+13: 98-109 Reset Reset Reset 0x0000
+14: 0-0 Rgb(68, 71, 90) Reset Reset 0x0000
+14: 1-30 Reset Reset Reset 0x0000
+14: 31-32 Rgb(68, 71, 90) Reset Reset 0x0000
+14: 33-74 Reset Reset Reset 0x0040
+14: 75-75 Rgb(68, 71, 90) Reset Reset 0x0000
+14: 76-76 Reset Reset Reset 0x0000
+14: 77-81 Rgb(189, 147, 249) Reset Reset 0x0000
+14: 82-88 Reset Reset Reset 0x0000
+14: 89-102 Rgb(98, 114, 164) Reset Reset 0x0000
+14: 103-109 Reset Reset Reset 0x0000
+15: 0-0 Rgb(68, 71, 90) Reset Reset 0x0000
+15: 1-30 Reset Reset Reset 0x0000
+15: 31-32 Rgb(68, 71, 90) Reset Reset 0x0000
+15: 33-36 Reset Reset Reset 0x0040
+15: 37-49 Rgb(80, 250, 123) Reset Reset 0x0040
+15: 50-51 Reset Reset Reset 0x0040
+15: 52-73 Rgb(98, 114, 164) Reset Reset 0x0040
+15: 74-74 Reset Reset Reset 0x0040
+15: 75-75 Rgb(68, 71, 90) Reset Reset 0x0000
+15: 76-76 Reset Reset Reset 0x0000
+15: 77-83 Rgb(189, 147, 249) Reset Reset 0x0000
+15: 84-88 Reset Reset Reset 0x0000
+15: 89-103 Rgb(98, 114, 164) Reset Reset 0x0000
+15: 104-109 Reset Reset Reset 0x0000
+16: 0-0 Rgb(68, 71, 90) Reset Reset 0x0000
+16: 1-30 Reset Reset Reset 0x0000
+16: 31-32 Rgb(68, 71, 90) Reset Reset 0x0000
+16: 33-74 Reset Reset Reset 0x0040
+16: 75-75 Rgb(68, 71, 90) Reset Reset 0x0000
+16: 76-76 Reset Reset Reset 0x0000
+16: 77-81 Rgb(189, 147, 249) Reset Reset 0x0000
+16: 82-88 Reset Reset Reset 0x0000
+16: 89-97 Rgb(98, 114, 164) Reset Reset 0x0000
+16: 98-109 Reset Reset Reset 0x0000
+17: 0-0 Rgb(68, 71, 90) Reset Reset 0x0000
+17: 1-30 Reset Reset Reset 0x0000
+17: 31-32 Rgb(68, 71, 90) Reset Reset 0x0000
+17: 33-74 Reset Reset Reset 0x0000
+17: 75-75 Rgb(68, 71, 90) Reset Reset 0x0000
+17: 76-76 Reset Reset Reset 0x0000
+17: 77-87 Rgb(189, 147, 249) Reset Reset 0x0000
+17: 88-88 Reset Reset Reset 0x0000
+17: 89-101 Rgb(98, 114, 164) Reset Reset 0x0000
+17: 102-109 Reset Reset Reset 0x0000
+18: 0-0 Rgb(68, 71, 90) Reset Reset 0x0000
+18: 1-30 Reset Reset Reset 0x0000
+18: 31-75 Rgb(68, 71, 90) Reset Reset 0x0000
+18: 76-76 Reset Reset Reset 0x0000
+18: 77-79 Rgb(189, 147, 249) Reset Reset 0x0000
+18: 80-88 Reset Reset Reset 0x0000
+18: 89-100 Rgb(98, 114, 164) Reset Reset 0x0000
+18: 101-109 Reset Reset Reset 0x0000
+19: 0-0 Rgb(68, 71, 90) Reset Reset 0x0000
+19: 1-30 Reset Reset Reset 0x0000
+19: 31-75 Rgb(68, 71, 90) Reset Reset 0x0000
+19: 76-76 Reset Reset Reset 0x0000
+19: 77-79 Rgb(189, 147, 249) Reset Reset 0x0000
+19: 80-88 Reset Reset Reset 0x0000
+19: 89-99 Rgb(98, 114, 164) Reset Reset 0x0000
+19: 100-109 Reset Reset Reset 0x0000
+20: 0-0 Rgb(68, 71, 90) Reset Reset 0x0000
+20: 1-30 Reset Reset Reset 0x0000
+20: 31-32 Rgb(68, 71, 90) Reset Reset 0x0000
+20: 33-33 Reset Reset Reset 0x0040
+20: 34-74 Reset Reset Reset 0x0000
+20: 75-75 Rgb(68, 71, 90) Reset Reset 0x0000
+20: 76-76 Reset Reset Reset 0x0000
+20: 77-79 Rgb(189, 147, 249) Reset Reset 0x0000
+20: 80-88 Reset Reset Reset 0x0000
+20: 89-99 Rgb(98, 114, 164) Reset Reset 0x0000
+20: 100-109 Reset Reset Reset 0x0000
+21: 0-0 Rgb(68, 71, 90) Reset Reset 0x0000
+21: 1-30 Reset Reset Reset 0x0000
+21: 31-32 Rgb(68, 71, 90) Reset Reset 0x0000
+21: 33-74 Reset Reset Reset 0x0000
+21: 75-75 Rgb(68, 71, 90) Reset Reset 0x0000
+21: 76-76 Reset Reset Reset 0x0000
+21: 77-79 Rgb(189, 147, 249) Reset Reset 0x0000
+21: 80-88 Reset Reset Reset 0x0000
+21: 89-106 Rgb(98, 114, 164) Reset Reset 0x0000
+21: 107-109 Reset Reset Reset 0x0000
+22: 0-0 Rgb(68, 71, 90) Reset Reset 0x0000
+22: 1-30 Reset Reset Reset 0x0000
+22: 31-32 Rgb(68, 71, 90) Reset Reset 0x0000
+22: 33-74 Reset Reset Reset 0x0000
+22: 75-75 Rgb(68, 71, 90) Reset Reset 0x0000
+22: 76-76 Reset Reset Reset 0x0000
+22: 77-84 Rgb(189, 147, 249) Reset Reset 0x0000
+22: 85-88 Reset Reset Reset 0x0000
+22: 89-92 Rgb(98, 114, 164) Reset Reset 0x0000
+22: 93-109 Reset Reset Reset 0x0000
+23: 0-75 Rgb(68, 71, 90) Reset Reset 0x0000
+23: 76-109 Reset Reset Reset 0x0000
+24: 0-109 Rgb(189, 147, 249) Reset Reset 0x0000
+25: 0-0 Rgb(189, 147, 249) Reset Reset 0x0000
+25: 1-108 Reset Reset Reset 0x0000
+25: 109-109 Rgb(189, 147, 249) Reset Reset 0x0000
+26: 0-0 Rgb(189, 147, 249) Reset Reset 0x0000
+26: 1-108 Reset Reset Reset 0x0000
+26: 109-109 Rgb(189, 147, 249) Reset Reset 0x0000
+27: 0-0 Rgb(189, 147, 249) Reset Reset 0x0000
+27: 1-108 Reset Reset Reset 0x0000
+27: 109-109 Rgb(189, 147, 249) Reset Reset 0x0000
+28: 0-0 Rgb(189, 147, 249) Reset Reset 0x0000
+28: 1-108 Reset Reset Reset 0x0000
+28: 109-109 Rgb(189, 147, 249) Reset Reset 0x0000
+29: 0-0 Rgb(189, 147, 249) Reset Reset 0x0000
+29: 1-108 Reset Reset Reset 0x0000
+29: 109-109 Rgb(189, 147, 249) Reset Reset 0x0000
+30: 0-0 Rgb(189, 147, 249) Reset Reset 0x0000
+30: 1-108 Reset Reset Reset 0x0000
+30: 109-109 Rgb(189, 147, 249) Reset Reset 0x0000
+31: 0-0 Rgb(189, 147, 249) Reset Reset 0x0000
+31: 1-108 Reset Reset Reset 0x0000
+31: 109-109 Rgb(189, 147, 249) Reset Reset 0x0000
+32: 0-0 Rgb(189, 147, 249) Reset Reset 0x0000
+32: 1-108 Reset Reset Reset 0x0000
+32: 109-109 Rgb(189, 147, 249) Reset Reset 0x0000
+33: 0-0 Rgb(189, 147, 249) Reset Reset 0x0000
+33: 1-108 Reset Reset Reset 0x0000
+33: 109-109 Rgb(189, 147, 249) Reset Reset 0x0000
+34: 0-0 Rgb(189, 147, 249) Reset Reset 0x0000
+34: 1-108 Reset Reset Reset 0x0000
+34: 109-109 Rgb(189, 147, 249) Reset Reset 0x0000
+35: 0-0 Rgb(189, 147, 249) Reset Reset 0x0000
+35: 1-108 Reset Reset Reset 0x0000
+35: 109-109 Rgb(189, 147, 249) Reset Reset 0x0000
+36: 0-0 Rgb(189, 147, 249) Reset Reset 0x0000
+36: 1-108 Reset Reset Reset 0x0000
+36: 109-109 Rgb(189, 147, 249) Reset Reset 0x0000
+37: 0-0 Rgb(189, 147, 249) Reset Reset 0x0000
+37: 1-108 Reset Reset Reset 0x0000
+37: 109-109 Rgb(189, 147, 249) Reset Reset 0x0000
+38: 0-0 Rgb(189, 147, 249) Reset Reset 0x0000
+38: 1-108 Reset Reset Reset 0x0000
+38: 109-109 Rgb(189, 147, 249) Reset Reset 0x0000
+39: 0-109 Rgb(189, 147, 249) Reset Reset 0x0000
+--- cursor Some(Position { x: 0, y: 0 })

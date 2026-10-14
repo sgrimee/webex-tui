@@ -1,0 +1,108 @@
+|╭──────────────────────────────────────────────────────────────────────────────────────────────────╮|
+|│                                             webex-tui                                            │|
+|╰──────────────────────────────────────────────────────────────────────────────────────────────────╯|
+|╭Filter: All───────────────────╮╭Alpha room (Synthetic Team)───────────────────────────────────────↑|
+|│☐ Gamma room with a rather lon││                                                                  ║|
+|│☐ Beta direct                 ││Alice Example  TTTTTTTTTTTTTTTTTTTTTT                             ║|
+|│☐ Alpha room (Synthetic Team) ││  hello there                                                     ║|
+|│                              ││  |                                                               ║|
+|│                              ││  | me@example.invalid  TTTTTTTTTTTTTTTTTTTTTT                    ║|
+|│                              ││  |   **bold** and `code`                                         ║|
+|│                              ││                                                                  ║|
+|│                              ││Alice Example  TTTTTTTTTTTTTTTTTTTTTT (edited)                    ║|
+|│                              ││  a long line that has to wrap across several rows of the         █|
+|│                              ││  message table because it is wider than the panel                █|
+|│                              ││                                                                  █|
+|│                              ││[message deleted]                                                 █|
+|│                              ││  |                                                               █|
+|│                              ││  | Alice Example  TTTTTTTTTTTTTTTTTTTTTT                         █|
+|│                              ││  |   reply under a deleted root                                  █|
+|│                              ││                                                                  █|
+|│                              ││                                                                  █|
+|│                              ││                                                                  █|
+|│                              ││                                                                  █|
+|│                              ││                                                                  █|
+|│                              │╰──────────────────────────────────────────────────────────────────↓|
+|│                              │╭Type your new message. Enter: send, Alt-Enter: new line, Esc: canc╮|
+|│                              ││draft                                                             │|
+|│                              ││x                                                                 │|
+|│                              ││                                                                  │|
+|╰──────────────────────────────╯╰──────────────────────────────────────────────────────────────────╯|
+--- styles (row: x0-x1 fg bg underline modifier-bits)
+0: 0-99 Reset Reset Reset 0x0000
+1: 0-0 Reset Reset Reset 0x0000
+1: 1-98 LightCyan Reset Reset 0x0000
+1: 99-99 Reset Reset Reset 0x0000
+2: 0-99 Reset Reset Reset 0x0000
+3: 0-42 Reset Reset Reset 0x0000
+3: 43-59 LightCyan Reset Reset 0x0000
+3: 60-99 Reset Reset Reset 0x0000
+4: 0-99 Reset Reset Reset 0x0000
+5: 0-32 Reset Reset Reset 0x0000
+5: 33-45 LightMagenta Reset Reset 0x0000
+5: 46-47 Reset Reset Reset 0x0000
+5: 48-69 Gray Reset Reset 0x0000
+5: 70-99 Reset Reset Reset 0x0000
+6: 0-0 Reset Reset Reset 0x0000
+6: 1-30 Black Yellow Reset 0x0001
+6: 31-99 Reset Reset Reset 0x0000
+7: 0-99 Reset Reset Reset 0x0000
+8: 0-36 Reset Reset Reset 0x0000
+8: 37-54 LightMagenta Reset Reset 0x0000
+8: 55-56 Reset Reset Reset 0x0000
+8: 57-78 Gray Reset Reset 0x0000
+8: 79-99 Reset Reset Reset 0x0000
+9: 0-99 Reset Reset Reset 0x0000
+10: 0-99 Reset Reset Reset 0x0000
+11: 0-32 Reset Reset Reset 0x0000
+11: 33-45 LightMagenta Reset Reset 0x0000
+11: 46-47 Reset Reset Reset 0x0000
+11: 48-78 Gray Reset Reset 0x0000
+11: 79-99 Reset Reset Reset 0x0000
+12: 0-99 Reset Reset Reset 0x0000
+13: 0-99 Reset Reset Reset 0x0000
+14: 0-99 Reset Reset Reset 0x0000
+15: 0-32 Reset Reset Reset 0x0000
+15: 33-49 Gray Reset Reset 0x0004
+15: 50-99 Reset Reset Reset 0x0000
+16: 0-32 Reset Reset Reset 0x0000
+16: 33-98 Reset Reset Reset 0x0040
+16: 99-99 Reset Reset Reset 0x0000
+17: 0-32 Reset Reset Reset 0x0000
+17: 33-36 Reset Reset Reset 0x0040
+17: 37-49 LightMagenta Reset Reset 0x0040
+17: 50-51 Reset Reset Reset 0x0040
+17: 52-73 Gray Reset Reset 0x0040
+17: 74-98 Reset Reset Reset 0x0040
+17: 99-99 Reset Reset Reset 0x0000
+18: 0-32 Reset Reset Reset 0x0000
+18: 33-98 Reset Reset Reset 0x0040
+18: 99-99 Reset Reset Reset 0x0000
+19: 0-99 Reset Reset Reset 0x0000
+20: 0-99 Reset Reset Reset 0x0000
+21: 0-99 Reset Reset Reset 0x0000
+22: 0-99 Reset Reset Reset 0x0000
+23: 0-99 Reset Reset Reset 0x0000
+24: 0-99 Reset Reset Reset 0x0000
+25: 0-31 Reset Reset Reset 0x0000
+25: 32-32 Cyan Reset Reset 0x0000
+25: 33-54 Yellow Reset Reset 0x0000
+25: 55-98 Gray Reset Reset 0x0000
+25: 99-99 Cyan Reset Reset 0x0000
+26: 0-31 Reset Reset Reset 0x0000
+26: 32-32 Cyan Reset Reset 0x0000
+26: 33-98 Reset Reset Reset 0x0000
+26: 99-99 Cyan Reset Reset 0x0000
+27: 0-31 Reset Reset Reset 0x0000
+27: 32-32 Cyan Reset Reset 0x0000
+27: 33-33 Reset Reset Reset 0x0000
+27: 34-34 Reset Reset Reset 0x0040
+27: 35-98 Reset Reset Reset 0x0000
+27: 99-99 Cyan Reset Reset 0x0000
+28: 0-31 Reset Reset Reset 0x0000
+28: 32-32 Cyan Reset Reset 0x0000
+28: 33-98 Reset Reset Reset 0x0000
+28: 99-99 Cyan Reset Reset 0x0000
+29: 0-31 Reset Reset Reset 0x0000
+29: 32-99 Cyan Reset Reset 0x0000
+--- cursor Some(Position { x: 0, y: 0 })
