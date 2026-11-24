@@ -517,18 +517,12 @@ async fn terminal_expiry_notifies_local_session_without_guessing_upstream_oauth(
 async fn cancelled_connect_publishes_connecting_before_its_first_io_await() {
     use std::{
         future::Future,
-        task::{Context, Poll, Wake, Waker},
+        task::{Context, Poll, Waker},
     };
-
-    struct Noop;
-    impl Wake for Noop {
-        fn wake(self: Arc<Self>) {}
-    }
 
     let mut f = fixture();
     f.pending_issue.store(true, Ordering::SeqCst);
-    let waker = Waker::from(Arc::new(Noop));
-    let mut context = Context::from_waker(&waker);
+    let mut context = Context::from_waker(Waker::noop());
     let mut future = Box::pin(f.controller.connect("synthetic-secret"));
     assert!(matches!(future.as_mut().poll(&mut context), Poll::Pending));
     drop(future);

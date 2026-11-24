@@ -1035,16 +1035,11 @@ async fn subscription_and_snapshot_counters_fail_closed_instead_of_wrapping() {
 
 #[tokio::test]
 async fn cancelled_connect_reserves_epoch_and_never_leaves_old_handles_exposed() {
-    use std::task::{Context, Poll, Wake, Waker};
-    struct Noop;
-    impl Wake for Noop {
-        fn wake(self: Arc<Self>) {}
-    }
+    use std::task::{Context, Poll, Waker};
     let mut owner = owner();
     let old = active(&mut owner).await;
     owner.backend.pending_issue = true;
-    let waker = Waker::from(Arc::new(Noop));
-    let mut context = Context::from_waker(&waker);
+    let mut context = Context::from_waker(Waker::noop());
     let mut future = Box::pin(owner.connect(SECRET));
     assert!(matches!(future.as_mut().poll(&mut context), Poll::Pending));
     drop(future);

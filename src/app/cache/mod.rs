@@ -172,7 +172,7 @@ impl Cache {
                     .map(|score| (room, score))
             })
             .collect();
-        rooms.sort_by(|a, b| b.1.cmp(&a.1));
+        rooms.sort_by_key(|&(_, score)| std::cmp::Reverse(score));
         rooms.into_iter()
     }
 }
