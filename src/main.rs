@@ -1,5 +1,9 @@
 // main.rs
 
+// Off macOS only a stub `run` is built (the daemon is macOS-only), so the
+// rest of the crate is unused there.
+#![cfg_attr(not(target_os = "macos"), allow(dead_code, unused_imports))]
+
 mod app;
 mod banner;
 mod bridge;
