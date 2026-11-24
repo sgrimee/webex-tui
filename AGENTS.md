@@ -107,3 +107,17 @@ main ─ bridge::startup (before raw mode: socket, status, session-first pairing
 
 ## Commit Guidelines
 - Never include 'Generated with' or 'Co authored by' OpenCode in commit messages or pull requests
+
+## Agent skills
+
+### Issue tracker
+
+Issues are tracked in GitHub Issues on `sgrimee/webex-tui`, managed with the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five default triage labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `GLOSSARY.md` and `docs/adr/` at the repo root, created lazily. See `docs/agents/domain.md`.
