@@ -127,6 +127,8 @@ impl UiReadBackend for Reader {
     async fn room(&self, id: &str) -> Reply<dto::Room> {
         Ok(room(id))
     }
+    // `fetch_update` is deprecated (renamed `try_update`) after the pinned 1.88 toolchain.
+    #[allow(deprecated)]
     async fn team(&self, id: &str) -> Reply<dto::Team> {
         self.0.team_reads.fetch_add(1, Ordering::SeqCst);
         self.0.read_log.lock().unwrap().push("team".into());

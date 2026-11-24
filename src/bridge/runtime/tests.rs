@@ -191,6 +191,8 @@ struct Secrets {
     unavailable: Arc<AtomicUsize>,
 }
 impl UiSecretStore for Secrets {
+    // `fetch_update` is deprecated (renamed `try_update`) after the pinned 1.88 toolchain.
+    #[allow(deprecated)]
     async fn load(&mut self) -> Result<Option<UiSecret>, SecretStoreFailure> {
         self.loads.fetch_add(1, Ordering::SeqCst);
         if self.missing.load(Ordering::SeqCst) {

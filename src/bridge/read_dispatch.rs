@@ -173,6 +173,8 @@ impl ReadTerminal {
 #[derive(Clone, Default)]
 pub(crate) struct ReadCredits(Arc<AtomicUsize>);
 
+// `fetch_update` is deprecated (renamed `try_update`) after the pinned 1.88 toolchain.
+#[allow(deprecated)]
 impl ReadCredits {
     /// Reserve one credit unless `cap` are already outstanding.
     pub(crate) fn try_acquire(&self, cap: usize) -> bool {
